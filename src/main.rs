@@ -2,8 +2,6 @@ use core::fmt;
 use std::io::{stdin, stdout, Write};
 use regex::Regex;
 
-use rstest::rstest;
-
 // static OPERATORS: &[&str] = &["+", "-", "*", "/", "%"];
 
 #[derive(Debug, PartialEq, Clone)]
@@ -20,7 +18,7 @@ enum TokenType {
     Symbol,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 struct AbstractSyntaxTree {
     token: Token,
     children: Vec<AbstractSyntaxTree>,
@@ -29,6 +27,31 @@ struct AbstractSyntaxTree {
 impl AbstractSyntaxTree {
     fn leaf(token: Token) -> Self {
         Self { token, children: vec![] }
+    }
+}
+
+impl fmt::Debug for AbstractSyntaxTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // recursively print out children
+        fn pretty_print(
+            f: &mut std::fmt::Formatter<'_>,
+            node: &AbstractSyntaxTree,
+            indent: usize
+        ) {
+            writeln!(
+                f,
+                "{}{:?}({})",
+                " ".repeat(indent * 4),
+                node.token.r#type,
+                node.token.data
+            ).expect("failed to write to formatter");
+            for child in &node.children {
+                pretty_print(f, &child, indent + 1);
+            }
+        }
+        writeln!(f, "")?;
+        pretty_print(f, self, 0);
+        Ok(())
     }
 }
 
@@ -294,6 +317,7 @@ mod tests {
     }
 
     mod test_parse {
+        use rstest::rstest;
         use super::*;
 
         fn leaf(token: Token) -> AbstractSyntaxTree {
@@ -332,8 +356,8 @@ mod tests {
             let expected = AbstractSyntaxTree {
                 token: op_token("+"),
                 children: vec![
-                    leaf(op_token("3")),
-                    leaf(op_token("2")),
+                    leaf(int_token("3")),
+                    leaf(int_token("2")),
                 ]
             };
             assert_eq!(parse(input), Ok(expected));
