@@ -14,8 +14,9 @@ struct Token {
 enum TokenType {
     String,
     Int,
-    Operator,
-    Symbol,
+    Symbol, // variable names, keywords
+    Operator, // performs some action with data (e.g. +, -)
+    Formatter, // doesn't perform any action (e.g. ;)
 }
 
 #[derive(PartialEq)]
@@ -110,7 +111,8 @@ fn main() {
 fn tokenize(line: &str) -> Vec<Token> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
-        | (?P<op>[+*-/;=%()])
+        | (?P<op>[+*-/=%])
+        | (?P<fmt>[;()])
         | (?P<int>\d+)
         | (?P<symbol>\w+)
     "#;
@@ -122,6 +124,8 @@ fn tokenize(line: &str) -> Vec<Token> {
                 (TokenType::Int, m)
             } else if let Some(m) = x.name("op") {
                 (TokenType::Operator, m)
+            } else if let Some(m) = x.name("fmt") {
+                (TokenType::Formatter, m)
             } else if let Some(m) = x.name("string") {
                 (TokenType::String, m)
             } else if let Some(m) = x.name("symbol") {
@@ -138,7 +142,7 @@ fn tokenize(line: &str) -> Vec<Token> {
 
 /// Convert a sequence of tokens into an abstract syntax tree.
 /// 
-/// The tokens should represent only one statement and therefore one syntax
+/// The tokens should represent exactly one statement and therefore one syntax
 /// tree. Otherwise, an error is returned.
 /// A single literal value is a valid statement (e.g. "3").
 /// 
@@ -147,12 +151,13 @@ fn parse(tokens: Vec<Token>) -> Result<AbstractSyntaxTree, String> {
     if tokens.is_empty() {
         return Err("Cannot parse empty tokens".to_string());
     }
+    let first_token = &tokens[0];
+    let mut root = AbstractSyntaxTree::leaf(first_token.clone());
     if tokens.len() == 1 {
-        let token = tokens[0].clone();
-        return if token.r#type == TokenType::Operator {
+        return if first_token.r#type == TokenType::Operator {
             Err("Cannot parse operator as single token".to_string())
         } else {
-            Ok(AbstractSyntaxTree::leaf(tokens[0].clone()))
+            Ok(root)
         }
     }
     return Err("unimplemented".to_string());
@@ -160,6 +165,7 @@ fn parse(tokens: Vec<Token>) -> Result<AbstractSyntaxTree, String> {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use super::*;
 
     fn string_token(data: &str) -> Token {
@@ -186,6 +192,13 @@ mod tests {
     fn symbol_token(data: &str) -> Token {
         return Token {
             r#type: TokenType::Symbol,
+            data: data.to_string(),
+        }
+    }
+
+    fn formatter_token(data: &str) -> Token {
+        return Token {
+            r#type: TokenType::Formatter,
             data: data.to_string(),
         }
     }
@@ -226,17 +239,23 @@ mod tests {
             assert_eq!(tokenize(input.as_str()), expected);
         }
 
-        #[test]
-        fn operators() {
-            assert_eq!(tokenize("+"), [op_token("+")]);
-            assert_eq!(tokenize("-"), [op_token("-")]);
-            assert_eq!(tokenize("*"), [op_token("*")]);
-            assert_eq!(tokenize("/"), [op_token("/")]);
-            assert_eq!(tokenize("%"), [op_token("%")]);
-            assert_eq!(tokenize(";"), [op_token(";")]);
-            assert_eq!(tokenize("="), [op_token("=")]);
-            assert_eq!(tokenize("("), [op_token("(")]);
-            assert_eq!(tokenize(")"), [op_token(")")]);
+        #[rstest]
+        #[case("+")]
+        #[case("-")]
+        #[case("*")]
+        #[case("/")]
+        #[case("%")]
+        #[case("=")]
+        fn operators(#[case] token: &str) {
+            assert_eq!(tokenize(token), [op_token(token)]);
+        }
+
+        #[rstest]
+        #[case("(")]
+        #[case(")")]
+        #[case(";")]
+        fn formatters(#[case] token: &str) {
+            assert_eq!(tokenize(token), [formatter_token(token)]);
         }
 
         #[test]
@@ -297,7 +316,7 @@ mod tests {
                 symbol_token("x"),
                 op_token("="),
                 int_token("5"),
-                op_token(";")
+                formatter_token(";")
             ];
             assert_eq!(tokenize("let x = 5;"), expected);
         }
@@ -306,18 +325,17 @@ mod tests {
         fn function_call() {
             let expected = [
                 symbol_token("print"),
-                op_token("("),
+                formatter_token("("),
                 symbol_token("x"),
                 op_token("+"),
                 int_token("1"),
-                op_token(")"),
+                formatter_token(")"),
             ];
             assert_eq!(tokenize("print(x + 1)"), expected);
         }
     }
 
     mod test_parse {
-        use rstest::rstest;
         use super::*;
 
         fn leaf(token: Token) -> AbstractSyntaxTree {
