@@ -14,6 +14,7 @@ struct Token {
 enum TokenType {
     String,
     Int,
+    Bool,
     Symbol, // variable names, keywords
     BinaryOperator, // performs some action with two pieces of data (e.g. +, -)
     Formatter, // doesn't perform any action (e.g. ;)
@@ -116,12 +117,12 @@ fn main() {
 /// - operators: +, -, &&, ||, <, =, ==
 /// - formatters: (parenthesis, brackets, semicolon, comma)
 fn tokenize(line: &str) -> Vec<Token> {
-    // TODO: add bool
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<op>[+*-/=%])
         | (?P<fmt>[;()])
         | (?P<int>\d+)
+        | (?P<bool>true|false)
         | (?P<symbol>\w+)
     "#;
     let re = Regex::new(&pattern).unwrap();
@@ -134,6 +135,8 @@ fn tokenize(line: &str) -> Vec<Token> {
                 (TokenType::BinaryOperator, m)
             } else if let Some(m) = x.name("fmt") {
                 (TokenType::Formatter, m)
+            } else if let Some(m) = x.name("bool") {
+                (TokenType::Bool, m)
             } else if let Some(m) = x.name("string") {
                 (TokenType::String, m)
             } else if let Some(m) = x.name("symbol") {
@@ -194,6 +197,13 @@ mod tests {
     use rstest::rstest;
     use super::*;
 
+    fn bool_token(data: &str) -> Token {
+        Token {
+            r#type: TokenType::Bool,
+            data: data.to_string(),
+        }
+    }
+
     fn string_token(data: &str) -> Token {
         return Token {
             r#type: TokenType::String,
@@ -231,6 +241,12 @@ mod tests {
 
     mod test_tokenize {
         use super::*;
+
+        #[test]
+        fn booleans() {
+            assert_eq!(tokenize("true"), [bool_token("true")]);
+            assert_eq!(tokenize("false"), [bool_token("false")]);
+        }
 
         #[test]
         fn empty_string() {
