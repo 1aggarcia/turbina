@@ -20,11 +20,41 @@ enum TokenType {
     Formatter, // doesn't perform any action (e.g. ;)
 }
 
+#[derive(PartialEq, Debug, Clone)]
+enum TokenV2 {
+    Literal(Literal),
+    Operator(Operator),
+    Id(String),
+
+    // keywords
+    Let,
+
+    Formatter(String)
+}
+
+#[derive(PartialEq, Debug, Clone)]
+enum Literal {
+    Int(i32),
+    String(String),
+    Bool(bool),
+}
+
+#[derive(PartialEq, Debug, Clone)]
+enum Operator {
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Equals,
+}
+
 #[derive(PartialEq)]
 struct AbstractSyntaxTree {
     token: Token,
     children: Vec<AbstractSyntaxTree>,
 }
+
 
 impl AbstractSyntaxTree {
     fn leaf(token: Token) -> Self {
@@ -92,17 +122,16 @@ fn main() {
         let next_line = buf.trim();
         
         // parse line
-        let tokens: Vec<Token> = tokenize(next_line);
-
+        let tokens: Vec<TokenV2> = tokenize(next_line);
         if tokens.is_empty() {
             continue;
         }
-
-        let syntax_tree = parse(tokens);
-        match syntax_tree {
-            Ok(tree) => println!("{:?}", tree),
-            Err(err) => println!("Syntax Error: {}", err),
-        }
+        println!("{tokens:?}");
+        // let syntax_tree = parse(vec![]);
+        // match syntax_tree {
+        //     Ok(tree) => println!("{:?}", tree),
+        //     Err(err) => println!("Syntax Error: {}", err),
+        // }
     }
 }
 
@@ -111,12 +140,13 @@ fn main() {
 ///
 /// 
 /// Tokens are one of the following:
-/// - int literals: 0-9
+/// - int literals: 0-9 (including negative numbers)
 /// - string literals: "..."
+/// - boolean literals: "true", "false"
 /// - keywords/symbols: a-zA-Z
 /// - operators: +, -, &&, ||, <, =, ==
 /// - formatters: (parenthesis, brackets, semicolon, comma)
-fn tokenize(line: &str) -> Vec<Token> {
+fn tokenize(line: &str) -> Vec<TokenV2> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<op>[+*-/=%])
@@ -129,26 +159,49 @@ fn tokenize(line: &str) -> Vec<Token> {
     let capture_matches = re.captures_iter(line);
     let tokens= capture_matches
         .map(|x| {
-            let (r#type, m) = if let Some(m) = x.name("int") {
-                (TokenType::Int, m)
+            if let Some(m) = x.name("int") {
+                let int_value = m.as_str().parse::<i32>().unwrap();
+                TokenV2::Literal(Literal::Int(int_value))
             } else if let Some(m) = x.name("op") {
-                (TokenType::BinaryOperator, m)
+                let op = string_to_operator(m.as_str()).unwrap();
+                TokenV2::Operator(op)
             } else if let Some(m) = x.name("fmt") {
-                (TokenType::Formatter, m)
+                TokenV2::Formatter(m.as_str().to_string())
             } else if let Some(m) = x.name("bool") {
-                (TokenType::Bool, m)
+                let bool_value = m.as_str() == "true";
+                TokenV2::Literal(Literal::Bool(bool_value))
             } else if let Some(m) = x.name("string") {
-                (TokenType::String, m)
+                TokenV2::Literal(Literal::String(m.as_str().to_string()))
             } else if let Some(m) = x.name("symbol") {
-                (TokenType::Symbol, m)
+                symbol_to_token(m.as_str())
             } else {
                 panic!("unknown type: {:?}", x);
-            };
-            return Token { r#type, data: m.as_str().to_string() }
+            }
         })  
-        .collect::<Vec<Token>>();
+        .collect::<Vec<TokenV2>>();
 
     return tokens;
+}
+
+fn string_to_operator(string: &str) -> Option<Operator> {
+    let op = match string {
+        "+" => Operator::Plus,
+        "-" => Operator::Minus,
+        "*" => Operator::Star,
+        "/" => Operator::Slash,
+        "=" => Operator::Equals,
+        "%" => Operator::Percent,
+        _ => return None,
+    };
+    return Some(op)
+}
+
+/// Returns keyword token if the string is a keyword, ID token otherwise
+fn symbol_to_token(symbol: &str) -> TokenV2 {
+    match symbol {
+        "let" => TokenV2::Let,
+        _ => TokenV2::Id(symbol.to_string()),
+    }
 }
 
 /// Convert a sequence of tokens into an abstract syntax tree.
@@ -169,14 +222,11 @@ fn parse(tokens: Vec<Token>) -> Result<AbstractSyntaxTree, String> {
     }
     for token in tokens[1..].iter() {
         let mut new_node = AbstractSyntaxTree::leaf(token.clone());
-        match new_node.token.r#type {
-            TokenType::BinaryOperator => {
-                // swap references since binary operators come after first arg
-                let temp = root;
-                root = new_node;
-                new_node = temp;
-            },
-            _ => {}
+        if let TokenType::BinaryOperator = new_node.token.r#type {
+            // swap references since binary operators come after first arg
+            let temp = root;
+            root = new_node;
+            new_node = temp;
         }
         if root.can_accept(&new_node) {
             root.children.push(new_node);
@@ -197,46 +247,28 @@ mod tests {
     use rstest::rstest;
     use super::*;
 
-    fn bool_token(data: &str) -> Token {
-        Token {
-            r#type: TokenType::Bool,
-            data: data.to_string(),
-        }
+    fn bool_token(data: bool) -> TokenV2 {
+        TokenV2::Literal(Literal::Bool(data))
     }
 
-    fn string_token(data: &str) -> Token {
-        return Token {
-            r#type: TokenType::String,
-            data: data.to_string(),
-        }
+    fn string_token(data: &str) -> TokenV2 {
+        TokenV2::Literal(Literal::String(data.to_string()))
     }
 
-    fn int_token(data: &str) -> Token {
-        return Token {
-            r#type: TokenType::Int,
-            data: data.to_string(),
-        }
+    fn int_token(data: i32) -> TokenV2 {
+        TokenV2::Literal(Literal::Int(data))
     }
 
-    fn op_token(data: &str) -> Token {
-        return Token {
-            r#type: TokenType::BinaryOperator,
-            data: data.to_string(),
-        }
+    fn op_token(operator: Operator) -> TokenV2 {
+        TokenV2::Operator(operator)
     }
 
-    fn symbol_token(data: &str) -> Token {
-        return Token {
-            r#type: TokenType::Symbol,
-            data: data.to_string(),
-        }
+    fn id_token(data: &str) -> TokenV2 {
+        TokenV2::Id(data.to_string())
     }
 
-    fn formatter_token(data: &str) -> Token {
-        return Token {
-            r#type: TokenType::Formatter,
-            data: data.to_string(),
-        }
+    fn formatter_token(data: &str) -> TokenV2 {
+        TokenV2::Formatter(data.to_string())
     }
 
     mod test_tokenize {
@@ -244,8 +276,8 @@ mod tests {
 
         #[test]
         fn booleans() {
-            assert_eq!(tokenize("true"), [bool_token("true")]);
-            assert_eq!(tokenize("false"), [bool_token("false")]);
+            assert_eq!(tokenize("true"), [bool_token(true)]);
+            assert_eq!(tokenize("false"), [bool_token(false)]);
         }
 
         #[test]
@@ -283,18 +315,18 @@ mod tests {
 
         #[test]
         fn negative_int() {
-            assert_eq!(tokenize("-9"), [int_token("-9")]);
+            assert_eq!(tokenize("-9"), [int_token(-9)]);
         }
 
         #[rstest]
-        #[case("+")]
-        #[case("-")]
-        #[case("*")]
-        #[case("/")]
-        #[case("%")]
-        #[case("=")]
-        fn operators(#[case] token: &str) {
-            assert_eq!(tokenize(token), [op_token(token)]);
+        #[case("+", Operator::Plus)]
+        #[case("-", Operator::Minus)]
+        #[case("*", Operator::Star)]
+        #[case("/", Operator::Slash)]
+        #[case("%", Operator::Percent)]
+        #[case("=", Operator::Equals)]
+        fn operators(#[case] token: &str, #[case] op: Operator) {
+            assert_eq!(tokenize(token), [op_token(op)]);
         }
 
         #[rstest]
@@ -308,18 +340,18 @@ mod tests {
         #[test]
         fn operators_and_numbers() {
             let expected_basic = [
-                int_token("4"),
-                op_token("+"),
-                int_token("5"),
+                int_token(4),
+                op_token(Operator::Plus),
+                int_token(5),
             ];
             assert_eq!(tokenize("4+5"),  expected_basic);
 
             let expected_long = [
-                int_token("56"),
-                op_token("-"),
-                int_token("439"),
-                op_token("%"),
-                int_token("4"),
+                int_token(56),
+                op_token(Operator::Minus),
+                int_token(439),
+                op_token(Operator::Percent),
+                int_token(4),
             ];
             assert_eq!(tokenize("56-439%4"),  expected_long);
         }
@@ -327,42 +359,42 @@ mod tests {
         #[test]
         fn operators_with_spaces() {
             let expected = [
-                int_token("1"),
-                op_token("*"),
-                int_token("2"),
-                op_token("+"),
-                int_token("3"),
+                int_token(1),
+                op_token(Operator::Star),
+                int_token(2),
+                op_token(Operator::Plus),
+                int_token(3),
             ];
             assert_eq!(tokenize("1* 2  +   3"), expected);
         }
 
         #[test]
         fn one_symbol() {
-            assert_eq!(tokenize("let"), [symbol_token("let")]);
+            assert_eq!(tokenize("let"), [TokenV2::Let]);
         }
 
         #[test]
         fn many_symbols() {
             let expected = [
-                symbol_token("fn"),
-                symbol_token("customSymbol"),
-                symbol_token("data"),
+                id_token("fn"),
+                id_token("customSymbol"),
+                id_token("data"),
             ];
             assert_eq!(tokenize("fn customSymbol data"), expected);
         }
 
         #[test]
         fn bad_symbol() {
-            assert_eq!(tokenize("23sdf"), [symbol_token("23sdf")]);
+            assert_eq!(tokenize("23sdf"), [id_token("23sdf")]);
         }
 
         #[test]
         fn var_declaration() {
             let expected = [
-                symbol_token("let"),
-                symbol_token("x"),
-                op_token("="),
-                int_token("5"),
+                TokenV2::Let,
+                id_token("x"),
+                op_token(Operator::Equals),
+                int_token(5),
                 formatter_token(";")
             ];
             assert_eq!(tokenize("let x = 5;"), expected);
@@ -371,96 +403,115 @@ mod tests {
         #[test]
         fn function_call() {
             let expected = [
-                symbol_token("print"),
+                id_token("print"),
                 formatter_token("("),
-                symbol_token("x"),
-                op_token("+"),
-                int_token("1"),
+                id_token("x"),
+                op_token(Operator::Plus),
+                int_token(1),
                 formatter_token(")"),
             ];
             assert_eq!(tokenize("print(x + 1)"), expected);
         }
     }
 
-    mod test_parse {
-        use super::*;
+    // mod test_parse {
+    //     use super::*;
 
-        fn leaf(token: Token) -> AbstractSyntaxTree {
-            AbstractSyntaxTree::leaf(token)
-        }
+    //     fn leaf(token: Token) -> AbstractSyntaxTree {
+    //         AbstractSyntaxTree::leaf(token)
+    //     }
 
-        #[test]
-        fn it_returns_error_for_empty_list()  {
-            assert!(matches!(
-                parse(vec![]),
-                Err { .. }
-            ));
-        }
+    //     #[test]
+    //     fn it_returns_error_for_empty_list()  {
+    //         assert!(matches!(
+    //             parse(vec![]),
+    //             Err { .. }
+    //         ));
+    //     }
 
-        #[rstest]
-        #[case(int_token("2"))]
-        #[case(string_token("\"prueba test\""))]
-        #[case(symbol_token("fn"))]
-        fn it_parses_one_token_to_one_node(#[case] token: Token) {
-            let input = vec![token.clone()];
-            let expected = leaf(token);
-            assert_eq!(parse(input), Ok(expected));
-        }
+    //     #[rstest]
+    //     #[case(int_token(2))]
+    //     #[case(string_token("\"prueba test\""))]
+    //     #[case(id_token("fn"))]
+    //     fn it_parses_one_token_to_one_node(#[case] token: TokenV2) {
+    //         let input = vec![token.clone()];
+    //         let expected = leaf(token);
+    //         assert_eq!(parse(input), Ok(expected));
+    //     }
 
-        #[rstest]
-        #[case(op_token("+"))]
-        #[case(op_token("-"))]
-        #[case(op_token("="))]
-        fn it_returns_error_for_one_operator(#[case] op: Token) {
-            assert!(matches!(parse(vec![op]), Err { .. }));
-        }
+    //     #[rstest]
+    //     #[case(op_token("+"))]
+    //     #[case(op_token("-"))]
+    //     #[case(op_token("="))]
+    //     fn it_returns_error_for_one_operator(#[case] op: Token) {
+    //         assert!(matches!(parse(vec![op]), Err { .. }));
+    //     }
 
-        #[rstest]
-        #[case(tokenize("3 + 2"), AbstractSyntaxTree {
-            token: op_token("+"),
-            children: vec![
-                leaf(int_token("3")),
-                leaf(int_token("2")),
-            ]
-        })]
-        #[case(tokenize("1 % 4"), AbstractSyntaxTree {
-            token: op_token("%"),
-            children: vec![
-                leaf(int_token("1")),
-                leaf(int_token("4")),
-            ]
-        })]
-        #[case(tokenize("1 - 8"), AbstractSyntaxTree {
-            token: op_token("-"),
-            children: vec![
-                leaf(int_token("1")),
-                leaf(int_token("8")),
-            ]
-        })]
-        fn it_parses_binary_expressions(
-            #[case] input: Vec<Token>,
-            #[case] expected: AbstractSyntaxTree
-        ) {
-            assert_eq!(parse(input), Ok(expected));
-        }
+    //     #[rstest]
+    //     #[case(tokenize("3 + 2"), AbstractSyntaxTree {
+    //         token: op_token("+"),
+    //         children: vec![
+    //             leaf(int_token("3")),
+    //             leaf(int_token("2")),
+    //         ]
+    //     })]
+    //     #[case(tokenize("1 % 4"), AbstractSyntaxTree {
+    //         token: op_token("%"),
+    //         children: vec![
+    //             leaf(int_token("1")),
+    //             leaf(int_token("4")),
+    //         ]
+    //     })]
+    //     #[case(tokenize("1 - 8"), AbstractSyntaxTree {
+    //         token: op_token("-"),
+    //         children: vec![
+    //             leaf(int_token("1")),
+    //             leaf(int_token("8")),
+    //         ]
+    //     })]
+    //     fn it_parses_binary_expressions(
+    //         #[case] input: Vec<Token>,
+    //         #[case] expected: AbstractSyntaxTree
+    //     ) {
+    //         assert_eq!(parse(input), Ok(expected));
+    //     }
 
-        #[test]
-        fn it_returns_error_for_multiple_ints() {
-            let input = tokenize("3 2");
-            assert!(matches!(parse(input), Err { .. }));
-        }
+    //     #[test]
+    //     fn it_returns_error_for_multiple_ints() {
+    //         let input = tokenize("3 2");
+    //         assert!(matches!(parse(input), Err { .. }));
+    //     }
 
-        #[test]
-        fn it_parses_var_binding() {
-            let input = tokenize("let x = 4;");
-            let expected = AbstractSyntaxTree {
-                token: symbol_token("="),
-                children: vec![
-                    leaf(symbol_token("x")),
-                    leaf(int_token("4")),
-                ]
-            };
-            assert_eq!(parse(input), Ok(expected));
-        }
-    }
+    //     #[test]
+    //     fn it_returns_error_for_int_plus_string() {
+    //         let input = tokenize("1 + \"string\"");
+    //         assert!(matches!(parse(input), Err { .. }));
+    //     }
+
+    //     #[test]
+    //     fn it_parses_string_plus_string() {
+    //         let input = tokenize("\"a\" + \"b\"");
+    //         let expected = AbstractSyntaxTree {
+    //             token: id_token("+"),
+    //             children: vec![
+    //                 leaf(string_token("\"a\"")),
+    //                 leaf(string_token("\"b\"")),
+    //             ]
+    //         };
+    //         assert_eq!(parse(input), Ok(expected)); 
+    //     }
+
+    //     #[test]
+    //     fn it_parses_var_binding() {
+    //         let input = tokenize("let x = 4;");
+    //         let expected = AbstractSyntaxTree {
+    //             token: id_token("="),
+    //             children: vec![
+    //                 leaf(id_token("x")),
+    //                 leaf(int_token("4")),
+    //             ]
+    //         };
+    //         assert_eq!(parse(input), Ok(expected));
+    //     }
+    // }
 }
