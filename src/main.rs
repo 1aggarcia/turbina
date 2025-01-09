@@ -119,7 +119,7 @@ fn main() {
 ///
 /// 
 /// Tokens are one of the following:
-/// - int literals: 0-9 (including negative numbers)
+/// - int literals: 0-9 (not including negative numbers)
 /// - string literals: "..."
 /// - boolean literals: "true", "false"
 /// - keywords/symbols: a-zA-Z
@@ -150,7 +150,8 @@ fn tokenize(line: &str) -> Vec<TokenV2> {
                 let bool_value = m.as_str() == "true";
                 TokenV2::Literal(Literal::Bool(bool_value))
             } else if let Some(m) = x.name("string") {
-                TokenV2::Literal(Literal::String(m.as_str().to_string()))
+                let string_value = unwrap_string(m.as_str());
+                TokenV2::Literal(Literal::String(string_value))
             } else if let Some(m) = x.name("symbol") {
                 symbol_to_token(m.as_str())
             } else {
@@ -181,6 +182,15 @@ fn symbol_to_token(symbol: &str) -> TokenV2 {
         "let" => TokenV2::Let,
         _ => TokenV2::Id(symbol.to_string()),
     }
+}
+
+/// Removes the first and last character from a string slice
+fn unwrap_string(string: &str) -> String {
+    let mut chars = string.chars();
+    chars.next();
+    chars.next_back();
+    println!("UNWRAPPING {:?}", chars);
+    return chars.as_str().to_string();
 }
 
 /// Convert a sequence of tokens into an abstract syntax tree.
@@ -267,19 +277,19 @@ mod tests {
 
         #[test]
         fn empty_string() {
-            let expected = [string_token("\"\"")];
+            let expected = [string_token("")];
             assert_eq!(tokenize("\"\""), expected);
         }
 
         #[test]
         fn normal_string() {
-            let expected = [string_token("\"hola\"")];
+            let expected = [string_token("hola")];
             assert_eq!(tokenize("\"hola\""), expected);
         }
 
         #[test]
         fn string_with_spaces() {
-            let expected = [string_token("\"a b c\"")];
+            let expected = [string_token("a b c")];
             assert_eq!(tokenize("\"a b c\""), expected);
         }
 
@@ -291,16 +301,22 @@ mod tests {
                 "",
                 "",
                 "ya es hora"
-            ].map(|s| "\"".to_string() + s + "\"");
+            ];
 
-            let input = strings.join(" ");
-            let expected = strings.map(|s| string_token(s.as_str()));
+            let input = strings
+                .map(|s| "\"".to_string() + s + "\"")
+                .join(" ");
+            let expected = strings.map(|s| string_token(s));
             assert_eq!(tokenize(input.as_str()), expected);
         }
 
+        // identifying negative numbers is a job for the parser, not the lexer
         #[test]
         fn negative_int() {
-            assert_eq!(tokenize("-9"), [int_token(-9)]);
+            assert_eq!(tokenize("-9"), [
+                op_token(Operator::Minus),
+                int_token(9),
+            ]);
         }
 
         #[rstest]
