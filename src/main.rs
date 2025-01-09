@@ -2,34 +2,15 @@ use core::fmt;
 use std::io::{stdin, stdout, Write};
 use regex::Regex;
 
-// static OPERATORS: &[&str] = &["+", "-", "*", "/", "%"];
-
-#[derive(Debug, PartialEq, Clone)]
-struct Token {
-    r#type: TokenType,
-    data: String,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-enum TokenType {
-    String,
-    Int,
-    Bool,
-    Symbol, // variable names, keywords
-    BinaryOperator, // performs some action with two pieces of data (e.g. +, -)
-    Formatter, // doesn't perform any action (e.g. ;)
-}
-
 #[derive(PartialEq, Debug, Clone)]
 enum TokenV2 {
     Literal(Literal),
     Operator(Operator),
     Id(String),
+    Formatter(String),
 
     // keywords
     Let,
-
-    Formatter(String)
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -39,7 +20,7 @@ enum Literal {
     Bool(bool),
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 enum Operator {
     Plus,
     Minus,
@@ -51,21 +32,21 @@ enum Operator {
 
 #[derive(PartialEq)]
 struct AbstractSyntaxTree {
-    token: Token,
+    token: TokenV2,
     children: Vec<AbstractSyntaxTree>,
 }
 
 
 impl AbstractSyntaxTree {
-    fn leaf(token: Token) -> Self {
+    fn leaf(token: TokenV2) -> Self {
         Self { token, children: vec![] }
     }
 
     /// returns true if this node can accept another node as the next
     /// child, false otherwise
     fn can_accept(&self, node: &AbstractSyntaxTree) -> bool {
-        match self.token.r#type {
-            TokenType::BinaryOperator => self.children.len() < 2,
+        match self.token {
+            TokenV2::Operator(_) => self.children.len() < 2,
             _ => false,
         }
     }
@@ -81,10 +62,9 @@ impl fmt::Debug for AbstractSyntaxTree {
         ) {
             writeln!(
                 f,
-                "{}{:?}({})",
+                "{}{:?}",
                 " ".repeat(indent * 4),
-                node.token.r#type,
-                node.token.data
+                node.token
             ).expect("failed to write to formatter");
             for child in &node.children {
                 pretty_print(f, &child, indent + 1);
@@ -126,12 +106,11 @@ fn main() {
         if tokens.is_empty() {
             continue;
         }
-        println!("{tokens:?}");
-        // let syntax_tree = parse(vec![]);
-        // match syntax_tree {
-        //     Ok(tree) => println!("{:?}", tree),
-        //     Err(err) => println!("Syntax Error: {}", err),
-        // }
+        let syntax_tree = parse(tokens);
+        match syntax_tree {
+            Ok(tree) => println!("{:?}", tree),
+            Err(err) => println!("Syntax Error: {}", err),
+        }
     }
 }
 
@@ -211,18 +190,24 @@ fn symbol_to_token(symbol: &str) -> TokenV2 {
 /// A single literal value is a valid statement (e.g. "3").
 /// 
 /// A syntax error is returned for any syntactical errors in the token sequence
-fn parse(tokens: Vec<Token>) -> Result<AbstractSyntaxTree, String> {
+fn parse(tokens: Vec<TokenV2>) -> Result<AbstractSyntaxTree, String> {
     if tokens.is_empty() {
         return Err("Cannot parse empty tokens".to_string());
     }
     let first_token = &tokens[0];
     let mut root = AbstractSyntaxTree::leaf(first_token.clone());
-    if tokens.len() == 1 && first_token.r#type == TokenType::BinaryOperator {
+
+    let is_operator = match first_token  {
+        TokenV2::Operator(_) => true,
+        _ => false,
+    };
+
+    if tokens.len() == 1 && is_operator {
         return Err("Cannot parse operator as single token".to_string())
     }
     for token in tokens[1..].iter() {
         let mut new_node = AbstractSyntaxTree::leaf(token.clone());
-        if let TokenType::BinaryOperator = new_node.token.r#type {
+        if let TokenV2::Operator(_) = new_node.token {
             // swap references since binary operators come after first arg
             let temp = root;
             root = new_node;
@@ -232,9 +217,9 @@ fn parse(tokens: Vec<Token>) -> Result<AbstractSyntaxTree, String> {
             root.children.push(new_node);
         } else {
             return Err(format!(
-                "Token {} is an invalid argument for token {}",
-                new_node.token.data,
-                root.token.data,
+                "Token {:?} is an invalid argument for token {:?}",
+                new_node.token,
+                root.token,
             ));
         }
     }    
@@ -414,104 +399,104 @@ mod tests {
         }
     }
 
-    // mod test_parse {
-    //     use super::*;
+    mod test_parse {
+        use super::*;
 
-    //     fn leaf(token: Token) -> AbstractSyntaxTree {
-    //         AbstractSyntaxTree::leaf(token)
-    //     }
+        fn leaf(token: TokenV2) -> AbstractSyntaxTree {
+            AbstractSyntaxTree::leaf(token)
+        }
 
-    //     #[test]
-    //     fn it_returns_error_for_empty_list()  {
-    //         assert!(matches!(
-    //             parse(vec![]),
-    //             Err { .. }
-    //         ));
-    //     }
+        #[test]
+        fn it_returns_error_for_empty_list()  {
+            assert!(matches!(
+                parse(vec![]),
+                Err { .. }
+            ));
+        }
 
-    //     #[rstest]
-    //     #[case(int_token(2))]
-    //     #[case(string_token("\"prueba test\""))]
-    //     #[case(id_token("fn"))]
-    //     fn it_parses_one_token_to_one_node(#[case] token: TokenV2) {
-    //         let input = vec![token.clone()];
-    //         let expected = leaf(token);
-    //         assert_eq!(parse(input), Ok(expected));
-    //     }
+        #[rstest]
+        #[case(int_token(2))]
+        #[case(string_token("\"prueba test\""))]
+        #[case(id_token("fn"))]
+        fn it_parses_one_token_to_one_node(#[case] token: TokenV2) {
+            let input = vec![token.clone()];
+            let expected = leaf(token);
+            assert_eq!(parse(input), Ok(expected));
+        }
 
-    //     #[rstest]
-    //     #[case(op_token("+"))]
-    //     #[case(op_token("-"))]
-    //     #[case(op_token("="))]
-    //     fn it_returns_error_for_one_operator(#[case] op: Token) {
-    //         assert!(matches!(parse(vec![op]), Err { .. }));
-    //     }
+        #[rstest]
+        #[case(op_token(Operator::Plus))]
+        #[case(op_token(Operator::Minus))]
+        #[case(op_token(Operator::Equals))]
+        fn it_returns_error_for_one_operator(#[case] op: TokenV2) {
+            assert!(matches!(parse(vec![op]), Err { .. }));
+        }
 
-    //     #[rstest]
-    //     #[case(tokenize("3 + 2"), AbstractSyntaxTree {
-    //         token: op_token("+"),
-    //         children: vec![
-    //             leaf(int_token("3")),
-    //             leaf(int_token("2")),
-    //         ]
-    //     })]
-    //     #[case(tokenize("1 % 4"), AbstractSyntaxTree {
-    //         token: op_token("%"),
-    //         children: vec![
-    //             leaf(int_token("1")),
-    //             leaf(int_token("4")),
-    //         ]
-    //     })]
-    //     #[case(tokenize("1 - 8"), AbstractSyntaxTree {
-    //         token: op_token("-"),
-    //         children: vec![
-    //             leaf(int_token("1")),
-    //             leaf(int_token("8")),
-    //         ]
-    //     })]
-    //     fn it_parses_binary_expressions(
-    //         #[case] input: Vec<Token>,
-    //         #[case] expected: AbstractSyntaxTree
-    //     ) {
-    //         assert_eq!(parse(input), Ok(expected));
-    //     }
+        #[rstest]
+        #[case(tokenize("3 + 2"), AbstractSyntaxTree {
+            token: op_token(Operator::Plus),
+            children: vec![
+                leaf(int_token(3)),
+                leaf(int_token(3)),
+            ]
+        })]
+        #[case(tokenize("1 % 4"), AbstractSyntaxTree {
+            token: op_token(Operator::Percent),
+            children: vec![
+                leaf(int_token(1)),
+                leaf(int_token(4)),
+            ]
+        })]
+        #[case(tokenize("1 - 8"), AbstractSyntaxTree {
+            token: op_token(Operator::Minus),
+            children: vec![
+                leaf(int_token(1)),
+                leaf(int_token(8)),
+            ]
+        })]
+        fn it_parses_binary_expressions(
+            #[case] input: Vec<TokenV2>,
+            #[case] expected: AbstractSyntaxTree
+        ) {
+            assert_eq!(parse(input), Ok(expected));
+        }
 
-    //     #[test]
-    //     fn it_returns_error_for_multiple_ints() {
-    //         let input = tokenize("3 2");
-    //         assert!(matches!(parse(input), Err { .. }));
-    //     }
+        #[test]
+        fn it_returns_error_for_multiple_ints() {
+            let input = tokenize("3 2");
+            assert!(matches!(parse(input), Err { .. }));
+        }
 
-    //     #[test]
-    //     fn it_returns_error_for_int_plus_string() {
-    //         let input = tokenize("1 + \"string\"");
-    //         assert!(matches!(parse(input), Err { .. }));
-    //     }
+        #[test]
+        fn it_returns_error_for_int_plus_string() {
+            let input = tokenize("1 + \"string\"");
+            assert!(matches!(parse(input), Err { .. }));
+        }
 
-    //     #[test]
-    //     fn it_parses_string_plus_string() {
-    //         let input = tokenize("\"a\" + \"b\"");
-    //         let expected = AbstractSyntaxTree {
-    //             token: id_token("+"),
-    //             children: vec![
-    //                 leaf(string_token("\"a\"")),
-    //                 leaf(string_token("\"b\"")),
-    //             ]
-    //         };
-    //         assert_eq!(parse(input), Ok(expected)); 
-    //     }
+        #[test]
+        fn it_parses_string_plus_string() {
+            let input = tokenize("\"a\" + \"b\"");
+            let expected = AbstractSyntaxTree {
+                token: id_token("+"),
+                children: vec![
+                    leaf(string_token("\"a\"")),
+                    leaf(string_token("\"b\"")),
+                ]
+            };
+            assert_eq!(parse(input), Ok(expected)); 
+        }
 
-    //     #[test]
-    //     fn it_parses_var_binding() {
-    //         let input = tokenize("let x = 4;");
-    //         let expected = AbstractSyntaxTree {
-    //             token: id_token("="),
-    //             children: vec![
-    //                 leaf(id_token("x")),
-    //                 leaf(int_token("4")),
-    //             ]
-    //         };
-    //         assert_eq!(parse(input), Ok(expected));
-    //     }
-    // }
+        #[test]
+        fn it_parses_var_binding() {
+            let input = tokenize("let x = 4;");
+            let expected = AbstractSyntaxTree {
+                token: TokenV2::Let,
+                children: vec![
+                    leaf(id_token("x")),
+                    leaf(int_token(4)),
+                ]
+            };
+            assert_eq!(parse(input), Ok(expected));
+        }
+    }
 }
