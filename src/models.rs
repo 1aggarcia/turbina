@@ -9,6 +9,7 @@ pub enum TokenV2 {
 
     // keywords
     Let,
+    Type(Type),
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -16,6 +17,13 @@ pub enum Literal {
     Int(i32),
     String(String),
     Bool(bool),
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum Type {
+    Int,
+    String,
+    Bool,
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -78,6 +86,10 @@ pub mod test_utils {
 
     pub fn formatter_token(data: &str) -> TokenV2 {
         TokenV2::Formatter(data.to_string())
+    }
+
+    pub fn type_token(datatype: Type) -> TokenV2 {
+        TokenV2::Type(datatype)
     }
 }
 

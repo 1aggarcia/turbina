@@ -4,6 +4,7 @@ use crate::models::{
     TokenV2,
     Literal,
     Operator,
+    Type,
 };
 
 /// Parse source code text into a list of tokens according to the language's
@@ -21,7 +22,7 @@ pub fn tokenize(line: &str) -> Vec<TokenV2> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<op>[+*-/=%])
-        | (?P<fmt>[;()])
+        | (?P<fmt>[:;()])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
         | \d+[a-zA-Z] # capture illegal tokens so that remaining numbers are legal
@@ -73,6 +74,9 @@ fn string_to_operator(string: &str) -> Option<Operator> {
 fn symbol_to_token(symbol: &str) -> TokenV2 {
     match symbol {
         "let" => TokenV2::Let,
+        "string" => TokenV2::Type(Type::String),
+        "int" => TokenV2::Type(Type::Int),
+        "bool" => TokenV2::Type(Type::Bool),
         _ => TokenV2::Id(symbol.to_string()),
     }
 }
@@ -229,6 +233,20 @@ mod tests {
             formatter_token(";")
         ];
         assert_eq!(tokenize("let x = 5;"), expected);
+    }
+
+    #[test]
+    fn var_declaration_with_type() {
+        let expected = [
+            TokenV2::Let,
+            id_token("x"),
+            formatter_token(":"),
+            type_token(Type::Int),
+            op_token(Operator::Equals),
+            int_token(5),
+            formatter_token(";")
+        ];
+        assert_eq!(tokenize("let x: int = 5;"), expected);
     }
 
     #[test]
