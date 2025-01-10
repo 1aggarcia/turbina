@@ -1,7 +1,10 @@
 use crate::models::{
     AbstractSyntaxTreeV2,
-    TokenV2,
+    LetNode,
+    Literal,
+    Operator,
     OperatorNode,
+    TokenV2,
 };
 
 /// Convert a sequence of tokens into an abstract syntax tree.
@@ -30,11 +33,39 @@ pub fn parse(tokens: Vec<TokenV2>) -> Result<AbstractSyntaxTreeV2, String> {
             build_binary_node(head_as_leaf.unwrap(), &tokens, 1),
         TokenV2::Id(_) =>
             build_binary_node(head_as_leaf.unwrap(), &tokens, 1),
-        // TokenV2::Let => build_let(tokens[1..]),
-        // more keyword cases
-        TokenV2::Operator(_) => Err("Cannot parse operator as first token".to_string()),
-        _ => Err(format!("unsupported token: {:?}", head))
+        TokenV2::Let => build_let_node(&tokens, 1),
+        // add more keyword cases...
+
+        TokenV2::Operator(o) =>
+            parse_leading_operator(o, &tokens, 1),
+        TokenV2::Formatter(f) =>
+            return Err(format!("cannot parse {} as first token", f)),
     }
+}
+
+/// Try to create an AST with a leading operator.
+/// This only works for tokens representing negative numbers (e.g. -1),
+/// will fail in all other cases.
+/// 
+/// first token after operator indicated by `position`
+fn parse_leading_operator(
+    operator: &Operator,
+    tokens: &Vec<TokenV2>,
+    position: usize
+) -> Result<AbstractSyntaxTreeV2, String> {
+    match operator {
+        Operator::Minus => {},
+        _ => return Err("Cannot parse operator as first token".to_string())
+    };
+
+    // TODO: support variable length expressions
+    let value_token = &tokens[position];
+    let value = match value_token {
+        TokenV2::Literal(Literal::Int(i)) => i,
+        _ => return Err(format!("Invalid token following '-': {:?}", value_token)),
+    };
+    let node = AbstractSyntaxTreeV2::Literal(Literal::Int(value * -1));
+    return Ok(node);
 }
 
 /// Create a AST for a binary operator given the left argument and
@@ -66,6 +97,41 @@ fn build_binary_node(
         right: Box::new(right_arg),
     };
     return Ok(AbstractSyntaxTreeV2::Operator(node));
+}
+
+/// Create an AST for the "let" keyword given the remaining tokens
+/// (first token indicated by `position`)
+fn build_let_node(
+    tokens: &Vec<TokenV2>,
+    position: usize
+) -> Result<AbstractSyntaxTreeV2, String> {
+    let mut idx = position;
+
+    let id_token = &tokens[idx];
+    let id = match id_token {
+        TokenV2::Id(s) => s.to_string(),
+        _ => return Err(format!("invalid variable name: {:?}", id_token))
+    };
+    idx += 1;
+
+    // TODO: support declared types
+
+    let equals_token = &tokens[idx];
+    match equals_token {
+        TokenV2::Operator(Operator::Equals) => {},
+        _ => return Err(format!("expected '=', got token {:?}", equals_token))
+    };
+    idx += 1;
+
+    // TODO: add support for infinitly long expressions
+    let value_token = &tokens[idx];
+    let value = match token_to_leaf(value_token) {
+        Some(v) => v,
+        None => return Err(format!("expected leaf, got token {:?}", value_token))
+    };
+
+    let node = LetNode { id, value: Box::new(value) };
+    return Ok(AbstractSyntaxTreeV2::Let(node));
 }
 
 fn token_to_leaf(token: &TokenV2) -> Option<AbstractSyntaxTreeV2> {
@@ -134,6 +200,18 @@ mod test_parse {
         assert_eq!(parse(input), Ok(expected));
     }
 
+    #[rstest]
+    #[case(tokenize("-9"), -9)]
+    #[case(tokenize("- 123"), -123)]
+    fn it_parses_negavite_numbers(
+        #[case] input: Vec<TokenV2>,
+        #[case] expected_val: i32
+    ) {
+        let expected =
+            AbstractSyntaxTreeV2::Literal(Literal::Int(expected_val));
+        assert_eq!(parse(input), Ok(expected));
+    }
+
     #[test]
     fn it_returns_error_for_multiple_ints() {
         let input = tokenize("3 2");
@@ -164,11 +242,28 @@ mod test_parse {
     }
 
     #[test]
-    fn it_parses_var_binding() {
+    fn it_parses_var_binding_to_literal() {
         let input = tokenize("let x = 4;");
         let let_node = LetNode {
             id: "x".to_string(),
             value: Box::new(AbstractSyntaxTreeV2::Literal(Literal::Int(4))),
+        };
+        let expected = AbstractSyntaxTreeV2::Let(let_node);
+        assert_eq!(parse(input), Ok(expected));
+    }
+
+    #[test]
+    fn it_returns_error_for_bad_var_id() {
+        let input = tokenize("let 3 = 3");
+        assert!(matches!(parse(input), Err { .. }));
+    }
+
+    #[test]
+    fn it_parses_var_binding_to_expr() {
+        let input = tokenize("let two = 6 / 3;");
+        let let_node = LetNode {
+            id: "two".to_string(),
+            value: Box::new(parse(tokenize("6 / 3")).unwrap()),
         };
         let expected = AbstractSyntaxTreeV2::Let(let_node);
         assert_eq!(parse(input), Ok(expected));
