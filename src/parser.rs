@@ -15,13 +15,23 @@ use crate::models::{
 /// 
 /// A syntax error is returned for any syntactical errors in the token sequence
 pub fn parse(tokens: Vec<TokenV2>) -> Result<AbstractSyntaxTreeV2, String> {
-    if tokens.is_empty() {
-        return Err("Cannot parse empty tokens".to_string());
+    return parse_remaining(&tokens, 0);
+}
+
+/// Parse tokens starting at position `position`. Some keywords (like "let")
+/// are only allowed in the first position
+fn parse_remaining(
+    tokens: &Vec<TokenV2>,
+    position: usize
+) -> Result<AbstractSyntaxTreeV2, String> {
+    if tokens.len() <= position {
+        return Err(format!(
+            "No tokens left to parse at position {}: {:?}", position, tokens));
     }
     // first token determines the type of the root node
-    let head = &tokens[0];
+    let head = &tokens[position];
     let head_as_leaf = token_to_leaf(head);
-    if tokens.len() == 1 {
+    if tokens.len() == position + 1 {
         return match head_as_leaf {
             Some(leaf) => Ok(leaf),
             None => Err(format!("cannot parse single token: {:?}", head))
@@ -30,14 +40,14 @@ pub fn parse(tokens: Vec<TokenV2>) -> Result<AbstractSyntaxTreeV2, String> {
 
     match head {
         TokenV2::Literal(_) =>
-            build_binary_node(head_as_leaf.unwrap(), &tokens, 1),
+            build_binary_node(head_as_leaf.unwrap(), &tokens, position + 1),
         TokenV2::Id(_) =>
-            build_binary_node(head_as_leaf.unwrap(), &tokens, 1),
-        TokenV2::Let => build_let_node(&tokens, 1),
+            build_binary_node(head_as_leaf.unwrap(), &tokens, position + 1),
+        TokenV2::Let => build_let_node(&tokens, position + 1),
         // add more keyword cases...
 
         TokenV2::Operator(o) =>
-            parse_leading_operator(o, &tokens, 1),
+            parse_leading_operator(o, &tokens, position + 1),
         TokenV2::Formatter(f) =>
             return Err(format!("cannot parse {} as first token", f)),
     }
@@ -58,7 +68,7 @@ fn parse_leading_operator(
         _ => return Err("Cannot parse operator as first token".to_string())
     };
 
-    // TODO: support variable length expressions
+    // TODO: support variable length expressions /w parenthesis
     let value_token = &tokens[position];
     let value = match value_token {
         TokenV2::Literal(Literal::Int(i)) => i,
@@ -80,7 +90,7 @@ fn build_binary_node(
     let operator_token = &tokens[position];
     let operator = match operator_token {
         TokenV2::Operator(o) => o,
-        _ => return Err(format!("Invalid operator: {:?}", operator_token)),
+        _ => return Err(format!("Expected operator, got: {:?}", operator_token)),
     };
 
     // TODO: handle infinite args, not just one
@@ -105,6 +115,9 @@ fn build_let_node(
     tokens: &Vec<TokenV2>,
     position: usize
 ) -> Result<AbstractSyntaxTreeV2, String> {
+    if position != 1 {
+        return Err(format!("keyword 'let' not allowed in position {position}"));
+    }
     let mut idx = position;
 
     let id_token = &tokens[idx];
@@ -112,25 +125,19 @@ fn build_let_node(
         TokenV2::Id(s) => s.to_string(),
         _ => return Err(format!("invalid variable name: {:?}", id_token))
     };
-    idx += 1;
-
+    
     // TODO: support declared types
-
+    
+    idx += 1;
     let equals_token = &tokens[idx];
     match equals_token {
         TokenV2::Operator(Operator::Equals) => {},
         _ => return Err(format!("expected '=', got token {:?}", equals_token))
     };
+
     idx += 1;
-
-    // TODO: add support for infinitly long expressions
-    let value_token = &tokens[idx];
-    let value = match token_to_leaf(value_token) {
-        Some(v) => v,
-        None => return Err(format!("expected leaf, got token {:?}", value_token))
-    };
-
-    let node = LetNode { id, value: Box::new(value) };
+    let value_node = parse_remaining(tokens, idx)?;
+    let node = LetNode { id, value: Box::new(value_node) };
     return Ok(AbstractSyntaxTreeV2::Let(node));
 }
 
@@ -243,7 +250,7 @@ mod test_parse {
 
     #[test]
     fn it_parses_var_binding_to_literal() {
-        let input = tokenize("let x = 4;");
+        let input = tokenize("let x = 4");
         let let_node = LetNode {
             id: "x".to_string(),
             value: Box::new(AbstractSyntaxTreeV2::Literal(Literal::Int(4))),
@@ -260,12 +267,18 @@ mod test_parse {
 
     #[test]
     fn it_parses_var_binding_to_expr() {
-        let input = tokenize("let two = 6 / 3;");
+        let input = tokenize("let two = 6 / 3");
         let let_node = LetNode {
             id: "two".to_string(),
             value: Box::new(parse(tokenize("6 / 3")).unwrap()),
         };
         let expected = AbstractSyntaxTreeV2::Let(let_node);
         assert_eq!(parse(input), Ok(expected));
+    }
+
+    #[test]
+    fn it_returns_error_for_unexpected_let() {
+        let input = tokenize("let x = let y = 2");
+        assert!(matches!(parse(input), Err { .. })); 
     }
 }
