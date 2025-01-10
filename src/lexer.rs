@@ -22,9 +22,10 @@ pub fn tokenize(line: &str) -> Vec<TokenV2> {
         (?P<string>\"[^"]*\")
         | (?P<op>[+*-/=%])
         | (?P<fmt>[;()])
-        | (?P<int>\d+)
         | (?P<bool>true|false)
-        | (?P<symbol>\w+)
+        | (?P<symbol>[a-zA-Z]\w*)
+        | \d+[a-zA-Z] # capture illegal tokens so that remaining numbers are legal
+        | (?P<int>\d+)
     "#;
     let re = Regex::new(&pattern).unwrap();
     let capture_matches = re.captures_iter(line);
@@ -47,7 +48,7 @@ pub fn tokenize(line: &str) -> Vec<TokenV2> {
             } else if let Some(m) = x.name("symbol") {
                 symbol_to_token(m.as_str())
             } else {
-                panic!("unknown type: {:?}", x);
+                panic!("Unrecognized token: {:?}", x);
             }
         })  
         .collect::<Vec<TokenV2>>();
@@ -206,8 +207,16 @@ mod tests {
     }
 
     #[test]
-    fn bad_symbol() {
-        assert_eq!(tokenize("23sdf"), [id_token("23sdf")]);
+    fn symbol_with_underscore() {
+        let expected = vec![TokenV2::Id("multi_word_var_name".to_string())];
+        assert_eq!(tokenize("multi_word_var_name"), expected);
+    }
+
+    // TODO: dont panic for invalid tokens, have `tokenize` return detailed errors
+    #[test]
+    #[should_panic]
+    fn symbol_starting_with_numbers() {
+        tokenize("23sdf");
     }
 
     #[test]
