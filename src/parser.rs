@@ -7,6 +7,8 @@ use crate::models::{
     TokenV2,
 };
 
+use crate::errors::syntax_error;
+
 /// Convert a sequence of tokens into an abstract syntax tree.
 /// 
 /// The tokens should represent exactly one statement and therefore one syntax
@@ -25,8 +27,8 @@ fn parse_remaining(
     position: usize
 ) -> Result<AbstractSyntaxTreeV2, String> {
     if tokens.len() <= position {
-        return Err(format!(
-            "No tokens left to parse at position {}: {:?}", position, tokens));
+        return syntax_error!(
+            "No tokens left to parse at position {}: {:?}", position, tokens);
     }
     // first token determines the type of the root node
     let head = &tokens[position];
@@ -34,7 +36,7 @@ fn parse_remaining(
     if tokens.len() == position + 1 {
         return match head_as_leaf {
             Some(leaf) => Ok(leaf),
-            None => Err(format!("cannot parse single token: {:?}", head))
+            None => syntax_error!("cannot parse single token: {:?}", head)
         };
     }
 
@@ -48,7 +50,7 @@ fn parse_remaining(
 
         TokenV2::Operator(o) =>
             parse_leading_operator(o, &tokens, position + 1),
-        _ => return Err(format!("cannot parse {:?} as first token", head)),
+        _ => return syntax_error!("cannot parse {:?} as first token", head),
     }
 }
 
@@ -64,14 +66,14 @@ fn parse_leading_operator(
 ) -> Result<AbstractSyntaxTreeV2, String> {
     match operator {
         Operator::Minus => {},
-        _ => return Err("Cannot parse operator as first token".to_string())
+        _ => return syntax_error!("Cannot parse operator as first token")
     };
 
     // TODO: support variable length expressions /w parenthesis
     let value_token = &tokens[position];
     let value = match value_token {
         TokenV2::Literal(Literal::Int(i)) => i,
-        _ => return Err(format!("Invalid token following '-': {:?}", value_token)),
+        _ => return syntax_error!("Invalid token following '-': {:?}", value_token),
     };
     let node = AbstractSyntaxTreeV2::Literal(Literal::Int(value * -1));
     return Ok(node);
@@ -89,7 +91,7 @@ fn build_binary_node(
     let operator_token = &tokens[position];
     let operator = match operator_token {
         TokenV2::Operator(o) => o,
-        _ => return Err(format!("Expected operator, got: {:?}", operator_token)),
+        _ => return syntax_error!("Expected operator, got: {:?}", operator_token),
     };
 
     // TODO: handle infinite args, not just one
@@ -97,7 +99,7 @@ fn build_binary_node(
     let right_token = &tokens[position + 1];
     let right_arg = match token_to_leaf(right_token) {
         Some(t) => t,
-        None => return Err(format!("invalid right token: {:?}", right_token))
+        None => return syntax_error!("invalid right token: {:?}", right_token)
     };
 
     let node = OperatorNode {
@@ -115,14 +117,14 @@ fn build_let_node(
     position: usize
 ) -> Result<AbstractSyntaxTreeV2, String> {
     if position != 1 {
-        return Err(format!("keyword 'let' not allowed in position {position}"));
+        return syntax_error!("keyword 'let' not allowed in position {position}");
     }
     let mut idx = position;
 
     let id_token = &tokens[idx];
     let id = match id_token {
         TokenV2::Id(s) => s.to_string(),
-        _ => return Err(format!("invalid variable name: {:?}", id_token))
+        _ => return syntax_error!("invalid variable name: {:?}", id_token)
     };
 
     idx += 1;
@@ -137,7 +139,7 @@ fn build_let_node(
         idx += 1;
         match type_token {
             TokenV2::Type(t) => Some(t.to_owned()),
-            _ => return Err(format!("invalid type for 'let' statment: {:?}", type_token))
+            _ => return syntax_error!("invalid type for 'let' statment: {:?}", type_token)
         }
     } else {
         None
@@ -146,7 +148,7 @@ fn build_let_node(
     let equals_token = &tokens[idx];
     match equals_token {
         TokenV2::Operator(Operator::Equals) => {},
-        _ => return Err(format!("expected '=', got token {:?}", equals_token))
+        _ => return syntax_error!("expected '=', got token {:?}", equals_token)
     };
 
     idx += 1;

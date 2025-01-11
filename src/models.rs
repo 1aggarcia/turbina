@@ -19,6 +19,8 @@ pub enum Literal {
     Bool(bool),
 }
 
+// will be extended beyond literal types (e.g. functions, arrays, structs)
+// so should not be merged with enum `Literal`
 #[derive(PartialEq, Debug, Clone)]
 pub enum Type {
     Int,
@@ -26,7 +28,7 @@ pub enum Type {
     Bool,
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum Operator {
     Plus,
     Minus,
@@ -34,6 +36,21 @@ pub enum Operator {
     Slash,
     Percent,
     Equals,
+}
+
+impl fmt::Debug for Operator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::Slash => "/",
+            Self::Percent => "%",
+            Self::Equals => "=",
+        };
+        write!(f, "{string}")?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq)]
