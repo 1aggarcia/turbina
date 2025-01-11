@@ -1,17 +1,19 @@
-use std::io::{stdin, stdout, Write, Error};
+use std::io::{stdin, stdout, Error, Write};
 mod models;
-use models::TokenV2;
+use models::{Program, TokenV2};
 
 mod lexer;
 use lexer::tokenize;
 
 mod parser;
 use parser::parse;
-
+use validation::validate;
 mod errors;
+mod validation;
 
 fn main() {
     println!("Starting interpreter");
+    let mut program = Program::new();
 
     // user must enter Ctrl+C to quit
     loop {
@@ -29,12 +31,27 @@ fn main() {
         if tokens.is_empty() {
             continue;
         }
-        let syntax_tree = parse(tokens);
-        match syntax_tree {
-            Ok(tree) => println!("{:?}", tree),
-            Err(err) => println!("{err}"),
+        let syntax_tree = match parse(tokens) {
+            Ok(tree) => tree,
+            Err(err) => {
+                eprintln!("{err}");
+                continue;
+            },
+        };
+
+        let validation_result = validate(&program, &syntax_tree);
+        match validation_result {
+            Err(errors) => {
+                for error in errors {
+                    eprintln!("Error: {}", error)
+                }
+                continue;
+            }
+            Ok(_) => {}
         }
-        // TODO: typecheck and evaluate
+
+        // TODO: evaluate tree
+        println!("{syntax_tree:?}");
     }
 }
 

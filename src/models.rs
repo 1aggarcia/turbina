@@ -1,4 +1,22 @@
 use core::fmt;
+use std::collections::HashMap;
+
+/// State of the running program
+pub struct Program {
+    pub vars: HashMap<String, Variable>,
+}
+
+impl Program {
+    pub fn new() -> Program {
+        Self { vars: HashMap::new ()}
+    }
+}
+
+/// Raw data with an assigned type
+pub struct Variable {
+    pub datatype: Type,
+    pub value: Literal,
+}
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum TokenV2 {
@@ -21,7 +39,7 @@ pub enum Literal {
 
 // will be extended beyond literal types (e.g. functions, arrays, structs)
 // so should not be merged with enum `Literal`
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Type {
     Int,
     String,
