@@ -48,8 +48,7 @@ fn parse_remaining(
 
         TokenV2::Operator(o) =>
             parse_leading_operator(o, &tokens, position + 1),
-        TokenV2::Formatter(f) =>
-            return Err(format!("cannot parse {} as first token", f)),
+        _ => return Err(format!("cannot parse {:?} as first token", head)),
     }
 }
 
@@ -125,10 +124,25 @@ fn build_let_node(
         TokenV2::Id(s) => s.to_string(),
         _ => return Err(format!("invalid variable name: {:?}", id_token))
     };
-    
-    // TODO: support declared types
-    
+
     idx += 1;
+    // look for optional declared type (e.g. ": int")
+    let is_token_colon = match &tokens[idx] {
+        TokenV2::Formatter(ref f) if f == ":" => true,
+        _ => false,
+    };
+    let datatype = if is_token_colon {
+        idx += 1;
+        let type_token = &tokens[idx];
+        idx += 1;
+        match type_token {
+            TokenV2::Type(t) => Some(t.to_owned()),
+            _ => return Err(format!("invalid type for 'let' statment: {:?}", type_token))
+        }
+    } else {
+        None
+    };
+
     let equals_token = &tokens[idx];
     match equals_token {
         TokenV2::Operator(Operator::Equals) => {},
@@ -137,7 +151,8 @@ fn build_let_node(
 
     idx += 1;
     let value_node = parse_remaining(tokens, idx)?;
-    let node = LetNode { id, value: Box::new(value_node) };
+
+    let node = LetNode { id, datatype, value: Box::new(value_node) };
     return Ok(AbstractSyntaxTreeV2::Let(node));
 }
 
@@ -226,12 +241,6 @@ mod test_parse {
     }
 
     #[test]
-    fn it_returns_error_for_int_plus_string() {
-        let input = tokenize("1 + \"string\"");
-        assert!(matches!(parse(input), Err { .. }));
-    }
-
-    #[test]
     fn it_parses_string_plus_string() {
         let input = tokenize("\"a\" + \"b\"");
 
@@ -253,6 +262,7 @@ mod test_parse {
         let input = tokenize("let x = 4");
         let let_node = LetNode {
             id: "x".to_string(),
+            datatype: None,
             value: Box::new(AbstractSyntaxTreeV2::Literal(Literal::Int(4))),
         };
         let expected = AbstractSyntaxTreeV2::Let(let_node);
@@ -270,6 +280,7 @@ mod test_parse {
         let input = tokenize("let two = 6 / 3");
         let let_node = LetNode {
             id: "two".to_string(),
+            datatype: None,
             value: Box::new(parse(tokenize("6 / 3")).unwrap()),
         };
         let expected = AbstractSyntaxTreeV2::Let(let_node);
@@ -277,8 +288,30 @@ mod test_parse {
     }
 
     #[test]
+    fn it_parses_var_binding_with_declared_type() {
+        let input = tokenize("let two_strings: string = \"a\" + \"b\"");
+        let let_node = LetNode {
+            id: "two_strings".to_string(),
+            datatype: Some(Type::String),
+            value: Box::new(parse(vec![
+                string_token("a"),
+                op_token(Operator::Plus),
+                string_token("b")
+            ]).unwrap()),
+        };
+        let expected = AbstractSyntaxTreeV2::Let(let_node);
+        assert_eq!(parse(input), Ok(expected));
+    }
+
+    #[test]
+    fn it_returns_error_for_invalid_let_type() {
+        let input = tokenize("let x: y = z");
+        assert!(matches!(parse(input), Err { .. })); 
+    }
+
+    #[test]
     fn it_returns_error_for_unexpected_let() {
         let input = tokenize("let x = let y = 2");
-        assert!(matches!(parse(input), Err { .. })); 
+        assert!(matches!(parse(input), Err { .. }));
     }
 }

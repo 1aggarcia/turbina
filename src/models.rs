@@ -57,7 +57,8 @@ pub struct OperatorNode {
 #[derive(Debug, PartialEq)]
 pub struct LetNode {
     pub id: String,
-    pub value: Box<AbstractSyntaxTreeV2>
+    pub datatype: Option<Type>,
+    pub value: Box<AbstractSyntaxTreeV2>,
 }
 
 #[cfg(test)]
