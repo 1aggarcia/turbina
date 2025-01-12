@@ -43,7 +43,7 @@ fn main() {
         match validation_result {
             Err(errors) => {
                 for error in errors {
-                    eprintln!("Error: {}", error)
+                    eprintln!("{}", error)
                 }
                 continue;
             }
