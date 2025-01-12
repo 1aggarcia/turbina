@@ -1,4 +1,12 @@
-use crate::models::{AbstractSyntaxTree, Literal, Operator, OperatorNode, Program, Type};
+use crate::models::{
+    AbstractSyntaxTree,
+    LetNode,
+    Literal,
+    Operator,
+    OperatorNode,
+    Program,
+    Type,
+};
 
 type ValidationResult = Result<Type, Vec<String>>;
 
@@ -12,9 +20,7 @@ pub fn validate(
         AbstractSyntaxTree::Literal(literal) => Ok(get_literal_type(literal)),
         AbstractSyntaxTree::Id(id) => validate_id(program, id),
         AbstractSyntaxTree::Operator(node) => validate_operator(program, node),
-        
-        // TODO: validate 'let' 
-        _ => panic!("unimplemented node type: {:?}", tree),
+        AbstractSyntaxTree::Let(node) => validate_let(program, node),
     }
 }
 
@@ -59,6 +65,26 @@ fn validate_operator(
     return Ok(left_type);
 }
 
+/// Check that the expression type does not conflic with the declared type
+/// and that the variable name is unique
+fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
+    if program.vars.contains_key(&node.id) {
+        return Err(vec![errors::already_defined(&node.id)]);
+    }
+
+    let value_type = validate(program, &node.value)?;
+    let declared_type = match node.datatype {
+        Some(t) => t,
+        None => return Ok(value_type),
+    };
+
+    if value_type != declared_type {
+        let err = errors::declared_type(&node.id, declared_type, value_type);
+        return Err(vec![err]);
+    }
+    return Ok(value_type);
+}
+
 /// Join any errors in either of the two results into a single list of errors
 fn combine_errors(res1: &ValidationResult, res2: &ValidationResult) -> Vec<String> {
     let mut errors1 = res1
@@ -94,6 +120,10 @@ mod errors {
         format!("{VALUE_ERROR}Idenfitier '{id}' is undefined")
     }
 
+    pub fn already_defined(id: &str) -> String {
+        format!("{VALUE_ERROR}Symbol '{}' was already defined", id)
+    }
+
     pub fn binary_op_types(
         operator: Operator,
         left_type: Type,
@@ -104,6 +134,16 @@ mod errors {
             operator,
             left_type,
             right_type
+        )
+    }
+
+    pub fn declared_type(id: &str, declared: Type, expression: Type) -> String {
+        format!(
+            "{}Declared type {:?} for '{}' does not match expression type {:?}",
+            TYPE_ERROR,
+            declared,
+            id,
+            expression
         )
     }
 }
@@ -125,7 +165,7 @@ mod test_validate {
 
     #[test]
     fn it_returns_ok_for_valid_symbol() {
-        let tree = parse(tokenize("x")).unwrap();
+        let tree = make_tree("x");
         let mut program = Program::new();
         program.vars.insert("x".to_string(), Variable {
             datatype: Type::Int,
@@ -137,7 +177,7 @@ mod test_validate {
 
     #[test]
     fn it_returns_error_for_non_existent_symbol() {
-        let tree = parse(tokenize("x")).unwrap();
+        let tree = make_tree("x");
         let expected = vec![errors::undefined_id("x")];
         assert_eq!(validate(&Program::new(), &tree), Err(expected));
     }
@@ -155,7 +195,7 @@ mod test_validate {
             #[case] left_type: Type,
             #[case] right_type: Type
         ) {
-            let tree = parse(tokenize(input)).unwrap();
+            let tree = make_tree(input);
             let expected = errors::binary_op_types(op, left_type, right_type);
             assert_eq!(validate(&Program::new(), &tree), Err(vec![expected]));
         }
@@ -173,26 +213,78 @@ mod test_validate {
             #[case] input: &str, #[case] errors: Vec<String>
         ) {
             // symbol does not exist
-            let tree = parse(tokenize(input)).unwrap();
+            let tree = make_tree(input);
             assert_eq!(validate(&Program::new(), &tree), Err(errors));
         }
 
         #[test]
         fn it_returns_ok_for_int_addition() {
-            let tree = parse(tokenize("2 + 2")).unwrap();
+            let tree = make_tree("2 + 2");
             assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_int_division() {
-            let tree = parse(tokenize("2 / 2")).unwrap();
+            let tree = make_tree("2 / 2");
             assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_string_concatenation() {
-            let tree = parse(tokenize("\"a\" + \"b\"")).unwrap();
+            let tree = make_tree("\"a\" + \"b\"");
             assert_eq!(validate(&Program::new(), &tree), Ok(Type::String));
         }
+    }
+
+    mod let_node {
+        use super::*;
+
+        #[test]
+        fn it_infers_correct_type_for_math_expr() {
+            let tree = make_tree("let something = 5 + 2");
+            assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
+        }
+
+        #[test]
+        fn it_infers_correct_type_for_string_expr() {
+            let tree = make_tree("let something = \"a\" + \"b\"");
+            assert_eq!(validate(&Program::new(), &tree), Ok(Type::String));
+        }
+
+        #[test]
+        fn it_returns_ok_for_declared_type() {
+            let tree = make_tree("let x: int = 2 + 3");
+            assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
+        }
+
+        #[test]
+        fn it_returns_type_error_for_conflicting_types() {
+            let tree = make_tree("let x: int = \"string\"");
+            let error = errors::declared_type("x", Type::Int, Type::String);
+            assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
+        }
+
+        #[test]
+        fn it_propagates_errors_in_expression() {
+            let tree = make_tree("let y: string = undefined");
+            let error = errors::undefined_id("undefined");
+            assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
+        }
+
+        #[test]
+        fn it_returns_err_for_duplicate_id() {
+            let mut program = Program::new();
+            program.vars.insert("b".to_string(), Variable {
+                datatype: Type::Bool,
+                value: Literal::Bool(false),
+            });
+            let tree = make_tree("let b = true");
+            let error = errors::already_defined("b");
+            assert_eq!(validate(&program, &tree), Err(vec![error])); 
+        }
+    }
+
+    fn make_tree(statement: &str) -> AbstractSyntaxTree {
+        return parse(tokenize(statement)).unwrap();
     }
 }
