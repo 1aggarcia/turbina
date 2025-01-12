@@ -1,7 +1,7 @@
 use regex::Regex;
 
 use crate::models::{
-    TokenV2,
+    Token,
     Literal,
     Operator,
     Type,
@@ -18,7 +18,7 @@ use crate::models::{
 /// - keywords/symbols: a-zA-Z
 /// - operators: +, -, &&, ||, <, =, ==
 /// - formatters: (parenthesis, brackets, semicolon, comma)
-pub fn tokenize(line: &str) -> Vec<TokenV2> {
+pub fn tokenize(line: &str) -> Vec<Token> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<op>[+*-/=%])
@@ -34,25 +34,25 @@ pub fn tokenize(line: &str) -> Vec<TokenV2> {
         .map(|x| {
             if let Some(m) = x.name("int") {
                 let int_value = m.as_str().parse::<i32>().unwrap();
-                TokenV2::Literal(Literal::Int(int_value))
+                Token::Literal(Literal::Int(int_value))
             } else if let Some(m) = x.name("op") {
                 let op = string_to_operator(m.as_str()).unwrap();
-                TokenV2::Operator(op)
+                Token::Operator(op)
             } else if let Some(m) = x.name("fmt") {
-                TokenV2::Formatter(m.as_str().to_string())
+                Token::Formatter(m.as_str().to_string())
             } else if let Some(m) = x.name("bool") {
                 let bool_value = m.as_str() == "true";
-                TokenV2::Literal(Literal::Bool(bool_value))
+                Token::Literal(Literal::Bool(bool_value))
             } else if let Some(m) = x.name("string") {
                 let string_value = unwrap_string(m.as_str());
-                TokenV2::Literal(Literal::String(string_value))
+                Token::Literal(Literal::String(string_value))
             } else if let Some(m) = x.name("symbol") {
                 symbol_to_token(m.as_str())
             } else {
                 panic!("Unrecognized token: {:?}", x);
             }
         })  
-        .collect::<Vec<TokenV2>>();
+        .collect::<Vec<Token>>();
 
     return tokens;
 }
@@ -71,13 +71,13 @@ fn string_to_operator(string: &str) -> Option<Operator> {
 }
 
 /// Returns keyword token if the string is a keyword, ID token otherwise
-fn symbol_to_token(symbol: &str) -> TokenV2 {
+fn symbol_to_token(symbol: &str) -> Token {
     match symbol {
-        "let" => TokenV2::Let,
-        "string" => TokenV2::Type(Type::String),
-        "int" => TokenV2::Type(Type::Int),
-        "bool" => TokenV2::Type(Type::Bool),
-        _ => TokenV2::Id(symbol.to_string()),
+        "let" => Token::Let,
+        "string" => Token::Type(Type::String),
+        "int" => Token::Type(Type::Int),
+        "bool" => Token::Type(Type::Bool),
+        _ => Token::Id(symbol.to_string()),
     }
 }
 
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn one_symbol() {
-        assert_eq!(tokenize("let"), [TokenV2::Let]);
+        assert_eq!(tokenize("let"), [Token::Let]);
     }
 
     #[test]
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn symbol_with_underscore() {
-        let expected = vec![TokenV2::Id("multi_word_var_name".to_string())];
+        let expected = vec![Token::Id("multi_word_var_name".to_string())];
         assert_eq!(tokenize("multi_word_var_name"), expected);
     }
 
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn var_declaration() {
         let expected = [
-            TokenV2::Let,
+            Token::Let,
             id_token("x"),
             op_token(Operator::Equals),
             int_token(5),
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn var_declaration_with_type() {
         let expected = [
-            TokenV2::Let,
+            Token::Let,
             id_token("x"),
             formatter_token(":"),
             type_token(Type::Int),

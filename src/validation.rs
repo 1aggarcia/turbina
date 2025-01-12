@@ -1,4 +1,4 @@
-use crate::models::{AbstractSyntaxTreeV2, Literal, Operator, OperatorNode, Program, Type};
+use crate::models::{AbstractSyntaxTree, Literal, Operator, OperatorNode, Program, Type};
 
 type ValidationResult = Result<Type, Vec<String>>;
 
@@ -6,12 +6,12 @@ type ValidationResult = Result<Type, Vec<String>>;
 /// - Check that all symbols exist in the program
 /// - Type-check all nodes
 pub fn validate(
-    program: &Program, tree: &AbstractSyntaxTreeV2
+    program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
     match tree {
-        AbstractSyntaxTreeV2::Literal(literal) => Ok(get_literal_type(literal)),
-        AbstractSyntaxTreeV2::Id(id) => validate_id(program, id),
-        AbstractSyntaxTreeV2::Operator(node) => validate_operator(program, node),
+        AbstractSyntaxTree::Literal(literal) => Ok(get_literal_type(literal)),
+        AbstractSyntaxTree::Id(id) => validate_id(program, id),
+        AbstractSyntaxTree::Operator(node) => validate_operator(program, node),
         
         // TODO: validate 'let' 
         _ => panic!("unimplemented node type: {:?}", tree),
@@ -118,7 +118,7 @@ mod test_validate {
     #[case(Literal::String("asdf".to_string()))]
     #[case(Literal::Bool(false))]
     fn returns_ok_for_literals(#[case] literal: Literal) {
-        let tree = AbstractSyntaxTreeV2::Literal(literal.clone());
+        let tree = AbstractSyntaxTree::Literal(literal.clone());
         let expected = get_literal_type(&literal);
         assert_eq!(validate(&Program::new(), &tree), Ok(expected));
     }

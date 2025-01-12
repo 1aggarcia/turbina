@@ -19,7 +19,7 @@ pub struct Variable {
 }
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum TokenV2 {
+pub enum Token {
     Literal(Literal),
     Operator(Operator),
     Id(String),
@@ -71,8 +71,8 @@ impl fmt::Debug for Operator {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum AbstractSyntaxTreeV2 {
+#[derive(PartialEq)]
+pub enum AbstractSyntaxTree {
     Let(LetNode),
     Operator(OperatorNode),
 
@@ -81,101 +81,88 @@ pub enum AbstractSyntaxTreeV2 {
     Id(String),
 }
 
+impl fmt::Debug for AbstractSyntaxTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "")?;
+        pretty_print(f, self, 0);
+        Ok(())
+    }
+}
+
+/// recursively print out children with increasing indent
+fn pretty_print(
+    f: &mut std::fmt::Formatter<'_>,
+    node: &AbstractSyntaxTree,
+    indent: usize
+) {
+    let indent_str = " ".repeat(indent * 2);
+    match node {
+        AbstractSyntaxTree::Literal(lit) => {
+            writeln!(f, "{}{:?}", indent_str, lit).unwrap()
+        },
+        AbstractSyntaxTree::Id(id) => {
+            writeln!(f, "{}{}", indent_str, id).unwrap()
+        },
+        AbstractSyntaxTree::Operator(node) => {
+            writeln!(f, "{}{:?}", indent_str, node.operator).unwrap();
+            pretty_print(f, &node.left, indent + 1);
+            pretty_print(f, &node.right, indent + 1);
+        },
+        AbstractSyntaxTree::Let(node) => {
+            let type_str = match node.datatype {
+                Some(t) => format!("{t:?}"),
+                None => String::from("unknown"),
+            };
+            writeln!(f, "{}let {}: {} =", indent_str, node.id, type_str).unwrap();
+            pretty_print(f, &node.value, indent + 1);
+        }
+    }
+}
+
 /// For binary operators
 #[derive(Debug, PartialEq)]
 pub struct OperatorNode {
     pub operator: Operator,
-    pub left: Box<AbstractSyntaxTreeV2>,
-    pub right: Box<AbstractSyntaxTreeV2>,
+    pub left: Box<AbstractSyntaxTree>,
+    pub right: Box<AbstractSyntaxTree>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct LetNode {
     pub id: String,
     pub datatype: Option<Type>,
-    pub value: Box<AbstractSyntaxTreeV2>,
+    pub value: Box<AbstractSyntaxTree>,
 }
 
 #[cfg(test)]
 pub mod test_utils {
     use super::*;
 
-    pub fn bool_token(data: bool) -> TokenV2 {
-        TokenV2::Literal(Literal::Bool(data))
+    pub fn bool_token(data: bool) -> Token {
+        Token::Literal(Literal::Bool(data))
     }
 
-    pub fn string_token(data: &str) -> TokenV2 {
-        TokenV2::Literal(Literal::String(data.to_string()))
+    pub fn string_token(data: &str) -> Token {
+        Token::Literal(Literal::String(data.to_string()))
     }
 
-    pub fn int_token(data: i32) -> TokenV2 {
-        TokenV2::Literal(Literal::Int(data))
+    pub fn int_token(data: i32) -> Token {
+        Token::Literal(Literal::Int(data))
     }
 
-    pub fn op_token(operator: Operator) -> TokenV2 {
-        TokenV2::Operator(operator)
+    pub fn op_token(operator: Operator) -> Token {
+        Token::Operator(operator)
     }
 
-    pub fn id_token(data: &str) -> TokenV2 {
-        TokenV2::Id(data.to_string())
+    pub fn id_token(data: &str) -> Token {
+        Token::Id(data.to_string())
     }
 
-    pub fn formatter_token(data: &str) -> TokenV2 {
-        TokenV2::Formatter(data.to_string())
+    pub fn formatter_token(data: &str) -> Token {
+        Token::Formatter(data.to_string())
     }
 
-    pub fn type_token(datatype: Type) -> TokenV2 {
-        TokenV2::Type(datatype)
-    }
-}
-
-
-// ----------------------------------------------------------------------------
-// UNUSED
-// ----------------------------------------------------------------------------
-
-#[derive(PartialEq)]
-struct AbstractSyntaxTree {
-    token: TokenV2,
-    children: Vec<AbstractSyntaxTree>,
-}
-
-
-impl AbstractSyntaxTree {
-    fn leaf(token: TokenV2) -> Self {
-        Self { token, children: vec![] }
-    }
-
-    /// returns true if this node can accept another node as the next
-    /// child, false otherwise
-    fn can_accept(&self, node: &AbstractSyntaxTree) -> bool {
-        match self.token {
-            TokenV2::Operator(_) => self.children.len() < 2,
-            _ => false,
-        }
-    }
-}
-
-impl fmt::Debug for AbstractSyntaxTree {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // recursively print out children
-        fn pretty_print(
-            f: &mut std::fmt::Formatter<'_>,
-            node: &AbstractSyntaxTree,
-            indent: usize
-        ) {
-            writeln!(
-                f,
-                "{}{:?}",
-                " ".repeat(indent * 4),
-                node.token
-            ).expect("failed to write to formatter");
-            for child in &node.children {
-                pretty_print(f, &child, indent + 1);
-            }
-        }
-        writeln!(f, "")?;
-        pretty_print(f, self, 0);
-        Ok(())
+    pub fn type_token(datatype: Type) -> Token {
+        Token::Type(datatype)
     }
 }

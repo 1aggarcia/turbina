@@ -1,6 +1,6 @@
 use std::io::{stdin, stdout, Error, Write};
 mod models;
-use models::{Program, TokenV2};
+use models::{Program, Token};
 
 mod lexer;
 use lexer::tokenize;
@@ -27,7 +27,7 @@ fn main() {
         };
 
         // handle input
-        let tokens: Vec<TokenV2> = tokenize(next_line.as_str());
+        let tokens: Vec<Token> = tokenize(next_line.as_str());
         if tokens.is_empty() {
             continue;
         }
