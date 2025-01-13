@@ -13,6 +13,7 @@ impl Program {
 }
 
 /// Raw data with an assigned type
+#[derive(PartialEq, Debug)]
 pub struct Variable {
     pub datatype: Type,
     pub value: Literal,
@@ -44,6 +45,14 @@ pub enum Type {
     Int,
     String,
     Bool,
+}
+
+pub fn get_literal_type(literal: &Literal) -> Type {
+    match literal {
+        Literal::Bool(_) => Type::Bool,
+        Literal::Int(_) => Type::Int,
+        Literal::String(_) => Type::String,
+    }
 }
 
 #[derive(PartialEq, Clone, Copy)]

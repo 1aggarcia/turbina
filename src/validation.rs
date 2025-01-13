@@ -1,11 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree,
-    LetNode,
-    Literal,
-    Operator,
-    OperatorNode,
-    Program,
-    Type,
+    get_literal_type, AbstractSyntaxTree, LetNode, Operator, OperatorNode, Program, Type
 };
 
 type ValidationResult = Result<Type, Vec<String>>;
@@ -30,7 +24,7 @@ fn validate_id(program: &Program, id: &String) -> ValidationResult {
         let error = errors::undefined_id(id);
         return Err(vec![error]);
     }
-    let var= program.vars.get(id).unwrap();
+    let var = program.vars.get(id).unwrap();
     return Ok(var.datatype);
 }
 
@@ -98,14 +92,6 @@ fn combine_errors(res1: &ValidationResult, res2: &ValidationResult) -> Vec<Strin
     errors1.extend(errors2);
     return errors1;
 
-}
-
-fn get_literal_type(literal: &Literal) -> Type {
-    match literal {
-        Literal::Bool(_) => Type::Bool,
-        Literal::Int(_) => Type::Int,
-        Literal::String(_) => Type::String,
-    }
 }
 
 /// Collection of error message templates

@@ -1,5 +1,6 @@
 use std::io::{stdin, stdout, Error, Write};
 mod models;
+use evaluation::evaluate;
 use models::{Program, Token};
 
 mod lexer;
@@ -10,6 +11,7 @@ use parser::parse;
 use validation::validate;
 mod errors;
 mod validation;
+mod evaluation;
 
 fn main() {
     println!("Starting interpreter");
@@ -50,8 +52,8 @@ fn main() {
             Ok(_) => {}
         }
 
-        // TODO: evaluate tree
-        println!("{syntax_tree:?}");
+        let eval_result = evaluate(&mut program, &syntax_tree);
+        println!("{eval_result:?}");
     }
 }
 
