@@ -1,3 +1,4 @@
+use crate::errors;
 use crate::models::{
     get_literal_type, AbstractSyntaxTree, LetNode, Operator, OperatorNode, Program, Type
 };
@@ -92,46 +93,6 @@ fn combine_errors(res1: &ValidationResult, res2: &ValidationResult) -> Vec<Strin
     errors1.extend(errors2);
     return errors1;
 
-}
-
-/// Collection of error message templates
-mod errors {
-    // TODO: move to 'errors' file & combine with syntax_error macro
-    use crate::models::{Operator, Type};
-
-    static TYPE_ERROR: &str = "Type Error: ";
-    static VALUE_ERROR: &str = "Value Error: ";
-
-    pub fn undefined_id(id: &str) -> String {
-        format!("{VALUE_ERROR}Idenfitier '{id}' is undefined")
-    }
-
-    pub fn already_defined(id: &str) -> String {
-        format!("{VALUE_ERROR}Symbol '{}' was already defined", id)
-    }
-
-    pub fn binary_op_types(
-        operator: Operator,
-        left_type: Type,
-        right_type: Type
-    ) -> String {
-        format!(
-            "{TYPE_ERROR}Illegal types for '{:?}' operator: {:?}, {:?}",
-            operator,
-            left_type,
-            right_type
-        )
-    }
-
-    pub fn declared_type(id: &str, declared: Type, expression: Type) -> String {
-        format!(
-            "{}Declared type {:?} for '{}' does not match expression type {:?}",
-            TYPE_ERROR,
-            declared,
-            id,
-            expression
-        )
-    }
 }
 
 #[cfg(test)]

@@ -21,8 +21,8 @@ use crate::models::{
 pub fn tokenize(line: &str) -> Vec<Token> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
-        | (?P<op>[+*-/=%])
-        | (?P<fmt>[:;()])
+        | (?P<op>[+*\-/=%])
+        | (?P<fmt>[:;(),])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
         | \d+[a-zA-Z] # capture illegal tokens so that remaining numbers are legal
@@ -160,6 +160,7 @@ mod tests {
     #[case("(")]
     #[case(")")]
     #[case(";")]
+    #[case(",")]
     fn formatters(#[case] token: &str) {
         assert_eq!(tokenize(token), [formatter_token(token)]);
     }

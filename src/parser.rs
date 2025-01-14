@@ -7,7 +7,7 @@ use crate::models::{
     Token,
 };
 
-use crate::errors::syntax_error;
+use crate::errors::{self, token_not_allowed};
 
 /// Convert a sequence of tokens into an abstract syntax tree.
 /// 
@@ -33,7 +33,7 @@ fn parse_remaining(
     if tokens.len() == position + 1 {
         return match head_as_leaf {
             Some(leaf) => Ok(leaf),
-            None => syntax_error!("cannot parse single token: {:?}", head)
+            None => Err(errors::unexpected_end_of_input()) 
         };
     }
 
@@ -47,7 +47,7 @@ fn parse_remaining(
 
         Token::Operator(o) =>
             parse_leading_operator(&o, &tokens, position + 1),
-        _ => return syntax_error!("cannot parse {:?} as first token", head),
+        _ => return Err(token_not_allowed(head)),
     }
 }
 
@@ -63,14 +63,14 @@ fn parse_leading_operator(
 ) -> Result<AbstractSyntaxTree, String> {
     match operator {
         Operator::Minus => {},
-        _ => return syntax_error!("Cannot parse operator as first token")
+        _ => return Err(token_not_allowed(Token::Operator(*operator)))
     };
 
     // TODO: support variable length expressions /w parenthesis
     let value_token = &tokens[position];
     let value = match value_token {
         Token::Literal(Literal::Int(i)) => i,
-        _ => return syntax_error!("Invalid token following '-': {:?}", value_token),
+        _ => return Err(errors::unexpected_token("int", value_token.clone())),
     };
     let node = AbstractSyntaxTree::Literal(Literal::Int(value * -1));
     return Ok(node);
@@ -88,16 +88,18 @@ fn build_binary_node(
     let operator_token = get_token(tokens, position)?;
     let operator = match operator_token {
         Token::Operator(Operator::Equals) =>
-            return syntax_error!("Operator '=' not allowed in this position"),
+            return Err(errors::token_not_allowed(operator_token)),
         Token::Operator(o) => o,
-        _ => return syntax_error!("Expected operator, got: {:?}", operator_token),
+        _ => return Err(
+            errors::unexpected_token("binary operator", operator_token)
+        ),
     };
 
     // TODO: handle infinite args, not just one
     let right_token = get_token(tokens, position + 1)?;
     let right_arg = match token_to_leaf(&right_token) {
         Some(t) => t,
-        None => return syntax_error!("invalid right token: {:?}", right_token)
+        None => return Err(errors::token_not_allowed(right_token))
     };
 
     let node = OperatorNode {
@@ -115,14 +117,14 @@ fn build_let_node(
     position: usize
 ) -> Result<AbstractSyntaxTree, String> {
     if position != 1 {
-        return syntax_error!("keyword 'let' not allowed in position {position}");
+        return Err(errors::token_not_allowed(Token::Let));
     }
     let mut idx = position;
 
     let id_token = get_token(tokens, idx)?;
     let id = match id_token {
         Token::Id(s) => s.to_string(),
-        _ => return syntax_error!("invalid variable name: {:?}", id_token)
+        _ => return Err(errors::unexpected_token("identifier", id_token))
     };
 
     idx += 1;
@@ -137,7 +139,7 @@ fn build_let_node(
         idx += 1;
         match type_token {
             Token::Type(t) => Some(t.to_owned()),
-            _ => return syntax_error!("invalid type for 'let' statment: {:?}", type_token)
+            _ => return Err(errors::not_a_type(type_token)) 
         }
     } else {
         None
@@ -146,7 +148,7 @@ fn build_let_node(
     let equals_token = get_token(tokens, idx)?;
     match equals_token {
         Token::Operator(Operator::Equals) => {},
-        _ => return syntax_error!("expected '=', got token {:?}", equals_token)
+        _ => return Err(errors::unexpected_token("'='", equals_token))
     };
 
     idx += 1;
@@ -170,7 +172,7 @@ fn token_to_leaf(token: &Token) -> Option<AbstractSyntaxTree> {
 fn get_token(tokens: &Vec<Token>, position: usize) -> Result<Token, String> {
     match tokens.get(position) {
         Some(token) => Ok(token.clone()),
-        None => syntax_error!("Unexpected end of input"),
+        None => Err(errors::unexpected_end_of_input()),
     }
 }
 
@@ -184,10 +186,7 @@ mod test_parse {
 
     #[test]
     fn it_returns_error_for_empty_list()  {
-        assert!(matches!(
-            parse(vec![]),
-            Err { .. }
-        ));
+        assert_eq!(parse(vec![]), Err(errors::unexpected_end_of_input()));
     }
 
     #[rstest]
@@ -207,7 +206,7 @@ mod test_parse {
     #[case(op_token(Operator::Minus))]
     #[case(op_token(Operator::Equals))]
     fn it_returns_error_for_one_operator(#[case] op: Token) {
-        assert!(matches!(parse(vec![op]), Err { .. }));
+        assert_eq!(parse(vec![op]), Err(errors::unexpected_end_of_input()));
     }
 
     #[rstest]
@@ -247,7 +246,11 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_multiple_ints() {
         let input = tokenize("3 2");
-        assert!(matches!(parse(input), Err { .. }));
+        let error = errors::unexpected_token(
+            "binary operator",
+            Token::Literal(Literal::Int(2))
+        );
+        assert_eq!(parse(input), Err(error));
     }
 
     #[test]
@@ -282,13 +285,18 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_bad_var_id() {
         let input = tokenize("let 3 = 3");
-        assert!(matches!(parse(input), Err { .. }));
+        let error = errors::unexpected_token(
+            "identifier",
+            Token::Literal(Literal::Int(3))
+        );
+        assert_eq!(parse(input), Err(error));
     }
 
     #[test]
     fn it_returns_error_for_equals_in_let_expr() {
         let input = tokenize("let x = 1 = 0");
-        assert!(matches!(parse(input), Err { .. })); 
+        let error = errors::token_not_allowed(Token::Operator(Operator::Equals));
+        assert_eq!(parse(input), Err(error)); 
     }
 
     #[test]
@@ -322,13 +330,15 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_invalid_let_type() {
         let input = tokenize("let x: y = z");
-        assert!(matches!(parse(input), Err { .. })); 
+        let error = errors::not_a_type(Token::Id("y".to_string()));
+        assert_eq!(parse(input), Err(error)); 
     }
 
     #[test]
     fn it_returns_error_for_unexpected_let() {
         let input = tokenize("let x = let y = 2");
-        assert!(matches!(parse(input), Err { .. }));
+        let error = errors::token_not_allowed(Token::Let);
+        assert_eq!(parse(input), Err(error));
     }
 
     #[rstest]
@@ -336,6 +346,6 @@ mod test_parse {
     #[case(tokenize("let x"))]
     #[case(tokenize("3 +"))]
     fn it_returns_error_for_incomplete_statements(#[case] tokens: Vec<Token>) {
-        assert!(matches!(parse(tokens), Err { .. })); 
+        assert_eq!(parse(tokens), Err(errors::unexpected_end_of_input())); 
     }
 }
