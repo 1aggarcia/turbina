@@ -10,7 +10,6 @@ use crate::models::{
 /// Parse source code text into a list of tokens according to the language's
 /// grammar. All whitespace is eliminated, unless is is part of a string.
 ///
-/// 
 /// Tokens are one of the following:
 /// - int literals: 0-9 (not including negative numbers)
 /// - string literals: "..."
@@ -18,18 +17,21 @@ use crate::models::{
 /// - keywords/symbols: a-zA-Z
 /// - operators: +, -, &&, ||, <, =, ==
 /// - formatters: (parenthesis, brackets, semicolon, comma)
+/// 
+/// Comments are sequences starting with `//`. Comments do not produce tokens.
 pub fn tokenize(line: &str) -> Vec<Token> {
+    let line_without_comments = line.split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<op>[+*\-/=%])
-        | (?P<fmt>[:;(),])
+        | (?P<fmt>[:;(),\[\]])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
         | \d+[a-zA-Z] # capture illegal tokens so that remaining numbers are legal
         | (?P<int>\d+)
     "#;
     let re = Regex::new(&pattern).unwrap();
-    let capture_matches = re.captures_iter(line);
+    let capture_matches = re.captures_iter(line_without_comments);
     let tokens= capture_matches
         .map(|x| {
             if let Some(m) = x.name("int") {
@@ -161,6 +163,8 @@ mod tests {
     #[case(")")]
     #[case(";")]
     #[case(",")]
+    #[case("[")]
+    #[case("]")]
     fn formatters(#[case] token: &str) {
         assert_eq!(tokenize(token), [formatter_token(token)]);
     }
@@ -261,5 +265,11 @@ mod tests {
             formatter_token(")"),
         ];
         assert_eq!(tokenize("print(x + 1)"), expected);
+    }
+
+    #[test]
+    fn comments() {
+        assert_eq!(tokenize("// a comment"), vec![]);
+        assert_eq!(tokenize("x * 3 // another comment"), tokenize("x * 3"));
     }
 }
