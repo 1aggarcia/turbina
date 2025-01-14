@@ -26,13 +26,10 @@ fn parse_remaining(
     tokens: &Vec<Token>,
     position: usize
 ) -> Result<AbstractSyntaxTree, String> {
-    if tokens.len() <= position {
-        return syntax_error!(
-            "No tokens left to parse at position {}: {:?}", position, tokens);
-    }
     // first token determines the type of the root node
-    let head = &tokens[position];
-    let head_as_leaf = token_to_leaf(head);
+    let head = get_token(tokens, position)?;
+
+    let head_as_leaf = token_to_leaf(&head);
     if tokens.len() == position + 1 {
         return match head_as_leaf {
             Some(leaf) => Ok(leaf),
@@ -49,7 +46,7 @@ fn parse_remaining(
         // add more keyword cases...
 
         Token::Operator(o) =>
-            parse_leading_operator(o, &tokens, position + 1),
+            parse_leading_operator(&o, &tokens, position + 1),
         _ => return syntax_error!("cannot parse {:?} as first token", head),
     }
 }
@@ -88,22 +85,23 @@ fn build_binary_node(
     tokens: &Vec<Token>,
     position: usize
 ) -> Result<AbstractSyntaxTree, String> {
-    let operator_token = &tokens[position];
+    let operator_token = get_token(tokens, position)?;
     let operator = match operator_token {
+        Token::Operator(Operator::Equals) =>
+            return syntax_error!("Operator '=' not allowed in this position"),
         Token::Operator(o) => o,
         _ => return syntax_error!("Expected operator, got: {:?}", operator_token),
     };
 
     // TODO: handle infinite args, not just one
-    // TODO: range check
-    let right_token = &tokens[position + 1];
-    let right_arg = match token_to_leaf(right_token) {
+    let right_token = get_token(tokens, position + 1)?;
+    let right_arg = match token_to_leaf(&right_token) {
         Some(t) => t,
         None => return syntax_error!("invalid right token: {:?}", right_token)
     };
 
     let node = OperatorNode {
-        operator: *operator,
+        operator,
         left: Box::new(left_arg),
         right: Box::new(right_arg),
     };
@@ -121,7 +119,7 @@ fn build_let_node(
     }
     let mut idx = position;
 
-    let id_token = &tokens[idx];
+    let id_token = get_token(tokens, idx)?;
     let id = match id_token {
         Token::Id(s) => s.to_string(),
         _ => return syntax_error!("invalid variable name: {:?}", id_token)
@@ -129,13 +127,13 @@ fn build_let_node(
 
     idx += 1;
     // look for optional declared type (e.g. ": int")
-    let is_token_colon = match &tokens[idx] {
+    let is_token_colon = match get_token(tokens, idx)? {
         Token::Formatter(ref f) if f == ":" => true,
         _ => false,
     };
     let datatype = if is_token_colon {
         idx += 1;
-        let type_token = &tokens[idx];
+        let type_token = get_token(tokens, idx)?;
         idx += 1;
         match type_token {
             Token::Type(t) => Some(t.to_owned()),
@@ -145,7 +143,7 @@ fn build_let_node(
         None
     };
 
-    let equals_token = &tokens[idx];
+    let equals_token = get_token(tokens, idx)?;
     match equals_token {
         Token::Operator(Operator::Equals) => {},
         _ => return syntax_error!("expected '=', got token {:?}", equals_token)
@@ -163,6 +161,16 @@ fn token_to_leaf(token: &Token) -> Option<AbstractSyntaxTree> {
         Token::Id(i) => Some(AbstractSyntaxTree::Id(i.clone())),
         Token::Literal(l) => Some(AbstractSyntaxTree::Literal(l.clone())),
         _ => None,
+    }
+}
+
+/// Safe way to retreive a token at a specific location.
+/// Makes it easy to propagate errors by adding the `?` operator at the end of
+/// invocations.
+fn get_token(tokens: &Vec<Token>, position: usize) -> Result<Token, String> {
+    match tokens.get(position) {
+        Some(token) => Ok(token.clone()),
+        None => syntax_error!("Unexpected end of input"),
     }
 }
 
@@ -278,6 +286,12 @@ mod test_parse {
     }
 
     #[test]
+    fn it_returns_error_for_equals_in_let_expr() {
+        let input = tokenize("let x = 1 = 0");
+        assert!(matches!(parse(input), Err { .. })); 
+    }
+
+    #[test]
     fn it_parses_var_binding_to_expr() {
         let input = tokenize("let two = 6 / 3");
         let let_node = LetNode {
@@ -315,5 +329,13 @@ mod test_parse {
     fn it_returns_error_for_unexpected_let() {
         let input = tokenize("let x = let y = 2");
         assert!(matches!(parse(input), Err { .. }));
+    }
+
+    #[rstest]
+    #[case(tokenize("let"))]
+    #[case(tokenize("let x"))]
+    #[case(tokenize("3 +"))]
+    fn it_returns_error_for_incomplete_statements(#[case] tokens: Vec<Token>) {
+        assert!(matches!(parse(tokens), Err { .. })); 
     }
 }
