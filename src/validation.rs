@@ -46,18 +46,39 @@ fn validate_operator(
     let left_type = left_result.unwrap();
     let right_type = right_result.unwrap();
 
-    let legal_types = match node.operator {
-        // + operator can be used for addition or string concat
-        Operator::Plus => vec![Type::Int, Type::String],
-        _ => vec![Type::Int],
-    };
-
-    if left_type != right_type || !legal_types.contains(&left_type) {
+    if left_type != right_type {
         let err = errors::binary_op_types(node.operator, left_type, right_type);
         return Err(vec![err]);
     }
 
-    return Ok(left_type);
+    let output_type = get_operator_ret_type(node.operator, left_type)?;
+    return Ok(output_type);
+}
+
+/// Get the return type of a binary operator if `input_type` is valid,
+/// otherwise return a validation error
+fn get_operator_ret_type(operator: Operator, input_type: Type) -> ValidationResult {
+    let type_error = errors::binary_op_types(operator, input_type, input_type);
+    match operator {
+        Operator::OneEq => Ok(input_type),
+
+        // equality operators
+        Operator::NotEq | Operator::TwoEq => Ok(Type::Bool),
+
+        // math operators
+        Operator::Plus => match input_type {
+            Type::String | Type::Int => Ok(input_type),
+            _ => Err(vec![type_error])
+        },
+        Operator::Minus
+        | Operator::Percent
+        | Operator::Slash
+        | Operator::Star => if input_type == Type::Int {
+            Ok(Type::Int)
+        } else {
+            Err(vec![type_error])
+        }
+    }
 }
 
 /// Check that the expression type does not conflic with the declared type
@@ -136,6 +157,8 @@ mod test_validate {
         #[case("3 + \"\"", Operator::Plus, Type::Int, Type::String)]
         #[case("\"\" - \"\"", Operator::Minus, Type::String, Type::String)]
         #[case("true % false", Operator::Percent, Type::Bool, Type::Bool)]
+        #[case("0 == false", Operator::TwoEq, Type::Int, Type::Bool)]
+        #[case("\"\" != 1", Operator::NotEq, Type::String, Type::Int)]
         fn it_returns_error_for_illegal_types(
             #[case] input: &str,
             #[case] op: Operator,
@@ -180,6 +203,15 @@ mod test_validate {
         fn it_returns_ok_for_string_concatenation() {
             let tree = make_tree("\"a\" + \"b\"");
             assert_eq!(validate(&Program::new(), &tree), Ok(Type::String));
+        }
+
+        #[rstest]
+        #[case(make_tree("0 == 1"))]
+        #[case(make_tree("true != false"))]
+        #[case(make_tree("\"a\" == \"b\""))]
+        fn it_returns_ok_for_boolean_operator_on_same_type(#[case] tree: AbstractSyntaxTree) {
+            let expected = Ok(Type::Bool);
+            assert_eq!(validate(&Program::new(), &tree), expected);
         }
     }
 

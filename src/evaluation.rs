@@ -54,8 +54,12 @@ fn eval_binary_op(program: &mut Program, node: &OperatorNode) -> Literal {
             Literal::Int(literal_as_int(left) / literal_as_int(right)),
         Operator::Percent =>
             Literal::Int(literal_as_int(left) % literal_as_int(right)),
-        Operator::Equals =>
+        Operator::OneEq =>
             panic!("operator '=' cannot be evaluated as a binary operator"),
+
+        // these use the derived `PartialEq` trait on enum `Literal`
+        Operator::TwoEq => Literal::Bool(left == right),
+        Operator::NotEq => Literal::Bool(left != right),
     }
 }
 
@@ -151,6 +155,32 @@ mod test_evalutate {
     ) {
         let input = make_tree(input);
         let expected = Literal::Int(expected_val);
+        assert_eq!(evaluate(&mut Program::new(), &input), expected);
+    }
+
+    #[rstest]
+    // ints
+    #[case("3 == 5", 3 == 5)]
+    #[case("12 == 12", 12 == 12)]
+    #[case("0 != 0", 0 != 0)]
+    #[case("2 != 1", 2 != 1)]
+
+    // strings
+    #[case("\"a\" == \"a\"", true)]
+    #[case("\"a\" != \"a\"", false)]
+    #[case("\"abc\" == \"efg\"", false)]
+    #[case("\"efg\" != \"abc\"", true)]
+
+    // bools
+    #[case("true == true", true)]
+    #[case("true != true", false)]
+    #[case("false == true", false)]
+    #[case("true != false ", true)]
+    fn it_evaluates_binary_bool_operators(
+        #[case] input: &str, #[case] expected_val: bool
+    ) {
+        let input = make_tree(input);
+        let expected = Literal::Bool(expected_val);
         assert_eq!(evaluate(&mut Program::new(), &input), expected);
     }
 

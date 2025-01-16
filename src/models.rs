@@ -62,7 +62,9 @@ pub enum Operator {
     Star,
     Slash,
     Percent,
-    Equals,
+    OneEq,
+    TwoEq,
+    NotEq,
 }
 
 impl fmt::Debug for Operator {
@@ -73,7 +75,9 @@ impl fmt::Debug for Operator {
             Self::Star => "*",
             Self::Slash => "/",
             Self::Percent => "%",
-            Self::Equals => "=",
+            Self::OneEq => "=",
+            Self::TwoEq => "==",
+            Self::NotEq => "!=",
         };
         write!(f, "{string}")?;
         Ok(())

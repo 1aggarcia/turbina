@@ -23,7 +23,7 @@ pub fn tokenize(line: &str) -> Vec<Token> {
     let line_without_comments = line.split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
-        | (?P<op>[+*\-/=%])
+        | (?P<op>==|!=|[+*\-/=%])
         | (?P<fmt>[:;(),\[\]])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
@@ -65,8 +65,10 @@ fn string_to_operator(string: &str) -> Option<Operator> {
         "-" => Operator::Minus,
         "*" => Operator::Star,
         "/" => Operator::Slash,
-        "=" => Operator::Equals,
         "%" => Operator::Percent,
+        "=" => Operator::OneEq,
+        "==" => Operator::TwoEq,
+        "!=" => Operator::NotEq,
         _ => return None,
     };
     return Some(op)
@@ -153,7 +155,9 @@ mod tests {
     #[case("*", Operator::Star)]
     #[case("/", Operator::Slash)]
     #[case("%", Operator::Percent)]
-    #[case("=", Operator::Equals)]
+    #[case("=", Operator::OneEq)]
+    #[case("==", Operator::TwoEq)]
+    #[case("!=", Operator::NotEq)]
     fn operators(#[case] token: &str, #[case] op: Operator) {
         assert_eq!(tokenize(token), [op_token(op)]);
     }
@@ -233,7 +237,7 @@ mod tests {
         let expected = [
             Token::Let,
             id_token("x"),
-            op_token(Operator::Equals),
+            op_token(Operator::OneEq),
             int_token(5),
             formatter_token(";")
         ];
@@ -247,7 +251,7 @@ mod tests {
             id_token("x"),
             formatter_token(":"),
             type_token(Type::Int),
-            op_token(Operator::Equals),
+            op_token(Operator::OneEq),
             int_token(5),
             formatter_token(";")
         ];

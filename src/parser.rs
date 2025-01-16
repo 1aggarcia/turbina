@@ -87,7 +87,7 @@ fn build_binary_node(
 ) -> Result<AbstractSyntaxTree, String> {
     let operator_token = get_token(tokens, position)?;
     let operator = match operator_token {
-        Token::Operator(Operator::Equals) =>
+        Token::Operator(Operator::OneEq) =>
             return Err(errors::token_not_allowed(operator_token)),
         Token::Operator(o) => o,
         _ => return Err(
@@ -147,7 +147,7 @@ fn build_let_node(
 
     let equals_token = get_token(tokens, idx)?;
     match equals_token {
-        Token::Operator(Operator::Equals) => {},
+        Token::Operator(Operator::OneEq) => {},
         _ => return Err(errors::unexpected_token("'='", equals_token))
     };
 
@@ -204,7 +204,7 @@ mod test_parse {
     #[rstest]
     #[case(op_token(Operator::Plus))]
     #[case(op_token(Operator::Minus))]
-    #[case(op_token(Operator::Equals))]
+    #[case(op_token(Operator::OneEq))]
     fn it_returns_error_for_one_operator(#[case] op: Token) {
         assert_eq!(parse(vec![op]), Err(errors::unexpected_end_of_input()));
     }
@@ -213,6 +213,8 @@ mod test_parse {
     #[case(tokenize("3 + 2"), Operator::Plus, 3, 2)]
     #[case(tokenize("1 % 4"), Operator::Percent, 1, 4)]
     #[case(tokenize("1 - 8"), Operator::Minus, 1, 8)]
+    #[case(tokenize("0 == 1"), Operator::TwoEq, 0, 1)]
+    #[case(tokenize("2 != 3"), Operator::NotEq, 2, 3)]
     fn it_parses_binary_expressions(
         #[case] input: Vec<Token>,
         #[case] operator: Operator,
@@ -295,7 +297,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_equals_in_let_expr() {
         let input = tokenize("let x = 1 = 0");
-        let error = errors::token_not_allowed(Token::Operator(Operator::Equals));
+        let error = errors::token_not_allowed(Token::Operator(Operator::OneEq));
         assert_eq!(parse(input), Err(error)); 
     }
 
