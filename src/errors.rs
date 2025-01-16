@@ -1,6 +1,6 @@
 /// Collection of formatter functions for common errors
 
-use crate::models::{Operator, Token, Type};
+use crate::models::{BinaryOp, Token, Type};
 
 static SYNTAX_ERROR: &str = "Syntax Error: ";
 static TYPE_ERROR: &str = "Type Error: ";
@@ -27,7 +27,7 @@ pub fn already_defined(id: &str) -> String {
 }
 
 pub fn binary_op_types(
-    operator: Operator,
+    operator: BinaryOp,
     left_type: Type,
     right_type: Type
 ) -> String {

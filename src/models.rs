@@ -22,7 +22,8 @@ pub struct Variable {
 #[derive(PartialEq, Debug, Clone)]
 pub enum Token {
     Literal(Literal),
-    Operator(Operator),
+    BinaryOp(BinaryOp),
+    UnaryOp(UnaryOp),
     Id(String),
     Formatter(String),
 
@@ -56,18 +57,17 @@ pub fn get_literal_type(literal: &Literal) -> Type {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-pub enum Operator {
+pub enum BinaryOp {
     Plus,
     Minus,
     Star,
     Slash,
     Percent,
-    OneEq,
-    TwoEq,
+    Equals,
     NotEq,
 }
 
-impl fmt::Debug for Operator {
+impl fmt::Debug for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
             Self::Plus => "+",
@@ -75,9 +75,23 @@ impl fmt::Debug for Operator {
             Self::Star => "*",
             Self::Slash => "/",
             Self::Percent => "%",
-            Self::OneEq => "=",
-            Self::TwoEq => "==",
+            Self::Equals => "==",
             Self::NotEq => "!=",
+        };
+        write!(f, "{string}")?;
+        Ok(())
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub enum UnaryOp {
+    Equals,
+}
+
+impl fmt::Debug for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Self::Equals => "=",
         };
         write!(f, "{string}")?;
         Ok(())
@@ -135,7 +149,7 @@ fn pretty_print(
 /// For binary operators
 #[derive(Debug, PartialEq)]
 pub struct OperatorNode {
-    pub operator: Operator,
+    pub operator: BinaryOp,
     pub left: Box<AbstractSyntaxTree>,
     pub right: Box<AbstractSyntaxTree>,
 }
@@ -163,8 +177,12 @@ pub mod test_utils {
         Token::Literal(Literal::Int(data))
     }
 
-    pub fn op_token(operator: Operator) -> Token {
-        Token::Operator(operator)
+    pub fn op_token(operator: BinaryOp) -> Token {
+        Token::BinaryOp(operator)
+    }
+
+    pub fn unary_op_token(operator: UnaryOp) -> Token {
+        Token::UnaryOp(operator)
     }
 
     pub fn id_token(data: &str) -> Token {

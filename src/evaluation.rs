@@ -1,4 +1,4 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, LetNode, Literal, Operator, OperatorNode, Program, Variable};
+use crate::models::{get_literal_type, AbstractSyntaxTree, LetNode, Literal, BinaryOp, OperatorNode, Program, Variable};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// Syntax errors will cause a panic and should be checked with the
@@ -45,21 +45,19 @@ fn eval_binary_op(program: &mut Program, node: &OperatorNode) -> Literal {
     let right = evaluate(program, &node.right);
 
     match node.operator {
-        Operator::Plus => eval_plus(left, right),
-        Operator::Minus =>
+        BinaryOp::Plus => eval_plus(left, right),
+        BinaryOp::Minus =>
             Literal::Int(literal_as_int(left) - literal_as_int(right)),
-        Operator::Star =>
+        BinaryOp::Star =>
             Literal::Int(literal_as_int(left) * literal_as_int(right)),
-        Operator::Slash =>
+        BinaryOp::Slash =>
             Literal::Int(literal_as_int(left) / literal_as_int(right)),
-        Operator::Percent =>
+        BinaryOp::Percent =>
             Literal::Int(literal_as_int(left) % literal_as_int(right)),
-        Operator::OneEq =>
-            panic!("operator '=' cannot be evaluated as a binary operator"),
 
         // these use the derived `PartialEq` trait on enum `Literal`
-        Operator::TwoEq => Literal::Bool(left == right),
-        Operator::NotEq => Literal::Bool(left != right),
+        BinaryOp::Equals => Literal::Bool(left == right),
+        BinaryOp::NotEq => Literal::Bool(left != right),
     }
 }
 

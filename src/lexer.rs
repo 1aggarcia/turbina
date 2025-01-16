@@ -1,10 +1,7 @@
 use regex::Regex;
 
 use crate::models::{
-    Token,
-    Literal,
-    Operator,
-    Type,
+    BinaryOp, Literal, Token, Type, UnaryOp
 };
 
 /// Parse source code text into a list of tokens according to the language's
@@ -23,7 +20,8 @@ pub fn tokenize(line: &str) -> Vec<Token> {
     let line_without_comments = line.split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
-        | (?P<op>==|!=|[+*\-/=%])
+        | (?P<binary_op>==|!=|[+*\-/%])
+        | (?P<unary_op>=)
         | (?P<fmt>[:;(),\[\]])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
@@ -37,9 +35,12 @@ pub fn tokenize(line: &str) -> Vec<Token> {
             if let Some(m) = x.name("int") {
                 let int_value = m.as_str().parse::<i32>().unwrap();
                 Token::Literal(Literal::Int(int_value))
-            } else if let Some(m) = x.name("op") {
-                let op = string_to_operator(m.as_str()).unwrap();
-                Token::Operator(op)
+            } else if let Some(m) = x.name("binary_op") {
+                let op = string_to_binary_op(m.as_str()).unwrap();
+                Token::BinaryOp(op)
+            } else if let Some(m) = x.name("unary_op") {
+                let op = string_to_unary_op(m.as_str()).unwrap();
+                Token::UnaryOp(op)
             } else if let Some(m) = x.name("fmt") {
                 Token::Formatter(m.as_str().to_string())
             } else if let Some(m) = x.name("bool") {
@@ -59,16 +60,23 @@ pub fn tokenize(line: &str) -> Vec<Token> {
     return tokens;
 }
 
-fn string_to_operator(string: &str) -> Option<Operator> {
+fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
     let op = match string {
-        "+" => Operator::Plus,
-        "-" => Operator::Minus,
-        "*" => Operator::Star,
-        "/" => Operator::Slash,
-        "%" => Operator::Percent,
-        "=" => Operator::OneEq,
-        "==" => Operator::TwoEq,
-        "!=" => Operator::NotEq,
+        "+" => BinaryOp::Plus,
+        "-" => BinaryOp::Minus,
+        "*" => BinaryOp::Star,
+        "/" => BinaryOp::Slash,
+        "%" => BinaryOp::Percent,
+        "==" => BinaryOp::Equals,
+        "!=" => BinaryOp::NotEq,
+        _ => return None,
+    };
+    return Some(op)
+}
+
+fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
+    let op = match string {
+        "=" => UnaryOp::Equals,
         _ => return None,
     };
     return Some(op)
@@ -144,22 +152,28 @@ mod tests {
     #[test]
     fn negative_int() {
         assert_eq!(tokenize("-9"), [
-            op_token(Operator::Minus),
+            op_token(BinaryOp::Minus),
             int_token(9),
         ]);
     }
 
     #[rstest]
-    #[case("+", Operator::Plus)]
-    #[case("-", Operator::Minus)]
-    #[case("*", Operator::Star)]
-    #[case("/", Operator::Slash)]
-    #[case("%", Operator::Percent)]
-    #[case("=", Operator::OneEq)]
-    #[case("==", Operator::TwoEq)]
-    #[case("!=", Operator::NotEq)]
-    fn operators(#[case] token: &str, #[case] op: Operator) {
+    #[case("+", BinaryOp::Plus)]
+    #[case("-", BinaryOp::Minus)]
+    #[case("*", BinaryOp::Star)]
+    #[case("/", BinaryOp::Slash)]
+    #[case("%", BinaryOp::Percent)]
+    #[case("==", BinaryOp::Equals)]
+    #[case("!=", BinaryOp::NotEq)]
+    fn binary_operators(#[case] token: &str, #[case] op: BinaryOp) {
         assert_eq!(tokenize(token), [op_token(op)]);
+    }
+
+    // this will include the ! operator in the future
+    #[rstest]
+    #[case("=", UnaryOp::Equals)]
+    fn unary_operators(#[case] token: &str, #[case] op: UnaryOp) {
+        assert_eq!(tokenize(token), [unary_op_token(op)]);
     }
 
     #[rstest]
@@ -177,16 +191,16 @@ mod tests {
     fn operators_and_numbers() {
         let expected_basic = [
             int_token(4),
-            op_token(Operator::Plus),
+            op_token(BinaryOp::Plus),
             int_token(5),
         ];
         assert_eq!(tokenize("4+5"),  expected_basic);
 
         let expected_long = [
             int_token(56),
-            op_token(Operator::Minus),
+            op_token(BinaryOp::Minus),
             int_token(439),
-            op_token(Operator::Percent),
+            op_token(BinaryOp::Percent),
             int_token(4),
         ];
         assert_eq!(tokenize("56-439%4"),  expected_long);
@@ -196,9 +210,9 @@ mod tests {
     fn operators_with_spaces() {
         let expected = [
             int_token(1),
-            op_token(Operator::Star),
+            op_token(BinaryOp::Star),
             int_token(2),
-            op_token(Operator::Plus),
+            op_token(BinaryOp::Plus),
             int_token(3),
         ];
         assert_eq!(tokenize("1* 2  +   3"), expected);
@@ -237,7 +251,7 @@ mod tests {
         let expected = [
             Token::Let,
             id_token("x"),
-            op_token(Operator::OneEq),
+            unary_op_token(UnaryOp::Equals),
             int_token(5),
             formatter_token(";")
         ];
@@ -251,7 +265,7 @@ mod tests {
             id_token("x"),
             formatter_token(":"),
             type_token(Type::Int),
-            op_token(Operator::OneEq),
+            unary_op_token(UnaryOp::Equals),
             int_token(5),
             formatter_token(";")
         ];
@@ -264,7 +278,7 @@ mod tests {
             id_token("print"),
             formatter_token("("),
             id_token("x"),
-            op_token(Operator::Plus),
+            op_token(BinaryOp::Plus),
             int_token(1),
             formatter_token(")"),
         ];

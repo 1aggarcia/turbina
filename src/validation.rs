@@ -1,6 +1,6 @@
 use crate::errors;
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, LetNode, Operator, OperatorNode, Program, Type
+    get_literal_type, AbstractSyntaxTree, LetNode, BinaryOp, OperatorNode, Program, Type
 };
 
 type ValidationResult = Result<Type, Vec<String>>;
@@ -51,29 +51,27 @@ fn validate_operator(
         return Err(vec![err]);
     }
 
-    let output_type = get_operator_ret_type(node.operator, left_type)?;
+    let output_type = binary_op_return_type(node.operator, left_type)?;
     return Ok(output_type);
 }
 
 /// Get the return type of a binary operator if `input_type` is valid,
 /// otherwise return a validation error
-fn get_operator_ret_type(operator: Operator, input_type: Type) -> ValidationResult {
+fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> ValidationResult {
     let type_error = errors::binary_op_types(operator, input_type, input_type);
     match operator {
-        Operator::OneEq => Ok(input_type),
-
         // equality operators
-        Operator::NotEq | Operator::TwoEq => Ok(Type::Bool),
+        BinaryOp::NotEq | BinaryOp::Equals => Ok(Type::Bool),
 
         // math operators
-        Operator::Plus => match input_type {
+        BinaryOp::Plus => match input_type {
             Type::String | Type::Int => Ok(input_type),
             _ => Err(vec![type_error])
         },
-        Operator::Minus
-        | Operator::Percent
-        | Operator::Slash
-        | Operator::Star => if input_type == Type::Int {
+        BinaryOp::Minus
+        | BinaryOp::Percent
+        | BinaryOp::Slash
+        | BinaryOp::Star => if input_type == Type::Int {
             Ok(Type::Int)
         } else {
             Err(vec![type_error])
@@ -154,14 +152,14 @@ mod test_validate {
         use super::*;
 
         #[rstest]
-        #[case("3 + \"\"", Operator::Plus, Type::Int, Type::String)]
-        #[case("\"\" - \"\"", Operator::Minus, Type::String, Type::String)]
-        #[case("true % false", Operator::Percent, Type::Bool, Type::Bool)]
-        #[case("0 == false", Operator::TwoEq, Type::Int, Type::Bool)]
-        #[case("\"\" != 1", Operator::NotEq, Type::String, Type::Int)]
+        #[case("3 + \"\"", BinaryOp::Plus, Type::Int, Type::String)]
+        #[case("\"\" - \"\"", BinaryOp::Minus, Type::String, Type::String)]
+        #[case("true % false", BinaryOp::Percent, Type::Bool, Type::Bool)]
+        #[case("0 == false", BinaryOp::Equals, Type::Int, Type::Bool)]
+        #[case("\"\" != 1", BinaryOp::NotEq, Type::String, Type::Int)]
         fn it_returns_error_for_illegal_types(
             #[case] input: &str,
-            #[case] op: Operator,
+            #[case] op: BinaryOp,
             #[case] left_type: Type,
             #[case] right_type: Type
         ) {

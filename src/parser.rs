@@ -1,10 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree,
-    LetNode,
-    Literal,
-    Operator,
-    OperatorNode,
-    Token,
+    AbstractSyntaxTree, BinaryOp, LetNode, Literal, OperatorNode, Token, UnaryOp
 };
 
 use crate::errors::{self, token_not_allowed};
@@ -45,7 +40,7 @@ fn parse_remaining(
         Token::Let => build_let_node(&tokens, position + 1),
         // add more keyword cases...
 
-        Token::Operator(o) =>
+        Token::BinaryOp(o) =>
             parse_leading_operator(&o, &tokens, position + 1),
         _ => return Err(token_not_allowed(head)),
     }
@@ -57,13 +52,13 @@ fn parse_remaining(
 /// 
 /// first token after operator indicated by `position`
 fn parse_leading_operator(
-    operator: &Operator,
+    operator: &BinaryOp,
     tokens: &Vec<Token>,
     position: usize
 ) -> Result<AbstractSyntaxTree, String> {
     match operator {
-        Operator::Minus => {},
-        _ => return Err(token_not_allowed(Token::Operator(*operator)))
+        BinaryOp::Minus => {},
+        _ => return Err(token_not_allowed(Token::BinaryOp(*operator)))
     };
 
     // TODO: support variable length expressions /w parenthesis
@@ -87,9 +82,7 @@ fn build_binary_node(
 ) -> Result<AbstractSyntaxTree, String> {
     let operator_token = get_token(tokens, position)?;
     let operator = match operator_token {
-        Token::Operator(Operator::OneEq) =>
-            return Err(errors::token_not_allowed(operator_token)),
-        Token::Operator(o) => o,
+        Token::BinaryOp(o) => o,
         _ => return Err(
             errors::unexpected_token("binary operator", operator_token)
         ),
@@ -147,7 +140,7 @@ fn build_let_node(
 
     let equals_token = get_token(tokens, idx)?;
     match equals_token {
-        Token::Operator(Operator::OneEq) => {},
+        Token::UnaryOp(UnaryOp::Equals) => {},
         _ => return Err(errors::unexpected_token("'='", equals_token))
     };
 
@@ -202,22 +195,22 @@ mod test_parse {
     }
 
     #[rstest]
-    #[case(op_token(Operator::Plus))]
-    #[case(op_token(Operator::Minus))]
-    #[case(op_token(Operator::OneEq))]
+    #[case(op_token(BinaryOp::Plus))]
+    #[case(op_token(BinaryOp::Minus))]
+    #[case(unary_op_token(UnaryOp::Equals))]
     fn it_returns_error_for_one_operator(#[case] op: Token) {
         assert_eq!(parse(vec![op]), Err(errors::unexpected_end_of_input()));
     }
 
     #[rstest]
-    #[case(tokenize("3 + 2"), Operator::Plus, 3, 2)]
-    #[case(tokenize("1 % 4"), Operator::Percent, 1, 4)]
-    #[case(tokenize("1 - 8"), Operator::Minus, 1, 8)]
-    #[case(tokenize("0 == 1"), Operator::TwoEq, 0, 1)]
-    #[case(tokenize("2 != 3"), Operator::NotEq, 2, 3)]
+    #[case(tokenize("3 + 2"), BinaryOp::Plus, 3, 2)]
+    #[case(tokenize("1 % 4"), BinaryOp::Percent, 1, 4)]
+    #[case(tokenize("1 - 8"), BinaryOp::Minus, 1, 8)]
+    #[case(tokenize("0 == 1"), BinaryOp::Equals, 0, 1)]
+    #[case(tokenize("2 != 3"), BinaryOp::NotEq, 2, 3)]
     fn it_parses_binary_expressions(
         #[case] input: Vec<Token>,
-        #[case] operator: Operator,
+        #[case] operator: BinaryOp,
         #[case] left_val: i32,
         #[case] right_val: i32,
     ) {
@@ -259,7 +252,7 @@ mod test_parse {
     fn it_parses_string_plus_string() {
         let input = tokenize("\"a\" + \"b\"");
 
-        let operator = Operator::Plus;
+        let operator = BinaryOp::Plus;
         let left = Box::new(
             AbstractSyntaxTree::Literal(Literal::String("a".to_string()))
         );
@@ -297,7 +290,10 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_equals_in_let_expr() {
         let input = tokenize("let x = 1 = 0");
-        let error = errors::token_not_allowed(Token::Operator(Operator::OneEq));
+        let error = errors::unexpected_token(
+            "binary operator",
+            Token::UnaryOp(UnaryOp::Equals)
+        );
         assert_eq!(parse(input), Err(error)); 
     }
 
@@ -321,7 +317,7 @@ mod test_parse {
             datatype: Some(Type::String),
             value: Box::new(parse(vec![
                 string_token("a"),
-                op_token(Operator::Plus),
+                op_token(BinaryOp::Plus),
                 string_token("b")
             ]).unwrap()),
         };
