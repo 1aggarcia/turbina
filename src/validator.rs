@@ -117,7 +117,7 @@ fn combine_errors(res1: &ValidationResult, res2: &ValidationResult) -> Vec<Strin
 #[cfg(test)]
 mod test_validate {
     use rstest::rstest;
-    use crate::{lexer::*, models::*, parser::*, validation::*};
+    use crate::{lexer::*, models::*, parser::*, validator::*};
 
     #[rstest]
     #[case(Literal::Int(3))]
