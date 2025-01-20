@@ -21,7 +21,7 @@ pub fn tokenize(line: &str) -> Vec<Token> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<binary_op>==|!=|[+*\-/%])
-        | (?P<unary_op>=)
+        | (?P<unary_op>[=!])
         | (?P<fmt>[:;(),\[\]])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
@@ -77,6 +77,7 @@ fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
 fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
     let op = match string {
         "=" => UnaryOp::Equals,
+        "!" => UnaryOp::Not,
         _ => return None,
     };
     return Some(op)
@@ -172,8 +173,20 @@ mod tests {
     // this will include the ! operator in the future
     #[rstest]
     #[case("=", UnaryOp::Equals)]
+    #[case("!", UnaryOp::Not)]
     fn unary_operators(#[case] token: &str, #[case] op: UnaryOp) {
         assert_eq!(tokenize(token), [unary_op_token(op)]);
+    }
+
+    #[test]
+    fn repeated_not() {
+        assert_eq!(tokenize("!!!false!"), vec![
+            unary_op_token(UnaryOp::Not),
+            unary_op_token(UnaryOp::Not),
+            unary_op_token(UnaryOp::Not),
+            bool_token(false),
+            unary_op_token(UnaryOp::Not),
+        ])
     }
 
     #[rstest]

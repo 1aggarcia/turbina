@@ -86,12 +86,14 @@ impl fmt::Debug for BinaryOp {
 #[derive(PartialEq, Clone)]
 pub enum UnaryOp {
     Equals,
+    Not,
 }
 
 impl fmt::Debug for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
             Self::Equals => "=",
+            Self::Not => "!",
         };
         write!(f, "{string}")?;
         Ok(())
