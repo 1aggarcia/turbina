@@ -4,6 +4,38 @@ use crate::models::{
 
 use crate::errors::{self, token_not_allowed};
 
+/// Abstract Data Type used internally by the parser to facilitate tracking
+/// token position and end-of-stream errors
+struct TokenStream {
+    tokens: Vec<Token>,
+    position: usize,
+}
+
+impl TokenStream {
+    fn new(tokens: Vec<Token>) -> Self {
+        Self { tokens, position: 0 }
+    }
+
+    fn has_next(&self) -> bool {
+        self.position < self.tokens.len()
+    }
+
+    /// Advances to the next token and returns the current one
+    fn pop(&mut self) -> Result<Token, String> {
+        let token = self.peek()?;
+        self.position += 1;
+        return Ok(token);
+    }
+
+    /// Returns the token currently being pointed to
+    fn peek(&self) -> Result<Token, String> {
+        match self.tokens.get(self.position) {
+            Some(token) => Ok(token.clone()),
+            None => Err(errors::unexpected_end_of_input()),
+        }
+    }
+}
+
 /// Convert a sequence of tokens into an abstract syntax tree.
 /// 
 /// The tokens should represent exactly one statement and therefore one syntax
@@ -12,36 +44,29 @@ use crate::errors::{self, token_not_allowed};
 /// 
 /// A syntax error is returned for any syntactical errors in the token sequence
 pub fn parse(tokens: Vec<Token>) -> Result<AbstractSyntaxTree, String> {
-    return parse_remaining(&tokens, 0);
+    let mut stream = TokenStream::new(tokens);
+    return parse_stream(&mut stream);
 }
 
-/// Parse tokens starting at position `position`. Some keywords (like "let")
-/// are only allowed in the first position
-fn parse_remaining(
-    tokens: &Vec<Token>,
-    position: usize
-) -> Result<AbstractSyntaxTree, String> {
+/// Parent function to parse a token stream
+fn parse_stream(tokens: &mut TokenStream) -> Result<AbstractSyntaxTree, String> {
     // first token determines the type of the root node
-    let head = get_token(tokens, position)?;
+    let head = tokens.pop()?;
 
     let head_as_leaf = token_to_leaf(&head);
-    if tokens.len() == position + 1 {
-        return match head_as_leaf {
-            Some(leaf) => Ok(leaf),
-            None => Err(errors::unexpected_end_of_input()) 
-        };
+    if !tokens.has_next() {
+        return head_as_leaf.ok_or(errors::unexpected_end_of_input());
     }
 
     match head {
         Token::Literal(_) =>
-            build_binary_node(head_as_leaf.unwrap(), &tokens, position + 1),
+            build_binary_node(head_as_leaf.unwrap(), tokens),
         Token::Id(_) =>
-            build_binary_node(head_as_leaf.unwrap(), &tokens, position + 1),
-        Token::Let => build_let_node(&tokens, position + 1),
+            build_binary_node(head_as_leaf.unwrap(), tokens),
+        Token::Let => build_let_node(tokens),
         // add more keyword cases...
 
-        Token::BinaryOp(o) =>
-            parse_leading_operator(&o, &tokens, position + 1),
+        Token::BinaryOp(o) => parse_leading_operator(&o, tokens),
         _ => return Err(token_not_allowed(head)),
     }
 }
@@ -49,12 +74,9 @@ fn parse_remaining(
 /// Try to create an AST with a leading operator.
 /// This only works for tokens representing negative numbers (e.g. -1),
 /// will fail in all other cases.
-/// 
-/// first token after operator indicated by `position`
 fn parse_leading_operator(
     operator: &BinaryOp,
-    tokens: &Vec<Token>,
-    position: usize
+    tokens: &mut TokenStream
 ) -> Result<AbstractSyntaxTree, String> {
     match operator {
         BinaryOp::Minus => {},
@@ -62,7 +84,7 @@ fn parse_leading_operator(
     };
 
     // TODO: support variable length expressions /w parenthesis
-    let value_token = &tokens[position];
+    let value_token = &tokens.pop()?;
     let value = match value_token {
         Token::Literal(Literal::Int(i)) => i,
         _ => return Err(errors::unexpected_token("int", value_token.clone())),
@@ -72,15 +94,12 @@ fn parse_leading_operator(
 }
 
 /// Create a AST for a binary operator given the left argument and
-/// the remaining tokens (indicated by `position`).
-/// 
-/// tokens[position] should be the first token after `left_arg`
+/// the remaining tokens
 fn build_binary_node(
     left_arg: AbstractSyntaxTree,
-    tokens: &Vec<Token>,
-    position: usize
+    tokens: &mut TokenStream
 ) -> Result<AbstractSyntaxTree, String> {
-    let operator_token = get_token(tokens, position)?;
+    let operator_token = tokens.pop()?;
     let operator = match operator_token {
         Token::BinaryOp(o) => o,
         _ => return Err(
@@ -89,7 +108,7 @@ fn build_binary_node(
     };
 
     // TODO: handle infinite args, not just one
-    let right_token = get_token(tokens, position + 1)?;
+    let right_token = tokens.pop()?;
     let right_arg = match token_to_leaf(&right_token) {
         Some(t) => t,
         None => return Err(errors::token_not_allowed(right_token))
@@ -104,32 +123,27 @@ fn build_binary_node(
 }
 
 /// Create an AST for the "let" keyword given the remaining tokens
-/// (first token indicated by `position`)
-fn build_let_node(
-    tokens: &Vec<Token>,
-    position: usize
-) -> Result<AbstractSyntaxTree, String> {
-    if position != 1 {
+fn build_let_node(tokens: &mut TokenStream) -> Result<AbstractSyntaxTree, String> {
+    // TODO: eliminate this explicit `position` check by
+    // parsing statements and expressions seperatly
+    if tokens.position != 1 {
         return Err(errors::token_not_allowed(Token::Let));
     }
-    let mut idx = position;
 
-    let id_token = get_token(tokens, idx)?;
+    let id_token = tokens.pop()?;
     let id = match id_token {
         Token::Id(s) => s.to_string(),
         _ => return Err(errors::unexpected_token("identifier", id_token))
     };
 
-    idx += 1;
     // look for optional declared type (e.g. ": int")
-    let is_token_colon = match get_token(tokens, idx)? {
+    let is_token_colon = match tokens.peek()? {
         Token::Formatter(ref f) if f == ":" => true,
         _ => false,
     };
     let datatype = if is_token_colon {
-        idx += 1;
-        let type_token = get_token(tokens, idx)?;
-        idx += 1;
+        tokens.pop()?;
+        let type_token = tokens.pop()?;
         match type_token {
             Token::Type(t) => Some(t.to_owned()),
             _ => return Err(errors::not_a_type(type_token)) 
@@ -138,14 +152,13 @@ fn build_let_node(
         None
     };
 
-    let equals_token = get_token(tokens, idx)?;
+    let equals_token = tokens.pop()?;
     match equals_token {
         Token::UnaryOp(UnaryOp::Equals) => {},
         _ => return Err(errors::unexpected_token("'='", equals_token))
     };
 
-    idx += 1;
-    let value_node = parse_remaining(tokens, idx)?;
+    let value_node = parse_stream(tokens)?;
 
     let node = LetNode { id, datatype, value: Box::new(value_node) };
     return Ok(AbstractSyntaxTree::Let(node));
@@ -159,13 +172,33 @@ fn token_to_leaf(token: &Token) -> Option<AbstractSyntaxTree> {
     }
 }
 
-/// Safe way to retreive a token at a specific location.
-/// Makes it easy to propagate errors by adding the `?` operator at the end of
-/// invocations.
-fn get_token(tokens: &Vec<Token>, position: usize) -> Result<Token, String> {
-    match tokens.get(position) {
-        Some(token) => Ok(token.clone()),
-        None => Err(errors::unexpected_end_of_input()),
+#[cfg(test)]
+mod test_token_stream {
+    use super::*;
+    use crate::models::test_utils::id_token;
+
+    #[test]
+    fn test_has_next_is_false_for_empty_stream() {
+        let mut stream = TokenStream::new(vec![]);
+        assert_eq!(stream.has_next(), false);
+        assert_eq!(stream.pop(), Err(errors::unexpected_end_of_input()));
+    }
+
+    #[test]
+    fn test_has_next_is_true_for_non_empty_stream() {
+        let mut stream = TokenStream::new(vec![id_token("data")]);
+        assert_eq!(stream.has_next(), true);
+        assert_eq!(stream.pop(), Ok(id_token("data")));
+    }
+
+    #[test]
+    fn test_peek_doesnt_consume_data() {
+        let mut stream = TokenStream::new(vec![id_token("data")]);
+        assert_eq!(stream.peek(), Ok(id_token("data")));
+        assert_eq!(stream.has_next(), true);
+        assert_eq!(stream.pop(), Ok(id_token("data")));
+        assert_eq!(stream.has_next(), false);
+        assert_eq!(stream.peek(), Err(errors::unexpected_end_of_input()));
     }
 }
 
