@@ -18,13 +18,16 @@ pub fn validate(
     }
 }
 
+/// For symbols (ID tokens), check that they exist and their type matches any
+/// unary operators applied (! and -).
+/// 
+/// For literals, check that the type matches any unary operators.
 fn validate_term(program: &Program, term: &Term) -> ValidationResult {
-    // TODO: also check for negations
     match term {
         Term::Literal(lit) => Ok(get_literal_type(&lit)),
         Term::Id(id) => validate_id(program, &id),
-        Term::Not(term) => validate_term(program, term),
-        Term::Minus(term) => validate_term(program, term),
+        Term::Not(term) => validate_negated_bool(program, term),
+        Term::Minus(term) => validated_negated_int(program, term),
     }
 }
 
@@ -36,6 +39,24 @@ fn validate_id(program: &Program, id: &String) -> ValidationResult {
     }
     let var = program.vars.get(id).unwrap();
     return Ok(var.datatype);
+}
+
+/// Check that the passed in term is a boolean
+fn validate_negated_bool(program: &Program, inner_term: &Term) -> ValidationResult {
+    let datatype = validate_term(program, inner_term)?;
+    match datatype {
+        Type::Bool => Ok(datatype),
+        _ => Err(vec![errors::unary_op_type("!", datatype)])
+    }
+}
+
+/// Check that the passed in term is an int
+fn validated_negated_int(program: &Program, inner_term: &Term) -> ValidationResult {
+    let datatype = validate_term(program, inner_term)?;
+    match datatype {
+        Type::Int=> Ok(datatype),
+        _ => Err(vec![errors::unary_op_type("-", datatype)])
+    }
 }
 
 /// Check that the types of both arguments of the operator are legal
@@ -129,33 +150,50 @@ mod test_validate {
     use test_utils::term_tree;
     use crate::{lexer::*, models::*, parser::*, validator::*};
 
-    #[rstest]
-    #[case(Literal::Int(3))]
-    #[case(Literal::String("asdf".to_string()))]
-    #[case(Literal::Bool(false))]
-    fn returns_ok_for_literals(#[case] literal: Literal) {
-        let tree = term_tree(Term::Literal(literal.clone()));
-        let expected = get_literal_type(&literal);
-        assert_eq!(validate(&Program::new(), &tree), Ok(expected));
-    }
+    mod term {
+        use super::*;
 
-    #[test]
-    fn it_returns_ok_for_valid_symbol() {
-        let tree = make_tree("x");
-        let mut program = Program::new();
-        program.vars.insert("x".to_string(), Variable {
-            datatype: Type::Int,
-            value: Literal::Int(3),
-        });
+        #[rstest]
+        #[case(Literal::Int(3))]
+        #[case(Literal::String("asdf".to_string()))]
+        #[case(Literal::Bool(false))]
+        fn returns_ok_for_literals(#[case] literal: Literal) {
+            let tree = term_tree(Term::Literal(literal.clone()));
+            let expected = get_literal_type(&literal);
+            assert_eq!(validate(&Program::new(), &tree), Ok(expected));
+        }
 
-        assert_eq!(validate(&program, &tree), Ok(Type::Int));
-    }
+        #[test]
+        fn it_returns_ok_for_valid_symbol() {
+            let tree = make_tree("x");
+            let mut program = Program::new();
+            program.vars.insert("x".to_string(), Variable {
+                datatype: Type::Int,
+                value: Literal::Int(3),
+            });
 
-    #[test]
-    fn it_returns_error_for_non_existent_symbol() {
-        let tree = make_tree("x");
-        let expected = vec![errors::undefined_id("x")];
-        assert_eq!(validate(&Program::new(), &tree), Err(expected));
+            assert_eq!(validate(&program, &tree), Ok(Type::Int));
+        }
+
+        #[test]
+        fn it_returns_error_for_non_existent_symbol() {
+            let tree = make_tree("x");
+            let expected = vec![errors::undefined_id("x")];
+            assert_eq!(validate(&Program::new(), &tree), Err(expected));
+        }
+
+        #[rstest]
+        #[case("!3", errors::unary_op_type("!", Type::Int))]
+        #[case("!\"str\"", errors::unary_op_type("!", Type::String))]
+        #[case("-false", errors::unary_op_type("-", Type::Bool))]
+        #[case("-\"str\"", errors::unary_op_type("-", Type::String))]
+        fn it_returns_error_for_bad_negated_types(
+            #[case] input: &str,
+            #[case] error: String,
+        ) {
+            let tree = make_tree(input);
+            assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
+        }
     }
 
     mod operator {

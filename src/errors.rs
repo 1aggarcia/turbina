@@ -52,3 +52,7 @@ pub fn declared_type(id: &str, declared: Type, expression: Type) -> String {
 pub fn not_a_type(token: Token) -> String {
     format!("{TYPE_ERROR}'{:?}' is not a valid type", token)
 }
+
+pub fn unary_op_type(operator: &str, datatype: Type) -> String {
+    format!("{TYPE_ERROR}Cannot apply {} to token of type {:?}", operator, datatype)
+}

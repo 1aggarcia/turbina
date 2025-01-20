@@ -13,12 +13,20 @@ pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
 }
 
 fn eval_term(program: &mut Program, term: &Term) -> Literal {
-    // TODO: handle negations
-    match &term {
+    #[inline(always)]
+    fn eval_negated(program: &mut Program, inner_term: &Term) -> Literal {
+        let inner_result = eval_term(program, inner_term);
+        match inner_result {
+            Literal::Bool(bool) => Literal::Bool(!bool),
+            Literal::Int(int) => Literal::Int(-int),
+            _ => panic!("expected bool or int, got {:?}", inner_result)
+        }
+    }
+
+    match term {
         Term::Literal(lit) => lit.clone(),
         Term::Id(id) => eval_id(program, id),
-        Term::Not(term) => eval_term(program, term),
-        Term::Minus(term) => eval_term(program, term),
+        Term::Not(t) | Term::Minus(t) => eval_negated(program, t),
     }
 }
 
@@ -114,6 +122,15 @@ mod test_evalutate {
     fn it_returns_input_on_literals(#[case] literal: Literal) {
         let input = term_tree(Term::Literal(literal.clone()));
         assert_eq!(evaluate_fresh(&input), literal);
+    }
+
+    #[rstest]
+    #[case("!false", Literal::Bool(true))]
+    #[case("!true", Literal::Bool(false))]
+    #[case("-15", Literal::Int(-15))]
+    fn it_negates_literals(#[case] input: &str, #[case] expected: Literal) {
+        let tree = make_tree(input);
+        assert_eq!(evaluate_fresh(&tree), expected);
     }
 
     #[test]
