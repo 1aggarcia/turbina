@@ -1,6 +1,6 @@
 use crate::errors;
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, OperatorNode, Program, Term, TermNode, Type
+    get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, OperatorNode, Program, Term, Type
 };
 
 type ValidationResult = Result<Type, Vec<String>>;
@@ -12,17 +12,19 @@ pub fn validate(
     program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
     match tree {
-        AbstractSyntaxTree::Term(node) => validate_term(program, node),
+        AbstractSyntaxTree::Term(term) => validate_term(program, term),
         AbstractSyntaxTree::Operator(node) => validate_operator(program, node),
         AbstractSyntaxTree::Let(node) => validate_let(program, node),
     }
 }
 
-fn validate_term(program: &Program, node: &TermNode) -> ValidationResult {
+fn validate_term(program: &Program, term: &Term) -> ValidationResult {
     // TODO: also check for negations
-    match node.term.clone() {
+    match term {
         Term::Literal(lit) => Ok(get_literal_type(&lit)),
         Term::Id(id) => validate_id(program, &id),
+        Term::Not(term) => validate_term(program, term),
+        Term::Minus(term) => validate_term(program, term),
     }
 }
 

@@ -102,7 +102,7 @@ impl fmt::Debug for UnaryOp {
 
 #[derive(PartialEq)]
 pub enum AbstractSyntaxTree {
-    Term(TermNode),
+    Term(Term),
     Let(LetNode),
     Operator(OperatorNode),
 }
@@ -123,15 +123,8 @@ fn pretty_print(
 ) {
     let indent_str = " ".repeat(indent * 2);
     match node {
-        AbstractSyntaxTree::Term(node) => {
-            writeln!(
-                f,
-                "{}{}{}{:?}",
-                indent_str,
-                if node.is_negated { "!" } else { "" },
-                if node.is_negative { "-" } else { "" },
-                node.term
-            ).unwrap()
+        AbstractSyntaxTree::Term(term) => {
+            writeln!(f, "{}{:?}", indent_str, term).unwrap()
         },
         AbstractSyntaxTree::Operator(node) => {
             writeln!(f, "{}{:?}", indent_str, node.operator).unwrap();
@@ -149,21 +142,24 @@ fn pretty_print(
     }
 }
 
-// TODO:
-// This is a terrible way to represent this, only bools can be negated
-// and only ints can be negative. ID tokens make enforcing this difficult,
-// represent this in some other way
-#[derive(PartialEq)]
-pub struct TermNode {
-    pub is_negated: bool,
-    pub is_negative: bool,
-    pub term: Term,
-}
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Term {
     Literal(Literal),
     Id(String),
+    Not(Box<Term>),  // negate boolean terms
+    Minus(Box<Term>),  // negate int terms
+}
+
+// to make construction easier
+impl Term {
+    pub fn negative_int(term: Term) -> Self {
+        Self::Minus(Box::new(term))
+    }
+
+    pub fn negated_bool(term: Term) -> Self {
+        Self::Not(Box::new(term))
+    }
 }
 
 /// For binary operators
@@ -218,8 +214,6 @@ pub mod test_utils {
     }
 
     pub fn term_tree(term: Term) -> AbstractSyntaxTree {
-        AbstractSyntaxTree::Term(
-            TermNode { is_negated: false, is_negative: false, term }
-        )
+        AbstractSyntaxTree::Term(term)
     }
 }

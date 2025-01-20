@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryOp, LetNode, OperatorNode, Term, TermNode, Token, UnaryOp
+    AbstractSyntaxTree, BinaryOp, LetNode, OperatorNode, Term, Token, UnaryOp
 };
 
 use crate::errors::{self, token_not_allowed};
@@ -82,27 +82,34 @@ fn parse_expression(tokens: &mut TokenStream) -> ParseResult {
 fn parse_term(tokens: &mut TokenStream) -> ParseResult {
     let first = tokens.peek()?;
 
-    let mut is_negated = false;
-    let mut is_negative = false;
+    let mut starts_with_not = false;
+    let mut starts_with_minus = false;
     if first == Token::UnaryOp(UnaryOp::Not) {
-        is_negated = true;
+        starts_with_not = true;
         tokens.pop()?;
     } else if first == Token::BinaryOp(BinaryOp::Minus) {
-        is_negative = true;
+        starts_with_minus = true;
         tokens.pop()?;
     }
 
-    let term_token = tokens.pop()?;
-    let term = match term_token {
+    let value_token = tokens.pop()?;
+    let value = match value_token {
         Token::Literal(lit) => Term::Literal(lit),
         Token::Id(id) => Term::Id(id),
         _ => return Err(
-            errors::unexpected_token("identifier or literal", term_token)
+            errors::unexpected_token("identifier or literal", value_token)
         ),
     };
 
-    let node = TermNode { is_negated, is_negative, term };
-    return Ok(AbstractSyntaxTree::Term(node));
+    let wrapped_term = if starts_with_not {
+        Term::negated_bool(value)
+    } else if starts_with_minus {
+        Term::negative_int(value)
+    } else {
+        value
+    };
+
+    return Ok(AbstractSyntaxTree::Term(wrapped_term));
 }
 
 /// Create a AST for a binary operator given the left argument and
@@ -274,15 +281,19 @@ mod test_parse {
     #[case(tokenize("- 123"), -123)]
     fn it_parses_negavite_numbers(
         #[case] input: Vec<Token>,
-        #[case] expected_val: i32
+        #[case] negative_num: i32
     ) {
-        let node = TermNode {
-            is_negated: false,
-            is_negative: true,
-            term: Term::Literal(Literal::Int(expected_val * -1)),
-        };
-        let expected = AbstractSyntaxTree::Term(node);
+        let inner_term = Term::Literal(Literal::Int(negative_num * -1));
+        let term = Term::negative_int(inner_term);
+        let expected = AbstractSyntaxTree::Term(term);
         assert_eq!(parse(input), Ok(expected));
+    }
+
+    #[test]
+    fn it_parses_negated_boolean() {
+        let term = Term::negated_bool(Term::Id("someVariable".into()));
+        let expected = AbstractSyntaxTree::Term(term);
+        assert_eq!(parse(tokenize("!someVariable")), Ok(expected));
     }
 
     #[test]

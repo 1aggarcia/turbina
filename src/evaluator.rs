@@ -1,4 +1,4 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, Literal, OperatorNode, Program, Term, TermNode, Variable};
+use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, Literal, OperatorNode, Program, Term, Variable};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// Syntax errors will cause a panic and should be checked with the
@@ -6,17 +6,19 @@ use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, Lit
 pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
     // TODO: use Result type for runtime errors
     match tree {
-        AbstractSyntaxTree::Term(node) => eval_term(program, node),
+        AbstractSyntaxTree::Term(term) => eval_term(program, term),
         AbstractSyntaxTree::Let(node) => eval_let(program, node),
         AbstractSyntaxTree::Operator(node) => eval_binary_op(program, node),
     }
 }
 
-fn eval_term(program: &mut Program, node: &TermNode) -> Literal {
+fn eval_term(program: &mut Program, term: &Term) -> Literal {
     // TODO: handle negations
-    match &node.term {
+    match &term {
         Term::Literal(lit) => lit.clone(),
         Term::Id(id) => eval_id(program, id),
+        Term::Not(term) => eval_term(program, term),
+        Term::Minus(term) => eval_term(program, term),
     }
 }
 
