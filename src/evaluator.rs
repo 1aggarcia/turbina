@@ -1,4 +1,4 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, LetNode, Literal, BinaryOp, OperatorNode, Program, Variable};
+use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, Literal, OperatorNode, Program, Term, TermNode, Variable};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// Syntax errors will cause a panic and should be checked with the
@@ -6,10 +6,17 @@ use crate::models::{get_literal_type, AbstractSyntaxTree, LetNode, Literal, Bina
 pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
     // TODO: use Result type for runtime errors
     match tree {
-        AbstractSyntaxTree::Literal(lit) => lit.clone(),
-        AbstractSyntaxTree::Id(id) => eval_id(program, id),
+        AbstractSyntaxTree::Term(node) => eval_term(program, node),
         AbstractSyntaxTree::Let(node) => eval_let(program, node),
         AbstractSyntaxTree::Operator(node) => eval_binary_op(program, node),
+    }
+}
+
+fn eval_term(program: &mut Program, node: &TermNode) -> Literal {
+    // TODO: handle negations
+    match &node.term {
+        Term::Literal(lit) => lit.clone(),
+        Term::Id(id) => eval_id(program, id),
     }
 }
 
@@ -93,7 +100,7 @@ fn literal_to_string(literal: Literal) -> Option<String> {
 
 #[cfg(test)]
 mod test_evalutate {
-    use crate::{lexer::tokenize, models::{Type, Variable}, parser::parse};
+    use crate::{lexer::tokenize, models::{test_utils::term_tree, Type, Variable}, parser::parse};
 
     use super::*;
     use rstest::rstest;
@@ -103,7 +110,7 @@ mod test_evalutate {
     #[case(Literal::Int(5))]
     #[case(Literal::String("so many tesssssts".to_string()))]
     fn it_returns_input_on_literals(#[case] literal: Literal) {
-        let input = AbstractSyntaxTree::Literal(literal.clone());
+        let input = term_tree(Term::Literal(literal.clone()));
         assert_eq!(evaluate_fresh(&input), literal);
     }
 

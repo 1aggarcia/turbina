@@ -102,12 +102,9 @@ impl fmt::Debug for UnaryOp {
 
 #[derive(PartialEq)]
 pub enum AbstractSyntaxTree {
+    Term(TermNode),
     Let(LetNode),
     Operator(OperatorNode),
-
-    // leaf nodes
-    Literal(Literal),
-    Id(String),
 }
 
 impl fmt::Debug for AbstractSyntaxTree {
@@ -126,11 +123,15 @@ fn pretty_print(
 ) {
     let indent_str = " ".repeat(indent * 2);
     match node {
-        AbstractSyntaxTree::Literal(lit) => {
-            writeln!(f, "{}{:?}", indent_str, lit).unwrap()
-        },
-        AbstractSyntaxTree::Id(id) => {
-            writeln!(f, "{}{}", indent_str, id).unwrap()
+        AbstractSyntaxTree::Term(node) => {
+            writeln!(
+                f,
+                "{}{}{}{:?}",
+                indent_str,
+                if node.is_negated { "!" } else { "" },
+                if node.is_negative { "-" } else { "" },
+                node.term
+            ).unwrap()
         },
         AbstractSyntaxTree::Operator(node) => {
             writeln!(f, "{}{:?}", indent_str, node.operator).unwrap();
@@ -146,6 +147,23 @@ fn pretty_print(
             pretty_print(f, &node.value, indent + 1);
         }
     }
+}
+
+// TODO:
+// This is a terrible way to represent this, only bools can be negated
+// and only ints can be negative. ID tokens make enforcing this difficult,
+// represent this in some other way
+#[derive(PartialEq)]
+pub struct TermNode {
+    pub is_negated: bool,
+    pub is_negative: bool,
+    pub term: Term,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum Term {
+    Literal(Literal),
+    Id(String),
 }
 
 /// For binary operators
@@ -197,5 +215,11 @@ pub mod test_utils {
 
     pub fn type_token(datatype: Type) -> Token {
         Token::Type(datatype)
+    }
+
+    pub fn term_tree(term: Term) -> AbstractSyntaxTree {
+        AbstractSyntaxTree::Term(
+            TermNode { is_negated: false, is_negative: false, term }
+        )
     }
 }

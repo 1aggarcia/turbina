@@ -1,6 +1,6 @@
 use crate::errors;
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, LetNode, BinaryOp, OperatorNode, Program, Type
+    get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, OperatorNode, Program, Term, TermNode, Type
 };
 
 type ValidationResult = Result<Type, Vec<String>>;
@@ -12,10 +12,17 @@ pub fn validate(
     program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
     match tree {
-        AbstractSyntaxTree::Literal(literal) => Ok(get_literal_type(literal)),
-        AbstractSyntaxTree::Id(id) => validate_id(program, id),
+        AbstractSyntaxTree::Term(node) => validate_term(program, node),
         AbstractSyntaxTree::Operator(node) => validate_operator(program, node),
         AbstractSyntaxTree::Let(node) => validate_let(program, node),
+    }
+}
+
+fn validate_term(program: &Program, node: &TermNode) -> ValidationResult {
+    // TODO: also check for negations
+    match node.term.clone() {
+        Term::Literal(lit) => Ok(get_literal_type(&lit)),
+        Term::Id(id) => validate_id(program, &id),
     }
 }
 
@@ -117,6 +124,7 @@ fn combine_errors(res1: &ValidationResult, res2: &ValidationResult) -> Vec<Strin
 #[cfg(test)]
 mod test_validate {
     use rstest::rstest;
+    use test_utils::term_tree;
     use crate::{lexer::*, models::*, parser::*, validator::*};
 
     #[rstest]
@@ -124,7 +132,7 @@ mod test_validate {
     #[case(Literal::String("asdf".to_string()))]
     #[case(Literal::Bool(false))]
     fn returns_ok_for_literals(#[case] literal: Literal) {
-        let tree = AbstractSyntaxTree::Literal(literal.clone());
+        let tree = term_tree(Term::Literal(literal.clone()));
         let expected = get_literal_type(&literal);
         assert_eq!(validate(&Program::new(), &tree), Ok(expected));
     }
