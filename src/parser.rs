@@ -2,9 +2,10 @@ use crate::models::{
     AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Term, Token, UnaryOp
 };
 
-use crate::errors;
+use crate::interpreter_error::IntepreterError;
+use crate::interpreter_error as errors;
 
-type ParseResult = Result<AbstractSyntaxTree, String>;
+type ParseResult = Result<AbstractSyntaxTree, IntepreterError>;
 
 /// Abstract Data Type used internally by the parser to facilitate tracking
 /// token position and end-of-stream errors
@@ -23,14 +24,14 @@ impl TokenStream {
     }
 
     /// Advances to the next token and returns the current one
-    fn pop(&mut self) -> Result<Token, String> {
+    fn pop(&mut self) -> Result<Token, IntepreterError> {
         let token = self.peek()?;
         self.position += 1;
         return Ok(token);
     }
 
     /// Returns the token currently being pointed to
-    fn peek(&self) -> Result<Token, String> {
+    fn peek(&self) -> Result<Token, IntepreterError> {
         match self.tokens.get(self.position) {
             Some(token) => Ok(token.clone()),
             None => Err(errors::unexpected_end_of_input()),
@@ -95,7 +96,7 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult {
 /// ```
 /// <term> ::= ["-"] (Literal | Id) | "!" <term>
 /// ```
-fn parse_term(tokens: &mut TokenStream) -> Result<Term, String> {
+fn parse_term(tokens: &mut TokenStream) -> Result<Term, IntepreterError> {
     let mut starts_with_minus = false;
     
     let first = tokens.peek()?;
@@ -128,11 +129,6 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term, String> {
 /// <let> = Let Id [":" Type] Equals <expression>
 /// ```
 fn parse_let(tokens: &mut TokenStream) -> ParseResult {
-    // TODO: eliminate this explicit `position` check by
-    // parsing statements and expressions seperatly
-    if tokens.position != 0 {
-        return Err(errors::token_not_allowed(Token::Let));
-    }
     if tokens.pop()? != Token::Let {
         panic!("THIS SHOULD NOT HAPPEN: check that stream starts with 'let' token");
     }
@@ -395,7 +391,10 @@ mod test_parse {
     #[case(tokenize("let"), errors::unexpected_end_of_input())]
     #[case(tokenize("let x"),errors::unexpected_end_of_input())]
     #[case(tokenize("3 +"), errors::unexpected_end_of_input())]
-    fn it_returns_error_for_incomplete_statements(#[case] tokens: Vec<Token>, #[case] error: String) {
+    fn it_returns_error_for_incomplete_statements(
+        #[case] tokens: Vec<Token>,
+        #[case] error: IntepreterError
+    ) {
         assert_eq!(parse(tokens), Err(error));
     }
 }
