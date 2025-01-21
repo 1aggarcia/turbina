@@ -1,9 +1,10 @@
-use crate::errors;
+use crate::interpreter_error::IntepreterError;
+use crate::interpreter_error as errors;
 use crate::models::{
     get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Program, Term, Type
 };
 
-type ValidationResult = Result<Type, Vec<String>>;
+type ValidationResult = Result<Type, Vec<IntepreterError>>;
 
 /// Find syntax errors not caught while parsing
 /// - Check that all symbols exist in the program
@@ -21,7 +22,7 @@ pub fn validate(
 fn validate_expr(program: &Program, expr: &ExprNode) -> ValidationResult {
     // TODO: dont escape an error on the first token, collect it into the errors vector
     let mut result_type = validate_term(program, &expr.first)?;
-    let mut errors = Vec::<String>::new();
+    let mut errors = Vec::<IntepreterError>::new();
 
     for (op, term) in &expr.rest {
         let right_result = validate_term(program, &term);
@@ -131,20 +132,6 @@ fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
     return Ok(value_type);
 }
 
-/// Join any errors in either of the two results into a single list of errors
-fn combine_errors(res1: &ValidationResult, res2: &ValidationResult) -> Vec<String> {
-    let mut errors1 = res1
-        .clone()
-        .map_or_else(|err| err, |_| Vec::new());
-
-    let errors2 = res2
-        .clone()
-        .map_or_else(|err| err, |_| Vec::new());
-
-    errors1.extend(errors2);
-    return errors1;
-}
-
 #[cfg(test)]
 mod test_validate {
     use rstest::rstest;
@@ -190,7 +177,7 @@ mod test_validate {
         #[case("-\"str\"", errors::unary_op_type("-", Type::String))]
         fn it_returns_error_for_bad_negated_types(
             #[case] input: &str,
-            #[case] error: String,
+            #[case] error: IntepreterError,
         ) {
             let tree = make_tree(input);
             assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
@@ -227,7 +214,7 @@ mod test_validate {
         // both args undefined
         #[case("x + y - z", ["x", "y", "z"].map(errors::undefined_id).to_vec())]
         fn it_returns_error_for_child_errors(
-            #[case] input: &str, #[case] errors: Vec<String>
+            #[case] input: &str, #[case] errors: Vec<IntepreterError>
         ) {
             // symbol does not exist
             let tree = make_tree(input);

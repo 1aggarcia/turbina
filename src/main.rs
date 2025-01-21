@@ -1,5 +1,4 @@
 use std::io::{stdin, stdout, Error, Write};
-mod errors;
 
 mod models;
 use models::{Program, Token};
@@ -15,6 +14,8 @@ use validator::validate;
 
 mod evaluator;
 use evaluator::evaluate;
+
+mod interpreter_error;
 
 fn main() {
     println!("Starting interpreter");
