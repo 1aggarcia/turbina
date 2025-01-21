@@ -102,9 +102,8 @@ impl fmt::Debug for UnaryOp {
 
 #[derive(PartialEq)]
 pub enum AbstractSyntaxTree {
-    Term(Term),
     Let(LetNode),
-    Operator(OperatorNode),
+    Expr(ExprNode),
 }
 
 impl fmt::Debug for AbstractSyntaxTree {
@@ -123,13 +122,11 @@ fn pretty_print(
 ) {
     let indent_str = " ".repeat(indent * 2);
     match node {
-        AbstractSyntaxTree::Term(term) => {
-            writeln!(f, "{}{:?}", indent_str, term).unwrap()
-        },
-        AbstractSyntaxTree::Operator(node) => {
-            writeln!(f, "{}{:?}", indent_str, node.operator).unwrap();
-            pretty_print(f, &node.left, indent + 1);
-            pretty_print(f, &node.right, indent + 1);
+        AbstractSyntaxTree::Expr(node) => {
+            writeln!(f, "{}{:?}", indent_str, node.first).unwrap();
+            for (op, term) in &node.rest {
+                writeln!(f, "{}{:?}{:?}", indent_str, op, term).unwrap();
+            }
         },
         AbstractSyntaxTree::Let(node) => {
             let type_str = match node.datatype {
@@ -168,6 +165,13 @@ pub struct OperatorNode {
     pub operator: BinaryOp,
     pub left: Box<AbstractSyntaxTree>,
     pub right: Box<AbstractSyntaxTree>,
+}
+
+/// For variable length expressions
+#[derive(Debug, PartialEq)]
+pub struct ExprNode {
+    pub first: Term,
+    pub rest: Vec<(BinaryOp, Term)>
 }
 
 #[derive(Debug, PartialEq)]
@@ -214,6 +218,6 @@ pub mod test_utils {
     }
 
     pub fn term_tree(term: Term) -> AbstractSyntaxTree {
-        AbstractSyntaxTree::Term(term)
+        AbstractSyntaxTree::Expr(ExprNode { first: term, rest: vec![] })
     }
 }

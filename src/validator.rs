@@ -1,6 +1,6 @@
 use crate::errors;
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, OperatorNode, Program, Term, Type
+    get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, OperatorNode, Program, Term, Type
 };
 
 type ValidationResult = Result<Type, Vec<String>>;
@@ -12,9 +12,36 @@ pub fn validate(
     program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
     match tree {
-        AbstractSyntaxTree::Term(term) => validate_term(program, term),
-        AbstractSyntaxTree::Operator(node) => validate_operator(program, node),
         AbstractSyntaxTree::Let(node) => validate_let(program, node),
+        AbstractSyntaxTree::Expr(node) => validate_expr(program, node),
+    }
+}
+
+/// Check that the types for every term in the expression are valid
+fn validate_expr(program: &Program, expr: &ExprNode) -> ValidationResult {
+    // TODO: dont escape an error on the first token, collect it into the errors vector
+    let mut result_type = validate_term(program, &expr.first)?;
+    let mut errors = Vec::<String>::new();
+
+    for (op, term) in &expr.rest {
+        let right_result = validate_term(program, &term);
+        if right_result.is_err() {
+            errors.extend(right_result.err().unwrap());
+            continue;
+        }
+        let right_type = right_result.unwrap();
+
+        if result_type != right_type {
+            let err = errors::binary_op_types(*op, result_type, right_type);
+            return Err(vec![err]);
+        }
+        result_type = binary_op_return_type(*op, result_type)?;
+    }
+
+    if errors.is_empty() {
+        return Ok(result_type);
+    } else {
+        return Err(errors);
     }
 }
 
@@ -59,31 +86,6 @@ fn validated_negated_int(program: &Program, inner_term: &Term) -> ValidationResu
     }
 }
 
-/// Check that the types of both arguments of the operator are legal
-fn validate_operator(
-    program: &Program, node: &OperatorNode
-) -> ValidationResult {
-    // validate children invididually first
-    let left_result = validate(program, &node.left);
-    let right_result = validate(program, &node.right);
-
-    let child_errors = combine_errors(&left_result, &right_result);
-    if !child_errors.is_empty() {
-        return Err(child_errors);
-    }
-
-    // validate types together
-    let left_type = left_result.unwrap();
-    let right_type = right_result.unwrap();
-
-    if left_type != right_type {
-        let err = errors::binary_op_types(node.operator, left_type, right_type);
-        return Err(vec![err]);
-    }
-
-    let output_type = binary_op_return_type(node.operator, left_type)?;
-    return Ok(output_type);
-}
 
 /// Get the return type of a binary operator if `input_type` is valid,
 /// otherwise return a validation error
@@ -141,7 +143,6 @@ fn combine_errors(res1: &ValidationResult, res2: &ValidationResult) -> Vec<Strin
 
     errors1.extend(errors2);
     return errors1;
-
 }
 
 #[cfg(test)]
@@ -224,7 +225,7 @@ mod test_validate {
         #[case("1 + c", vec![errors::undefined_id("c")])]
 
         // both args undefined
-        #[case("x + y", ["x", "y"].map(errors::undefined_id).to_vec())]
+        #[case("x + y - z", ["x", "y", "z"].map(errors::undefined_id).to_vec())]
         fn it_returns_error_for_child_errors(
             #[case] input: &str, #[case] errors: Vec<String>
         ) {

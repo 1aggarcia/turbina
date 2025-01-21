@@ -1,4 +1,4 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, Literal, OperatorNode, Program, Term, Variable};
+use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Literal, Program, Term, Variable};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// Syntax errors will cause a panic and should be checked with the
@@ -6,10 +6,37 @@ use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, LetNode, Lit
 pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
     // TODO: use Result type for runtime errors
     match tree {
-        AbstractSyntaxTree::Term(term) => eval_term(program, term),
         AbstractSyntaxTree::Let(node) => eval_let(program, node),
-        AbstractSyntaxTree::Operator(node) => eval_binary_op(program, node),
+        AbstractSyntaxTree::Expr(node) => eval_expr(program, node),
     }
+}
+
+/// Bind an expression to a name
+fn eval_let(program: &mut Program, node: &LetNode) -> Literal {
+    if program.vars.contains_key(&node.id) {
+        panic!("variable '{}' already defined", node.id);
+    }
+    let literal_value = evaluate(program, &node.value);
+
+    program.vars.insert(node.id.clone(), Variable {
+        datatype: get_literal_type(&literal_value),
+        value: literal_value.clone(),
+    });
+
+    return literal_value;
+}
+
+/// Reduce a sequence of terms and operators to a single literal
+fn eval_expr(program: &mut Program, expr: &ExprNode) -> Literal {
+    let mut result = eval_term(program, &expr.first);
+
+    for (op, term) in &expr.rest {
+        let new_arg = eval_term(program, &term);
+        result = eval_binary_op(result, op, new_arg);
+    }
+
+    return result;
+
 }
 
 fn eval_term(program: &mut Program, term: &Term) -> Literal {
@@ -40,28 +67,9 @@ fn eval_id(program: &mut Program, id: &str) -> Literal {
     }
 }
 
-/// Evaluate an expression and bind it to a symbol.
-/// Returns the value stored.
-fn eval_let(program: &mut Program, node: &LetNode) -> Literal {
-    if program.vars.contains_key(&node.id) {
-        panic!("variable '{}' already defined", node.id);
-    }
-    let literal_value = evaluate(program, &node.value);
-
-    program.vars.insert(node.id.clone(), Variable {
-        datatype: get_literal_type(&literal_value),
-        value: literal_value.clone(),
-    });
-
-    return literal_value;
-}
-
-/// Compute the result of the binary operation
-fn eval_binary_op(program: &mut Program, node: &OperatorNode) -> Literal {
-    let left = evaluate(program, &node.left);
-    let right = evaluate(program, &node.right);
-
-    match node.operator {
+/// Helper to compute the result of the binary operation
+fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal {
+    match operator {
         BinaryOp::Plus => eval_plus(left, right),
         BinaryOp::Minus =>
             Literal::Int(literal_as_int(left) - literal_as_int(right)),

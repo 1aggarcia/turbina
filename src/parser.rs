@@ -1,8 +1,8 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryOp, LetNode, OperatorNode, Term, Token, UnaryOp
+    AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Term, Token, UnaryOp
 };
 
-use crate::errors::{self, token_not_allowed};
+use crate::errors;
 
 type ParseResult = Result<AbstractSyntaxTree, String>;
 
@@ -22,11 +22,6 @@ impl TokenStream {
         self.position < self.tokens.len()
     }
 
-    /// Returns the number of tokens avaliable in the stream
-    fn remaining_tokens(&self) -> usize {
-        self.tokens.len() - self.position
-    }
-
     /// Advances to the next token and returns the current one
     fn pop(&mut self) -> Result<Token, String> {
         let token = self.peek()?;
@@ -43,43 +38,59 @@ impl TokenStream {
     }
 }
 
-/// Convert a sequence of tokens into an abstract syntax tree.
+/// Convert a sequence of tokens into an abstract syntax tree using recursive decent.
 /// 
 /// The tokens should represent exactly one statement and therefore one syntax
 /// tree. Otherwise, an error is returned.
-/// A single literal value is a valid statement (e.g. "3").
 /// 
-/// A syntax error is returned for any syntactical errors in the token sequence
+/// A syntax error is returned for any syntactical errors in the token sequence.
+/// 
+/// ```
+/// <statement> ::=  <let> | <expr>
+/// ```
 pub fn parse(tokens: Vec<Token>) -> ParseResult {
-    let mut stream = TokenStream::new(tokens);
-    return parse_expression(&mut stream);
+    let mut token_stream = TokenStream::new(tokens);
+
+    // TODO: add semicolon to the end to fix tests
+    match token_stream.peek()? {
+        Token::Let => build_let_node(&mut token_stream),
+        _ => parse_expr(&mut token_stream),
+    }
 }
 
-/// Parse a token stream into an expression AST.
 /// ```
-/// <expression> ::= <term> | <binary_op> | <let>
+/// <expr> ::= <term> {<binary_op> <term>}
 /// ```
-fn parse_expression(tokens: &mut TokenStream) -> ParseResult {
-    if tokens.remaining_tokens() <= 2 {
-        let term = parse_term(tokens)?;
-        if tokens.has_next() {
-            return Err(errors::token_not_allowed(tokens.pop().unwrap()));
+fn parse_expr(tokens: &mut TokenStream) -> ParseResult {
+    /// to decide when to stop parsing, since expr is variable length
+    fn next_is_operator(tokens: &mut TokenStream) -> bool {
+        match tokens.peek() {
+            Ok(Token::BinaryOp(_)) => true,
+            _ => false,
         }
-        return Ok(term);
     }
 
-    match tokens.peek()? {
-        Token::Literal(_) | Token::Id(_) => parse_binary_op(tokens),
-        Token::Let => build_let_node(tokens),
-        _ => return Err(token_not_allowed(tokens.peek().unwrap())),
+    let first = parse_term(tokens)?;
+    let mut rest = Vec::<(BinaryOp, Term)>::new();
+
+    while next_is_operator(tokens) {
+        let op_token = tokens.pop()?;
+        let operator = match op_token {
+            Token::BinaryOp(op) => op,
+            _ => return Err(errors::unexpected_token("binary op", op_token))
+        };
+        let term = parse_term(tokens)?;
+        rest.push((operator, term));
     }
+    let node = ExprNode { first, rest };
+    return Ok(AbstractSyntaxTree::Expr(node));
 }
 
 /// Build an AST node for a Term, which follows the below rule:
 /// ```
 /// <term> ::= [(!|-)] (Id|Literal)
 /// ```
-fn parse_term(tokens: &mut TokenStream) -> ParseResult {
+fn parse_term(tokens: &mut TokenStream) -> Result<Term, String> {
     let first = tokens.peek()?;
 
     let mut starts_with_not = false;
@@ -109,33 +120,7 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult {
         value
     };
 
-    return Ok(AbstractSyntaxTree::Term(wrapped_term));
-}
-
-/// Create a AST for a binary operator given the left argument and
-/// the remaining tokens
-/// ```
-/// <binary_op> ::= <term> BinaryOp <term>
-/// ```
-fn parse_binary_op(tokens: &mut TokenStream) -> ParseResult {
-    let left_arg= parse_term(tokens)?;
-
-    let operator_token = tokens.pop()?;
-    let operator = match operator_token {
-        Token::BinaryOp(o) => o,
-        _ => return Err(
-            errors::unexpected_token("binary operator", operator_token)
-        ),
-    };
-
-    let right_arg = parse_term(tokens)?;
-
-    let node = OperatorNode {
-        operator,
-        left: Box::new(left_arg),
-        right: Box::new(right_arg),
-    };
-    return Ok(AbstractSyntaxTree::Operator(node));
+    return Ok(wrapped_term);
 }
 
 /// Create an AST for the "let" keyword given the remaining tokens
@@ -180,7 +165,7 @@ fn build_let_node(tokens: &mut TokenStream) -> ParseResult {
         _ => return Err(errors::unexpected_token("'='", equals_token))
     };
 
-    let value_node = parse_expression(tokens)?;
+    let value_node = parse_expr(tokens)?;
 
     let node = LetNode { id, datatype, value: Box::new(value_node) };
     return Ok(AbstractSyntaxTree::Let(node));
@@ -264,14 +249,10 @@ mod test_parse {
         #[case] left_val: i32,
         #[case] right_val: i32,
     ) {
-        let left = Box::new(
-            term_tree(Term::Literal(Literal::Int(left_val)))
-        );
-        let right = Box::new(
-            term_tree(Term::Literal(Literal::Int(right_val)))
-        );
-        let expected = AbstractSyntaxTree::Operator(
-            OperatorNode { operator, left, right }
+        let left = Term::Literal(Literal::Int(left_val));
+        let right = Term::Literal(Literal::Int(right_val));
+        let expected = AbstractSyntaxTree::Expr(
+            ExprNode { first: left, rest: vec![(operator, right)] }
         );
         assert_eq!(parse(input), Ok(expected));
     }
@@ -285,14 +266,14 @@ mod test_parse {
     ) {
         let inner_term = Term::Literal(Literal::Int(negative_num * -1));
         let term = Term::negative_int(inner_term);
-        let expected = AbstractSyntaxTree::Term(term);
+        let expected = term_tree(term);
         assert_eq!(parse(input), Ok(expected));
     }
 
     #[test]
     fn it_parses_negated_boolean() {
         let term = Term::negated_bool(Term::Id("someVariable".into()));
-        let expected = AbstractSyntaxTree::Term(term);
+        let expected = term_tree(term);
         assert_eq!(parse(tokenize("!someVariable")), Ok(expected));
     }
 
@@ -307,15 +288,11 @@ mod test_parse {
     fn it_parses_string_plus_string() {
         let input = tokenize("\"a\" + \"b\"");
 
+        let left = Term::Literal(Literal::String("a".into()));
         let operator = BinaryOp::Plus;
-        let left = Box::new(
-            term_tree(Term::Literal(Literal::String("a".to_string())))
-        );
-        let right = Box::new(
-            term_tree(Term::Literal(Literal::String("b".to_string())))
-        );
-        let expected = AbstractSyntaxTree::Operator(
-            OperatorNode { operator, left, right }
+        let right = Term::Literal(Literal::String("b".into()));
+        let expected = AbstractSyntaxTree::Expr(
+            ExprNode { first: left, rest: vec![(operator, right)] }
         );
         assert_eq!(parse(input), Ok(expected)); 
     }
@@ -390,14 +367,14 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_unexpected_let() {
         let input = tokenize("let x = let y = 2");
-        let error = errors::token_not_allowed(Token::Let);
+        let error = errors::unexpected_token("identifier or literal", Token::Let);
         assert_eq!(parse(input), Err(error));
     }
 
     #[rstest]
-    #[case(tokenize("let"), errors::unexpected_token("identifier or literal", Token::Let))]
-    #[case(tokenize("let x"),errors::unexpected_token("identifier or literal", Token::Let))]
-    #[case(tokenize("3 +"), errors::token_not_allowed(Token::BinaryOp(BinaryOp::Plus)))]
+    #[case(tokenize("let"), errors::unexpected_end_of_input())]
+    #[case(tokenize("let x"),errors::unexpected_end_of_input())]
+    #[case(tokenize("3 +"), errors::unexpected_end_of_input())]
     fn it_returns_error_for_incomplete_statements(#[case] tokens: Vec<Token>, #[case] error: String) {
         assert_eq!(parse(tokens), Err(error));
     }

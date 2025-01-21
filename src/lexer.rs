@@ -30,7 +30,7 @@ pub fn tokenize(line: &str) -> Vec<Token> {
     "#;
     let re = Regex::new(&pattern).unwrap();
     let capture_matches = re.captures_iter(line_without_comments);
-    let tokens= capture_matches
+    let tokens = capture_matches
         .map(|x| {
             if let Some(m) = x.name("int") {
                 let int_value = m.as_str().parse::<i32>().unwrap();
