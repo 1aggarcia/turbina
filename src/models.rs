@@ -159,14 +159,6 @@ impl Term {
     }
 }
 
-/// For binary operators
-#[derive(Debug, PartialEq)]
-pub struct OperatorNode {
-    pub operator: BinaryOp,
-    pub left: Box<AbstractSyntaxTree>,
-    pub right: Box<AbstractSyntaxTree>,
-}
-
 /// For variable length expressions
 #[derive(Debug, PartialEq)]
 pub struct ExprNode {

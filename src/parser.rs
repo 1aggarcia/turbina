@@ -51,11 +51,16 @@ impl TokenStream {
 pub fn parse(tokens: Vec<Token>) -> ParseResult {
     let mut token_stream = TokenStream::new(tokens);
 
-    // TODO: add semicolon to the end to fix tests
-    match token_stream.peek()? {
-        Token::Let => build_let_node(&mut token_stream),
+    let statement = match token_stream.peek()? {
+        Token::Let => parse_let(&mut token_stream),
         _ => parse_expr(&mut token_stream),
+    }?;
+
+    if token_stream.has_next() {
+        let err_token = token_stream.peek().unwrap();
+        return Err(errors::unexpected_token("end of line", err_token));
     }
+    return Ok(statement);
 }
 
 /// ```
@@ -127,7 +132,7 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term, String> {
 /// ```
 /// <let> = Let Id [":" Type] Equals <expression>
 /// ```
-fn build_let_node(tokens: &mut TokenStream) -> ParseResult {
+fn parse_let(tokens: &mut TokenStream) -> ParseResult {
     // TODO: eliminate this explicit `position` check by
     // parsing statements and expressions seperatly
     if tokens.position != 0 {
@@ -280,7 +285,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_multiple_ints() {
         let input = tokenize("3 2");
-        let error = errors::token_not_allowed(Token::Literal(Literal::Int(2)));
+        let error = errors::unexpected_token("end of line", Token::Literal(Literal::Int(2)));
         assert_eq!(parse(input), Err(error));
     }
 
@@ -323,7 +328,7 @@ mod test_parse {
     fn it_returns_error_for_equals_in_let_expr() {
         let input = tokenize("let x = 1 = 0");
         let error = errors::unexpected_token(
-            "binary operator",
+            "end of line",
             Token::UnaryOp(UnaryOp::Equals)
         );
         assert_eq!(parse(input), Err(error)); 

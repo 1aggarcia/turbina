@@ -1,6 +1,6 @@
 use crate::errors;
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, OperatorNode, Program, Term, Type
+    get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Program, Term, Type
 };
 
 type ValidationResult = Result<Type, Vec<String>>;
