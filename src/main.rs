@@ -1,21 +1,17 @@
 use std::io::{stdin, stdout, Error, Write};
 
+mod errors;
 mod models;
-use models::{Program, Token};
-
 mod lexer;
-use lexer::tokenize;
-
 mod parser;
-use parser::parse;
-
 mod validator;
-use validator::validate;
-
 mod evaluator;
-use evaluator::evaluate;
 
-mod interpreter_error;
+use models::{Program, Token};
+use lexer::tokenize;
+use parser::parse;
+use validator::validate;
+use evaluator::evaluate;
 
 fn main() {
     println!("Starting interpreter");

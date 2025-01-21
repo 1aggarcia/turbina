@@ -1,5 +1,4 @@
-use crate::interpreter_error::IntepreterError;
-use crate::interpreter_error as errors;
+use crate::errors::{IntepreterError, error};
 use crate::models::{
     get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Program, Term, Type
 };
@@ -22,27 +21,27 @@ pub fn validate(
 fn validate_expr(program: &Program, expr: &ExprNode) -> ValidationResult {
     // TODO: dont escape an error on the first token, collect it into the errors vector
     let mut result_type = validate_term(program, &expr.first)?;
-    let mut errors = Vec::<IntepreterError>::new();
+    let mut error = Vec::<IntepreterError>::new();
 
     for (op, term) in &expr.rest {
         let right_result = validate_term(program, &term);
         if right_result.is_err() {
-            errors.extend(right_result.err().unwrap());
+            error.extend(right_result.err().unwrap());
             continue;
         }
         let right_type = right_result.unwrap();
 
         if result_type != right_type {
-            let err = errors::binary_op_types(*op, result_type, right_type);
+            let err = error::binary_op_types(*op, result_type, right_type);
             return Err(vec![err]);
         }
         result_type = binary_op_return_type(*op, result_type)?;
     }
 
-    if errors.is_empty() {
+    if error.is_empty() {
         return Ok(result_type);
     } else {
-        return Err(errors);
+        return Err(error);
     }
 }
 
@@ -62,7 +61,7 @@ fn validate_term(program: &Program, term: &Term) -> ValidationResult {
 /// Check that the id exists in the program
 fn validate_id(program: &Program, id: &String) -> ValidationResult {
     if !program.vars.contains_key(id) {
-        let error = errors::undefined_id(id);
+        let error = error::undefined_id(id);
         return Err(vec![error]);
     }
     let var = program.vars.get(id).unwrap();
@@ -74,7 +73,7 @@ fn validate_negated_bool(program: &Program, inner_term: &Term) -> ValidationResu
     let datatype = validate_term(program, inner_term)?;
     match datatype {
         Type::Bool => Ok(datatype),
-        _ => Err(vec![errors::unary_op_type("!", datatype)])
+        _ => Err(vec![error::unary_op_type("!", datatype)])
     }
 }
 
@@ -83,7 +82,7 @@ fn validated_negated_int(program: &Program, inner_term: &Term) -> ValidationResu
     let datatype = validate_term(program, inner_term)?;
     match datatype {
         Type::Int=> Ok(datatype),
-        _ => Err(vec![errors::unary_op_type("-", datatype)])
+        _ => Err(vec![error::unary_op_type("-", datatype)])
     }
 }
 
@@ -91,7 +90,7 @@ fn validated_negated_int(program: &Program, inner_term: &Term) -> ValidationResu
 /// Get the return type of a binary operator if `input_type` is valid,
 /// otherwise return a validation error
 fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> ValidationResult {
-    let type_error = errors::binary_op_types(operator, input_type, input_type);
+    let type_error = error::binary_op_types(operator, input_type, input_type);
     match operator {
         // equality operators
         BinaryOp::NotEq | BinaryOp::Equals => Ok(Type::Bool),
@@ -116,7 +115,7 @@ fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> ValidationResu
 /// and that the variable name is unique
 fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
     if program.vars.contains_key(&node.id) {
-        return Err(vec![errors::already_defined(&node.id)]);
+        return Err(vec![error::already_defined(&node.id)]);
     }
 
     let value_type = validate(program, &node.value)?;
@@ -126,7 +125,7 @@ fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
     };
 
     if value_type != declared_type {
-        let err = errors::declared_type(&node.id, declared_type, value_type);
+        let err = error::declared_type(&node.id, declared_type, value_type);
         return Err(vec![err]);
     }
     return Ok(value_type);
@@ -166,15 +165,15 @@ mod test_validate {
         #[test]
         fn it_returns_error_for_non_existent_symbol() {
             let tree = make_tree("x");
-            let expected = vec![errors::undefined_id("x")];
+            let expected = vec![error::undefined_id("x")];
             assert_eq!(validate(&Program::new(), &tree), Err(expected));
         }
 
         #[rstest]
-        #[case("!3", errors::unary_op_type("!", Type::Int))]
-        #[case("!\"str\"", errors::unary_op_type("!", Type::String))]
-        #[case("-false", errors::unary_op_type("-", Type::Bool))]
-        #[case("-\"str\"", errors::unary_op_type("-", Type::String))]
+        #[case("!3", error::unary_op_type("!", Type::Int))]
+        #[case("!\"str\"", error::unary_op_type("!", Type::String))]
+        #[case("-false", error::unary_op_type("-", Type::Bool))]
+        #[case("-\"str\"", error::unary_op_type("-", Type::String))]
         fn it_returns_error_for_bad_negated_types(
             #[case] input: &str,
             #[case] error: IntepreterError,
@@ -200,25 +199,25 @@ mod test_validate {
             #[case] right_type: Type
         ) {
             let tree = make_tree(input);
-            let expected = errors::binary_op_types(op, left_type, right_type);
+            let expected = error::binary_op_types(op, left_type, right_type);
             assert_eq!(validate(&Program::new(), &tree), Err(vec![expected]));
         }
 
         #[rstest]
         // right arg undefined
-        #[case("a + 3", vec![errors::undefined_id("a")])]
+        #[case("a + 3", vec![error::undefined_id("a")])]
 
         // left arg undefined
-        #[case("1 + c", vec![errors::undefined_id("c")])]
+        #[case("1 + c", vec![error::undefined_id("c")])]
 
         // both args undefined
-        #[case("x + y - z", ["x", "y", "z"].map(errors::undefined_id).to_vec())]
-        fn it_returns_error_for_child_errors(
-            #[case] input: &str, #[case] errors: Vec<IntepreterError>
+        #[case("x + y - z", ["x", "y", "z"].map(error::undefined_id).to_vec())]
+        fn it_returns_error_for_child_error(
+            #[case] input: &str, #[case] error: Vec<IntepreterError>
         ) {
             // symbol does not exist
             let tree = make_tree(input);
-            assert_eq!(validate(&Program::new(), &tree), Err(errors));
+            assert_eq!(validate(&Program::new(), &tree), Err(error));
         }
 
         #[test]
@@ -273,14 +272,14 @@ mod test_validate {
         #[test]
         fn it_returns_type_error_for_conflicting_types() {
             let tree = make_tree("let x: int = \"string\"");
-            let error = errors::declared_type("x", Type::Int, Type::String);
+            let error = error::declared_type("x", Type::Int, Type::String);
             assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
         }
 
         #[test]
-        fn it_propagates_errors_in_expression() {
+        fn it_propagates_error_in_expression() {
             let tree = make_tree("let y: string = undefined");
-            let error = errors::undefined_id("undefined");
+            let error = error::undefined_id("undefined");
             assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
         }
 
@@ -292,7 +291,7 @@ mod test_validate {
                 value: Literal::Bool(false),
             });
             let tree = make_tree("let b = true");
-            let error = errors::already_defined("b");
+            let error = error::already_defined("b");
             assert_eq!(validate(&program, &tree), Err(vec![error])); 
         }
     }

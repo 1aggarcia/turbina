@@ -2,8 +2,7 @@ use crate::models::{
     AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Term, Token, UnaryOp
 };
 
-use crate::interpreter_error::IntepreterError;
-use crate::interpreter_error as errors;
+use crate::errors::{IntepreterError, error};
 
 type ParseResult = Result<AbstractSyntaxTree, IntepreterError>;
 
@@ -34,7 +33,7 @@ impl TokenStream {
     fn peek(&self) -> Result<Token, IntepreterError> {
         match self.tokens.get(self.position) {
             Some(token) => Ok(token.clone()),
-            None => Err(errors::unexpected_end_of_input()),
+            None => Err(error::unexpected_end_of_input()),
         }
     }
 }
@@ -59,7 +58,7 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
 
     if token_stream.has_next() {
         let err_token = token_stream.peek().unwrap();
-        return Err(errors::unexpected_token("end of line", err_token));
+        return Err(error::unexpected_token("end of line", err_token));
     }
     return Ok(statement);
 }
@@ -83,7 +82,7 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult {
         let op_token = tokens.pop()?;
         let operator = match op_token {
             Token::BinaryOp(op) => op,
-            _ => return Err(errors::unexpected_token("binary op", op_token))
+            _ => return Err(error::unexpected_token("binary op", op_token))
         };
         let term = parse_term(tokens)?;
         rest.push((operator, term));
@@ -114,7 +113,7 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term, IntepreterError> {
         Token::Literal(lit) => Term::Literal(lit),
         Token::Id(id) => Term::Id(id),
         _ => return Err(
-            errors::unexpected_token("identifier or literal", value_token)
+            error::unexpected_token("identifier or literal", value_token)
         ),
     };
 
@@ -136,7 +135,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult {
     let id_token = tokens.pop()?;
     let id = match id_token {
         Token::Id(s) => s.to_string(),
-        _ => return Err(errors::unexpected_token("identifier", id_token))
+        _ => return Err(error::unexpected_token("identifier", id_token))
     };
 
     // look for optional declared type (e.g. ": int")
@@ -149,7 +148,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult {
         let type_token = tokens.pop()?;
         match type_token {
             Token::Type(t) => Some(t.to_owned()),
-            _ => return Err(errors::not_a_type(type_token)) 
+            _ => return Err(error::not_a_type(type_token)) 
         }
     } else {
         None
@@ -158,7 +157,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult {
     let equals_token = tokens.pop()?;
     match equals_token {
         Token::UnaryOp(UnaryOp::Equals) => {},
-        _ => return Err(errors::unexpected_token("'='", equals_token))
+        _ => return Err(error::unexpected_token("'='", equals_token))
     };
 
     let value_node = parse_expr(tokens)?;
@@ -176,7 +175,7 @@ mod test_token_stream {
     fn test_has_next_is_false_for_empty_stream() {
         let mut stream = TokenStream::new(vec![]);
         assert_eq!(stream.has_next(), false);
-        assert_eq!(stream.pop(), Err(errors::unexpected_end_of_input()));
+        assert_eq!(stream.pop(), Err(error::unexpected_end_of_input()));
     }
 
     #[test]
@@ -193,7 +192,7 @@ mod test_token_stream {
         assert_eq!(stream.has_next(), true);
         assert_eq!(stream.pop(), Ok(id_token("data")));
         assert_eq!(stream.has_next(), false);
-        assert_eq!(stream.peek(), Err(errors::unexpected_end_of_input()));
+        assert_eq!(stream.peek(), Err(error::unexpected_end_of_input()));
     }
 }
 
@@ -207,7 +206,7 @@ mod test_parse {
 
     #[test]
     fn it_returns_error_for_empty_list()  {
-        assert_eq!(parse(vec![]), Err(errors::unexpected_end_of_input()));
+        assert_eq!(parse(vec![]), Err(error::unexpected_end_of_input()));
     }
 
     #[rstest]
@@ -229,7 +228,7 @@ mod test_parse {
     #[case(op_token(BinaryOp::Percent))]
     #[case(unary_op_token(UnaryOp::Equals))]
     fn it_returns_error_for_one_operator(#[case] op: Token) {
-        let error = errors::unexpected_token("identifier or literal", op.clone());
+        let error = error::unexpected_token("identifier or literal", op.clone());
         assert_eq!(parse(vec![op]), Err(error));
     }
 
@@ -286,7 +285,7 @@ mod test_parse {
 
     #[test]
     fn it_returns_error_for_many_negative_symbols() {
-        let error = errors::unexpected_token(
+        let error = error::unexpected_token(
             "identifier or literal",
             Token::BinaryOp(BinaryOp::Minus)
         );
@@ -296,7 +295,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_multiple_ints() {
         let input = tokenize("3 2");
-        let error = errors::unexpected_token("end of line", Token::Literal(Literal::Int(2)));
+        let error = error::unexpected_token("end of line", Token::Literal(Literal::Int(2)));
         assert_eq!(parse(input), Err(error));
     }
 
@@ -328,7 +327,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_bad_var_id() {
         let input = tokenize("let 3 = 3");
-        let error = errors::unexpected_token(
+        let error = error::unexpected_token(
             "identifier",
             Token::Literal(Literal::Int(3))
         );
@@ -338,7 +337,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_equals_in_let_expr() {
         let input = tokenize("let x = 1 = 0");
-        let error = errors::unexpected_token(
+        let error = error::unexpected_token(
             "end of line",
             Token::UnaryOp(UnaryOp::Equals)
         );
@@ -376,21 +375,21 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_invalid_let_type() {
         let input = tokenize("let x: y = z");
-        let error = errors::not_a_type(Token::Id("y".to_string()));
+        let error = error::not_a_type(Token::Id("y".to_string()));
         assert_eq!(parse(input), Err(error)); 
     }
 
     #[test]
     fn it_returns_error_for_unexpected_let() {
         let input = tokenize("let x = let y = 2");
-        let error = errors::unexpected_token("identifier or literal", Token::Let);
+        let error = error::unexpected_token("identifier or literal", Token::Let);
         assert_eq!(parse(input), Err(error));
     }
 
     #[rstest]
-    #[case(tokenize("let"), errors::unexpected_end_of_input())]
-    #[case(tokenize("let x"),errors::unexpected_end_of_input())]
-    #[case(tokenize("3 +"), errors::unexpected_end_of_input())]
+    #[case(tokenize("let"), error::unexpected_end_of_input())]
+    #[case(tokenize("let x"),error::unexpected_end_of_input())]
+    #[case(tokenize("3 +"), error::unexpected_end_of_input())]
     fn it_returns_error_for_incomplete_statements(
         #[case] tokens: Vec<Token>,
         #[case] error: IntepreterError
