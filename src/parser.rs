@@ -93,19 +93,19 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult {
 
 /// Build an AST node for a Term, which follows the below rule:
 /// ```
-/// <term> ::= [(!|-)] (Id|Literal)
+/// <term> ::= ["-"] (Literal | Id) | "!" <term>
 /// ```
 fn parse_term(tokens: &mut TokenStream) -> Result<Term, String> {
-    let first = tokens.peek()?;
-
-    let mut starts_with_not = false;
     let mut starts_with_minus = false;
+    
+    let first = tokens.peek()?;
     if first == Token::UnaryOp(UnaryOp::Not) {
-        starts_with_not = true;
         tokens.pop()?;
+        let inner_term = parse_term(tokens)?;
+        return Ok(Term::negated_bool(inner_term));
     } else if first == Token::BinaryOp(BinaryOp::Minus) {
-        starts_with_minus = true;
         tokens.pop()?;
+        starts_with_minus = true;
     }
 
     let value_token = tokens.pop()?;
@@ -117,15 +117,10 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term, String> {
         ),
     };
 
-    let wrapped_term = if starts_with_not {
-        Term::negated_bool(value)
-    } else if starts_with_minus {
-        Term::negative_int(value)
-    } else {
-        value
-    };
-
-    return Ok(wrapped_term);
+    if starts_with_minus {
+        return Ok(Term::negative_int(value))
+    }
+    return Ok(value);
 }
 
 /// Create an AST for the "let" keyword given the remaining tokens
@@ -280,6 +275,26 @@ mod test_parse {
         let term = Term::negated_bool(Term::Id("someVariable".into()));
         let expected = term_tree(term);
         assert_eq!(parse(tokenize("!someVariable")), Ok(expected));
+    }
+
+    #[test]
+    fn it_parses_many_negations() {
+        let term = Term::negated_bool(
+            Term::negated_bool(
+                Term::negated_bool(Term::Id("x".into()))
+            )
+        );
+        let expected = term_tree(term);
+        assert_eq!(parse(tokenize("!!!x")), Ok(expected));
+    }
+
+    #[test]
+    fn it_returns_error_for_many_negative_symbols() {
+        let error = errors::unexpected_token(
+            "identifier or literal",
+            Token::BinaryOp(BinaryOp::Minus)
+        );
+        assert_eq!(parse(tokenize("---9")), Err(error));
     }
 
     #[test]
