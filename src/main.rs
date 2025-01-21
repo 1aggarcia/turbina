@@ -1,4 +1,4 @@
-use std::io::{stdin, stdout, Error, Write};
+use std::io::{stdin, stdout, Write};
 
 mod errors;
 mod models;
@@ -7,7 +7,8 @@ mod parser;
 mod validator;
 mod evaluator;
 
-use models::{Program, Token};
+use errors::IntepreterError;
+use models::{Literal, Program};
 use lexer::tokenize;
 use parser::parse;
 use validator::validate;
@@ -19,50 +20,34 @@ fn main() {
 
     // user must enter Ctrl+C to quit
     loop {
-        // read user input
-        let next_line = match get_next_line() {
-            Ok(line) => line,
-            Err(err) => {
-                eprintln!("{err}");
-                continue;
-            }
-        };
-
-        // handle input
-        let tokens: Vec<Token> = tokenize(next_line.as_str());
-        if tokens.is_empty() {
-            continue;
+        match process_next_line(&mut program) {
+            Ok(result) => println!("{result:?}"),
+            Err(errors) => errors
+                .iter()
+                .for_each(|e| eprintln!("{e}")),
         }
-        let syntax_tree = match parse(tokens) {
-            Ok(tree) => tree,
-            Err(err) => {
-                eprintln!("{err}");
-                continue;
-            },
-        };
-
-        let validation_result = validate(&program, &syntax_tree);
-        match validation_result {
-            Err(errors) => {
-                for error in errors {
-                    eprintln!("{}", error)
-                }
-                continue;
-            }
-            Ok(_) => {}
-        }
-
-        let eval_result = evaluate(&mut program, &syntax_tree);
-        println!("{eval_result:?}");
     }
 }
 
-fn get_next_line() -> Result<String, Error> {
-    print!("> ");
-    self::stdout().flush()?;
+/// Read the next line from stdin and evaluate it on the program
+fn process_next_line(program: &mut Program) -> Result<Literal, Vec<IntepreterError>> {
+    let next_line = get_next_line().map_err(|e| vec![e])?;
+    let tokens = tokenize(&next_line);
+    let syntax_tree = parse(tokens).map_err(|e| vec![e])?;
+    validate(program, &syntax_tree)?;
+    let result = evaluate(program, &syntax_tree);
 
+    return Ok(result);
+}
+
+/// Read the next non-empty line from stdin
+fn get_next_line() -> Result<String, IntepreterError> {
     let mut buf = String::new();
-    stdin().read_line(&mut buf)?;
 
+    while buf.trim().is_empty() {
+        print!("> ");
+        self::stdout().flush().map_err(IntepreterError::io_err)?;
+        stdin().read_line(&mut buf).map_err(IntepreterError::io_err)?;
+    }
     return Ok(buf.trim().to_string());
 }

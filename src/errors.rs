@@ -4,14 +4,21 @@ use custom_error::custom_error;
 custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
     TypeError { message: String } = "Type Error: {message}",
+    IoError { message: String } = "IO Error: {message}",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id} cannot be redefined",
+}
+
+impl IntepreterError {
+    pub fn io_err(err: std::io::Error) -> Self {
+        Self::IoError { message: err.to_string() }
+    }
 }
 
 /// Utility functions to format common error types.
 /// 
 /// This was more necessary when I had plain string errors, but over the
-/// functions should be removed in favor of the enum definition above.
+/// functions should be removed in favor of the enum impl above. 
 pub mod error {
     use super::IntepreterError;
     use super::IntepreterError::*;
