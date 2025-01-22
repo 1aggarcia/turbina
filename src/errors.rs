@@ -4,14 +4,15 @@ use custom_error::custom_error;
 custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
     TypeError { message: String } = "Type Error: {message}",
-    IoError { message: String } = "IO Error: {message}",
+    IOError { message: String } = "IO Error: {message}",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
-    ReassignError { id: String } = "Reassign Error: Idenfitier '{id} cannot be redefined",
+    ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",
+    EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS"
 }
 
 impl IntepreterError {
     pub fn io_err(err: std::io::Error) -> Self {
-        Self::IoError { message: err.to_string() }
+        Self::IOError { message: err.to_string() }
     }
 }
 

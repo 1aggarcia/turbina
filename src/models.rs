@@ -2,6 +2,7 @@ use core::fmt;
 use std::collections::HashMap;
 
 /// State of the running program
+#[derive(Debug)]
 pub struct Program {
     pub vars: HashMap<String, Variable>,
 }
