@@ -167,8 +167,8 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
         _ => return Err(error::unexpected_token("'='", equals_token))
     };
 
-    let value_node = AbstractSyntaxTree::Expr(parse_expr(tokens)?);
-    return Ok(LetNode { id, datatype, value: Box::new(value_node) });
+    let expr = parse_expr(tokens)?;
+    return Ok(LetNode { id, datatype, value: expr });
 }
 
 fn token_matches_formatter(token: Token, formatter: &str) -> bool {
@@ -222,10 +222,8 @@ mod test_parse {
     }
 
     #[rstest]
-    #[case(int_token(2), term_tree(Term::Literal(Literal::Int(2))))]
-    #[case(string_token("prueba test"), term_tree(
-        Term::Literal(Literal::String("prueba test".into()))
-    ))]
+    #[case(int_token(2), term_tree(int_term(2)))]
+    #[case(string_token("prueba test"), term_tree(str_term("prueba test")))]
     #[case(id_token("name"), term_tree(Term::Id("name".into())))]
     fn it_parses_one_token_to_one_node(
         #[case] token: Token,
@@ -256,8 +254,8 @@ mod test_parse {
         #[case] left_val: i32,
         #[case] right_val: i32,
     ) {
-        let left = Term::Literal(Literal::Int(left_val));
-        let right = Term::Literal(Literal::Int(right_val));
+        let left = int_term(left_val);
+        let right = int_term(right_val);
         let expected = AbstractSyntaxTree::Expr(
             ExprNode { first: left, rest: vec![(operator, right)] }
         );
@@ -271,7 +269,7 @@ mod test_parse {
         #[case] input: Vec<Token>,
         #[case] negative_num: i32
     ) {
-        let inner_term = Term::Literal(Literal::Int(negative_num * -1));
+        let inner_term = int_term(negative_num * -1);
         let term = Term::negative_int(inner_term);
         let expected = term_tree(term);
         assert_eq!(parse(input), Ok(expected));
@@ -307,7 +305,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_multiple_ints() {
         let input = tokenize("3 2");
-        let error = error::unexpected_token("end of line", Token::Literal(Literal::Int(2)));
+        let error = error::unexpected_token("end of line", int_token(2));
         assert_eq!(parse(input), Err(error));
     }
 
@@ -315,12 +313,11 @@ mod test_parse {
     fn it_parses_string_plus_string() {
         let input = tokenize("\"a\" + \"b\"");
 
-        let left = Term::Literal(Literal::String("a".into()));
-        let operator = BinaryOp::Plus;
-        let right = Term::Literal(Literal::String("b".into()));
-        let expected = AbstractSyntaxTree::Expr(
-            ExprNode { first: left, rest: vec![(operator, right)] }
-        );
+        let expr = ExprNode {
+            first: str_term("a"),
+            rest: vec![(BinaryOp::Plus, str_term("b"))]
+        };
+        let expected = AbstractSyntaxTree::Expr(expr);
         assert_eq!(parse(input), Ok(expected)); 
     }
 
@@ -330,7 +327,7 @@ mod test_parse {
         let let_node = LetNode {
             id: "x".to_string(),
             datatype: None,
-            value: Box::new(term_tree(Term::Literal(Literal::Int(4)))),
+            value: term_expr(int_term(4)),
         };
         let expected = AbstractSyntaxTree::Let(let_node);
         assert_eq!(parse(input), Ok(expected));
@@ -340,26 +337,22 @@ mod test_parse {
     fn it_parses_expression_in_parens() {
         let input = tokenize("3 * (2 - 5)");
 
-        let left = Term::Literal(Literal::Int(3));
-        let star = BinaryOp::Star;
-        let right = ExprNode {
-            first: Term::Literal(Literal::Int(2)),
-            rest: vec![(BinaryOp::Minus, Term::Literal(Literal::Int(5)))]
+        let inner_expr = ExprNode {
+            first: int_term(2),
+            rest: vec![(BinaryOp::Minus, int_term(5))]
         };
-        let expected = AbstractSyntaxTree::Expr(ExprNode {
-            first: left,
-            rest: vec![(star, Term::Expr(Box::new(right)))]
-        });
+        let expr = ExprNode {
+            first: int_term(3),
+            rest: vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))]
+        };
+        let expected = AbstractSyntaxTree::Expr(expr);
         assert_eq!(parse(input), Ok(expected));
     }
 
     #[test]
     fn it_returns_error_for_bad_var_id() {
         let input = tokenize("let 3 = 3");
-        let error = error::unexpected_token(
-            "identifier",
-            Token::Literal(Literal::Int(3))
-        );
+        let error = error::unexpected_token("identifier", int_token(3));
         assert_eq!(parse(input), Err(error));
     }
 
@@ -379,7 +372,10 @@ mod test_parse {
         let let_node = LetNode {
             id: "two".to_string(),
             datatype: None,
-            value: Box::new(parse(tokenize("6 / 3")).unwrap()),
+            value: ExprNode {
+                first: int_term(6),
+                rest: vec![(BinaryOp::Slash, int_term(3))]
+            },
         };
         let expected = AbstractSyntaxTree::Let(let_node);
         assert_eq!(parse(input), Ok(expected));
@@ -391,11 +387,10 @@ mod test_parse {
         let let_node = LetNode {
             id: "two_strings".to_string(),
             datatype: Some(Type::String),
-            value: Box::new(parse(vec![
-                string_token("a"),
-                op_token(BinaryOp::Plus),
-                string_token("b")
-            ]).unwrap()),
+            value: ExprNode {
+                first: str_term("a"),
+                rest: vec![(BinaryOp::Plus, str_term("b"))]
+            },
         };
         let expected = AbstractSyntaxTree::Let(let_node);
         assert_eq!(parse(input), Ok(expected));

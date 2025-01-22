@@ -101,45 +101,11 @@ impl fmt::Debug for UnaryOp {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum AbstractSyntaxTree {
     Let(LetNode),
     Expr(ExprNode),
 }
-
-impl fmt::Debug for AbstractSyntaxTree {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "")?;
-        pretty_print(f, self, 0);
-        Ok(())
-    }
-}
-
-/// recursively print out children with increasing indent
-fn pretty_print(
-    f: &mut std::fmt::Formatter<'_>,
-    node: &AbstractSyntaxTree,
-    indent: usize
-) {
-    let indent_str = " ".repeat(indent * 2);
-    match node {
-        AbstractSyntaxTree::Expr(node) => {
-            writeln!(f, "{}{:?}", indent_str, node.first).unwrap();
-            for (op, term) in &node.rest {
-                writeln!(f, "{}{:?}{:?}", indent_str, op, term).unwrap();
-            }
-        },
-        AbstractSyntaxTree::Let(node) => {
-            let type_str = match node.datatype {
-                Some(t) => format!("{t:?}"),
-                None => String::from("unknown"),
-            };
-            writeln!(f, "{}let {}: {} =", indent_str, node.id, type_str).unwrap();
-            pretty_print(f, &node.value, indent + 1);
-        }
-    }
-}
-
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Term {
@@ -172,9 +138,7 @@ pub struct ExprNode {
 pub struct LetNode {
     pub id: String,
     pub datatype: Option<Type>,
-
-    // TODO: make Expr only
-    pub value: Box<AbstractSyntaxTree>,
+    pub value: ExprNode,
 }
 
 #[cfg(test)]
@@ -213,7 +177,19 @@ pub mod test_utils {
         Token::Type(datatype)
     }
 
+    pub fn int_term(int: i32) -> Term {
+        Term::Literal(Literal::Int(int))
+    }
+
+    pub fn str_term(string: &str) -> Term {
+        Term::Literal(Literal::String(string.into()))
+    }
+
     pub fn term_tree(term: Term) -> AbstractSyntaxTree {
-        AbstractSyntaxTree::Expr(ExprNode { first: term, rest: vec![] })
+        AbstractSyntaxTree::Expr(term_expr(term))
+    }
+
+    pub fn term_expr(term: Term) -> ExprNode {
+        ExprNode { first: term, rest: vec![] } 
     }
 }

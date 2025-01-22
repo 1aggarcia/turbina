@@ -16,7 +16,7 @@ fn eval_let(program: &mut Program, node: &LetNode) -> Literal {
     if program.vars.contains_key(&node.id) {
         panic!("variable '{}' already defined", node.id);
     }
-    let literal_value = evaluate(program, &node.value);
+    let literal_value = eval_expr(program, &node.value);
 
     program.vars.insert(node.id.clone(), Variable {
         datatype: get_literal_type(&literal_value),

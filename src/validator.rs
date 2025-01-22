@@ -119,17 +119,17 @@ fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
         return Err(vec![error::already_defined(&node.id)]);
     }
 
-    let value_type = validate(program, &node.value)?;
+    let expr_type = validate_expr(program, &node.value)?;
     let declared_type = match node.datatype {
         Some(t) => t,
-        None => return Ok(value_type),
+        None => return Ok(expr_type),
     };
 
-    if value_type != declared_type {
-        let err = error::declared_type(&node.id, declared_type, value_type);
+    if expr_type != declared_type {
+        let err = error::declared_type(&node.id, declared_type, expr_type);
         return Err(vec![err]);
     }
-    return Ok(value_type);
+    return Ok(expr_type);
 }
 
 #[cfg(test)]
