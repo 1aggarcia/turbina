@@ -147,6 +147,7 @@ pub enum Term {
     Id(String),
     Not(Box<Term>),  // negate boolean terms
     Minus(Box<Term>),  // negate int terms
+    Expr(Box<ExprNode>),
 }
 
 // to make construction easier
@@ -161,7 +162,7 @@ impl Term {
 }
 
 /// For variable length expressions
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ExprNode {
     pub first: Term,
     pub rest: Vec<(BinaryOp, Term)>
@@ -171,6 +172,8 @@ pub struct ExprNode {
 pub struct LetNode {
     pub id: String,
     pub datatype: Option<Type>,
+
+    // TODO: make Expr only
     pub value: Box<AbstractSyntaxTree>,
 }
 

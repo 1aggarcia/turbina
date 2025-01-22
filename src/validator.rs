@@ -55,6 +55,7 @@ fn validate_term(program: &Program, term: &Term) -> ValidationResult {
         Term::Id(id) => validate_id(program, &id),
         Term::Not(term) => validate_negated_bool(program, term),
         Term::Minus(term) => validated_negated_int(program, term),
+        Term::Expr(expr) => validate_expr(program, expr),
     }
 }
 

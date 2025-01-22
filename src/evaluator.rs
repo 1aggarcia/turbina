@@ -54,6 +54,7 @@ fn eval_term(program: &mut Program, term: &Term) -> Literal {
         Term::Literal(lit) => lit.clone(),
         Term::Id(id) => eval_id(program, id),
         Term::Not(t) | Term::Minus(t) => eval_negated(program, t),
+        Term::Expr(expr) => eval_expr(program, expr),
     }
 }
 
@@ -183,6 +184,20 @@ mod test_evalutate {
     #[case("3 / 5", 3 / 5)]
     #[case("3 % 5", 3 % 5)]
     fn it_evaluates_binary_math_operators(
+        #[case] input: &str, #[case] expected_val: i32
+    ) {
+        let input = make_tree(input);
+        let expected = Literal::Int(expected_val);
+        assert_eq!(evaluate(&mut Program::new(), &input), expected);
+    }
+
+    #[rstest]
+    #[case("3 * 2 - 5", 1)]
+    #[case("3 * (2 - 5)", -9)]
+    #[case("(25 % (18 / 3)) - (10 + 4)", -13)]
+    #[case("(25 % 18 / 3) - (10 + 4)", -12)]
+    // TODO: thorough PEMDAS test
+    fn it_evaluates_complex_expressions(
         #[case] input: &str, #[case] expected_val: i32
     ) {
         let input = make_tree(input);
