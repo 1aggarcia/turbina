@@ -64,15 +64,49 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
 }
 
 /// ```
-/// <expr> ::= <if_expr> | <binary_expr>
-/// <if_expr> ::= If "(" <expr> ")" <expr> Else <expr>
+/// <expr> ::= <cond_expr> | <binary_expr>
 /// ```
 fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
     if tokens.peek()? == Token::If {
-        todo!("If parser not implemented");
+        let cond_expr = parse_cond_expr(tokens)?;
+        return Ok(Expr::Cond(cond_expr));
     }
     let binary_expr = parse_binary_expr(tokens)?;
     return Ok(Expr::Binary(binary_expr));
+}
+
+/// ```
+/// <cond_expr> ::= If "(" <expr> ")" <expr> Else <expr>
+/// ```
+fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
+    // TODO: clean up token matching with `match` or `consume` function
+    let mut curr  = tokens.pop()?;
+    if curr != Token::If {
+        return Err(error::unexpected_token("if", curr));
+    }
+
+    curr = tokens.pop()?;
+    if !token_matches_formatter(&curr, "(") {
+        return Err(error::unexpected_token("'('", curr));
+    }
+
+    let condition = Box::new(parse_expr(tokens)?);
+
+    curr = tokens.pop()?;
+    if !token_matches_formatter(&curr, ")") {
+        return Err(error::unexpected_token("')'", curr));
+    }
+
+    let if_true = Box::new(parse_expr(tokens)?);
+
+    curr  = tokens.pop()?;
+    if curr != Token::Else {
+        return Err(error::unexpected_token("else", curr));
+    }
+    
+    let if_false = Box::new(parse_expr(tokens)?);
+
+    return Ok(CondExpr { cond: condition, if_true, if_false });
 }
 
 /// ```
@@ -116,10 +150,10 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
         let inner_term = parse_term(tokens)?;
 
         return Ok(Term::negated_bool(inner_term));
-    } else if token_matches_formatter(tokens.peek()?, "(") {
+    } else if token_matches_formatter(&tokens.peek()?, "(") {
         tokens.pop()?;
         let expr = parse_expr(tokens)?;
-        if !token_matches_formatter(tokens.peek()?, ")") {
+        if !token_matches_formatter(&tokens.peek()?, ")") {
             return Err(error::unexpected_token("')'", tokens.peek().unwrap()));
         }
         tokens.pop()?;
@@ -160,7 +194,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
     };
 
     // look for optional declared type (e.g. ": int")
-    let is_token_colon = token_matches_formatter(tokens.peek()?, ":");
+    let is_token_colon = token_matches_formatter(&tokens.peek()?, ":");
     let datatype = if is_token_colon {
         tokens.pop()?;
         let type_token = tokens.pop()?;
@@ -182,7 +216,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
     return Ok(LetNode { id, datatype, value: expr });
 }
 
-fn token_matches_formatter(token: Token, formatter: &str) -> bool {
+fn token_matches_formatter(token: &Token, formatter: &str) -> bool {
     match token {
         Token::Formatter(ref f) if f == formatter => true,
         _ => false,
@@ -358,6 +392,20 @@ mod test_parse {
         );
         let expected = AbstractSyntaxTree::Expr(expr);
         assert_eq!(parse(input), Ok(expected));
+    }
+
+    #[test]
+    fn it_parses_if_else_expression() {
+        let input = tokenize("if (cond) \"abc\" else \"def\"");
+
+        let expr = Expr::Cond(CondExpr {
+            cond: Box::new(term_expr(Term::Id("cond".into()))),
+            if_true: Box::new(term_expr(str_term("abc"))),
+            if_false: Box::new(term_expr(str_term("def"))),
+        });
+        let expected = Ok(AbstractSyntaxTree::Expr(expr));
+
+        assert_eq!(parse(input), expected);
     }
 
     #[test]

@@ -20,7 +20,7 @@ pub fn validate(
 fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(program, b),
-        Expr::Cond(_) => todo!(),
+        Expr::Cond(c) => todo!("cannot parse expr: {c:#?}"),
     }
 }
 
