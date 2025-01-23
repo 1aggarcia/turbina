@@ -79,31 +79,12 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
 /// <cond_expr> ::= If "(" <expr> ")" <expr> Else <expr>
 /// ```
 fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
-    // TODO: clean up token matching with `match` or `consume` function
-    let mut curr  = tokens.pop()?;
-    if curr != Token::If {
-        return Err(error::unexpected_token("if", curr));
-    }
-
-    curr = tokens.pop()?;
-    if !token_matches_formatter(&curr, "(") {
-        return Err(error::unexpected_token("'('", curr));
-    }
-
+    match_next(tokens, Token::If)?;
+    match_next(tokens, Token::Formatter("(".into()))?;
     let condition = Box::new(parse_expr(tokens)?);
-
-    curr = tokens.pop()?;
-    if !token_matches_formatter(&curr, ")") {
-        return Err(error::unexpected_token("')'", curr));
-    }
-
+    match_next(tokens, Token::Formatter(")".into()))?;
     let if_true = Box::new(parse_expr(tokens)?);
-
-    curr  = tokens.pop()?;
-    if curr != Token::Else {
-        return Err(error::unexpected_token("else", curr));
-    }
-    
+    match_next(tokens, Token::Else)?;
     let if_false = Box::new(parse_expr(tokens)?);
 
     return Ok(CondExpr { cond: condition, if_true, if_false });
@@ -153,10 +134,8 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     } else if token_matches_formatter(&tokens.peek()?, "(") {
         tokens.pop()?;
         let expr = parse_expr(tokens)?;
-        if !token_matches_formatter(&tokens.peek()?, ")") {
-            return Err(error::unexpected_token("')'", tokens.peek().unwrap()));
-        }
-        tokens.pop()?;
+        match_next(tokens, Token::Formatter(")".into()))?;
+
         return Ok(Term::Expr(Box::new(expr)));
     } else if first == Token::BinaryOp(BinaryOp::Minus) {
         tokens.pop()?;
@@ -183,9 +162,7 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 /// <let> = Let Id [":" Type] Equals <expression>
 /// ```
 fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
-    if tokens.pop()? != Token::Let {
-        panic!("THIS SHOULD NOT HAPPEN: check that stream starts with 'let' token");
-    }
+    match_next(tokens, Token::Let)?;
 
     let id_token = tokens.pop()?;
     let id = match id_token {
@@ -206,13 +183,9 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
         None
     };
 
-    let equals_token = tokens.pop()?;
-    match equals_token {
-        Token::UnaryOp(UnaryOp::Equals) => {},
-        _ => return Err(error::unexpected_token("'='", equals_token))
-    };
-
+    match_next(tokens, Token::UnaryOp(UnaryOp::Equals))?;
     let expr = parse_expr(tokens)?;
+
     return Ok(LetNode { id, datatype, value: expr });
 }
 
@@ -220,6 +193,18 @@ fn token_matches_formatter(token: &Token, formatter: &str) -> bool {
     match token {
         Token::Formatter(ref f) if f == formatter => true,
         _ => false,
+    }
+}
+
+/// Take the next token from the stream and compare it to the expected token.
+/// If they do not match, return a syntax error 
+fn match_next(stream: &mut TokenStream, expected: Token) -> ParseResult<()> {
+    let next = stream.pop()?;
+    if next != expected {
+        // TODO: improve debug string
+        Err(error::unexpected_token(format!("{expected:?}").as_str(), next))
+    } else {
+        Ok(())
     }
 }
 
