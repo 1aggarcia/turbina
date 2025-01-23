@@ -1,6 +1,6 @@
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Program, Term, Type
+    get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, Expr, LetNode, Program, Term, Type
 };
 
 type ValidationResult = Result<Type, Vec<IntepreterError>>;
@@ -17,8 +17,15 @@ pub fn validate(
     }
 }
 
+fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
+    match expr {
+        Expr::Binary(b) => validate_binary_expr(program, b),
+        Expr::Cond(_) => todo!(),
+    }
+}
+
 /// Check that the types for every term in the expression are valid
-fn validate_expr(program: &Program, expr: &ExprNode) -> ValidationResult {
+fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResult {
     // TODO: dont escape an error on the first token, collect it into the errors vector
     let mut result_type = validate_term(program, &expr.first)?;
     let mut error = Vec::<IntepreterError>::new();

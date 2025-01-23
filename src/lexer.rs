@@ -87,6 +87,8 @@ fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
 fn symbol_to_token(symbol: &str) -> Token {
     match symbol {
         "let" => Token::Let,
+        "if" => Token::If,
+        "else" => Token::Else,
         "string" => Token::Type(Type::String),
         "int" => Token::Type(Type::Int),
         "bool" => Token::Type(Type::Bool),
@@ -242,8 +244,10 @@ mod tests {
             id_token("fn"),
             id_token("customSymbol"),
             id_token("data"),
+            Token::If,
+            Token::Else,
         ];
-        assert_eq!(tokenize("fn customSymbol data"), expected);
+        assert_eq!(tokenize("fn customSymbol data if else"), expected);
     }
 
     #[test]

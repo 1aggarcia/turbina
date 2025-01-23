@@ -1,4 +1,4 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Literal, Program, Term, Variable};
+use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, Expr, LetNode, Literal, Program, Term, Variable};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// Syntax errors will cause a panic and should be checked with the
@@ -26,8 +26,15 @@ fn eval_let(program: &mut Program, node: &LetNode) -> Literal {
     return literal_value;
 }
 
+fn eval_expr(program: &mut Program, expr: &Expr) -> Literal {
+    match expr {
+        Expr::Binary(b) => eval_binary_expr(program, b),
+        Expr::Cond(_) => todo!(),
+    }
+}
+
 /// Reduce a sequence of terms and operators to a single literal
-fn eval_expr(program: &mut Program, expr: &ExprNode) -> Literal {
+fn eval_binary_expr(program: &mut Program, expr: &BinaryExpr) -> Literal {
     let mut result = eval_term(program, &expr.first);
 
     for (op, term) in &expr.rest {

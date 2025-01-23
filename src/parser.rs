@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryOp, ExprNode, LetNode, Term, Token, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, LetNode, Term, Token, UnaryOp
 };
 
 use crate::errors::{IntepreterError, error};
@@ -64,9 +64,21 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
 }
 
 /// ```
-/// <expr> ::= <term> {<binary_op> <term>}
+/// <expr> ::= <if_expr> | <binary_expr>
+/// <if_expr> ::= If "(" <expr> ")" <expr> Else <expr>
 /// ```
-fn parse_expr(tokens: &mut TokenStream) -> ParseResult<ExprNode> {
+fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
+    if tokens.peek()? == Token::If {
+        todo!("If parser not implemented");
+    }
+    let binary_expr = parse_binary_expr(tokens)?;
+    return Ok(Expr::Binary(binary_expr));
+}
+
+/// ```
+/// <binary_expr> ::= <term> {BinaryOp <term>
+/// ```
+fn parse_binary_expr(tokens: &mut TokenStream) -> ParseResult<BinaryExpr> {
     /// to decide when to stop parsing, since expr is variable length
     fn next_is_operator(tokens: &mut TokenStream) -> bool {
         match tokens.peek() {
@@ -88,7 +100,7 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<ExprNode> {
         rest.push((operator, term));
     }
 
-    return Ok(ExprNode { first, rest });
+    return Ok(BinaryExpr { first, rest });
 }
 
 /// Build an AST node for a Term, which follows the below rule:
@@ -107,12 +119,11 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     } else if token_matches_formatter(tokens.peek()?, "(") {
         tokens.pop()?;
         let expr = parse_expr(tokens)?;
-        if token_matches_formatter(tokens.peek()?, ")") {
-            tokens.pop()?;
-            return Ok(Term::Expr(Box::new(expr)))
-        } else {
+        if !token_matches_formatter(tokens.peek()?, ")") {
             return Err(error::unexpected_token("')'", tokens.peek().unwrap()));
         }
+        tokens.pop()?;
+        return Ok(Term::Expr(Box::new(expr)));
     } else if first == Token::BinaryOp(BinaryOp::Minus) {
         tokens.pop()?;
         starts_with_minus = true;
@@ -257,7 +268,7 @@ mod test_parse {
         let left = int_term(left_val);
         let right = int_term(right_val);
         let expected = AbstractSyntaxTree::Expr(
-            ExprNode { first: left, rest: vec![(operator, right)] }
+            bin_expr(left, vec![(operator, right)])
         );
         assert_eq!(parse(input), Ok(expected));
     }
@@ -313,10 +324,10 @@ mod test_parse {
     fn it_parses_string_plus_string() {
         let input = tokenize("\"a\" + \"b\"");
 
-        let expr = ExprNode {
-            first: str_term("a"),
-            rest: vec![(BinaryOp::Plus, str_term("b"))]
-        };
+        let expr = bin_expr(
+            str_term("a"),
+            vec![(BinaryOp::Plus, str_term("b"))]
+        );
         let expected = AbstractSyntaxTree::Expr(expr);
         assert_eq!(parse(input), Ok(expected)); 
     }
@@ -337,14 +348,14 @@ mod test_parse {
     fn it_parses_expression_in_parens() {
         let input = tokenize("3 * (2 - 5)");
 
-        let inner_expr = ExprNode {
-            first: int_term(2),
-            rest: vec![(BinaryOp::Minus, int_term(5))]
-        };
-        let expr = ExprNode {
-            first: int_term(3),
-            rest: vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))]
-        };
+        let inner_expr = bin_expr(
+            int_term(2),
+            vec![(BinaryOp::Minus, int_term(5))]
+        );
+        let expr = bin_expr(
+            int_term(3),
+            vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))]
+        );
         let expected = AbstractSyntaxTree::Expr(expr);
         assert_eq!(parse(input), Ok(expected));
     }
@@ -372,10 +383,10 @@ mod test_parse {
         let let_node = LetNode {
             id: "two".to_string(),
             datatype: None,
-            value: ExprNode {
-                first: int_term(6),
-                rest: vec![(BinaryOp::Slash, int_term(3))]
-            },
+            value: bin_expr(
+                int_term(6),
+                vec![(BinaryOp::Slash, int_term(3))]
+            ),
         };
         let expected = AbstractSyntaxTree::Let(let_node);
         assert_eq!(parse(input), Ok(expected));
@@ -387,10 +398,10 @@ mod test_parse {
         let let_node = LetNode {
             id: "two_strings".to_string(),
             datatype: Some(Type::String),
-            value: ExprNode {
-                first: str_term("a"),
-                rest: vec![(BinaryOp::Plus, str_term("b"))]
-            },
+            value: bin_expr(
+            str_term("a"),
+                vec![(BinaryOp::Plus, str_term("b"))]
+            ),
         };
         let expected = AbstractSyntaxTree::Let(let_node);
         assert_eq!(parse(input), Ok(expected));

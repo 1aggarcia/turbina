@@ -30,6 +30,8 @@ pub enum Token {
 
     // keywords
     Let,
+    If,
+    Else,
     Type(Type),
 }
 
@@ -104,7 +106,7 @@ impl fmt::Debug for UnaryOp {
 #[derive(PartialEq, Debug)]
 pub enum AbstractSyntaxTree {
     Let(LetNode),
-    Expr(ExprNode),
+    Expr(Expr),
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -113,7 +115,7 @@ pub enum Term {
     Id(String),
     Not(Box<Term>),  // negate boolean terms
     Minus(Box<Term>),  // negate int terms
-    Expr(Box<ExprNode>),
+    Expr(Box<Expr>),
 }
 
 // to make construction easier
@@ -127,18 +129,32 @@ impl Term {
     }
 }
 
-/// For variable length expressions
 #[derive(Debug, PartialEq, Clone)]
-pub struct ExprNode {
+pub enum Expr {
+    Binary(BinaryExpr),
+    Cond(CondExpr),
+}
+
+/// For variable length expressions on binary operators
+#[derive(Debug, PartialEq, Clone)]
+pub struct BinaryExpr {
     pub first: Term,
     pub rest: Vec<(BinaryOp, Term)>
+}
+
+/// if/else expressions
+#[derive(Debug, PartialEq, Clone)]
+pub struct CondExpr {
+    pub cond: Box<Expr>,
+    pub if_true: Box<Expr>,
+    pub if_false: Box<Expr>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct LetNode {
     pub id: String,
     pub datatype: Option<Type>,
-    pub value: ExprNode,
+    pub value: Expr,
 }
 
 #[cfg(test)]
@@ -189,7 +205,11 @@ pub mod test_utils {
         AbstractSyntaxTree::Expr(term_expr(term))
     }
 
-    pub fn term_expr(term: Term) -> ExprNode {
-        ExprNode { first: term, rest: vec![] } 
+    pub fn term_expr(term: Term) -> Expr {
+        bin_expr(term, vec![])
+    }
+
+    pub fn bin_expr(first: Term, rest: Vec<(BinaryOp, Term)>) -> Expr {
+        Expr::Binary(BinaryExpr { first, rest })
     }
 }
