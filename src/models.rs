@@ -51,6 +51,17 @@ pub enum Type {
     Bool,
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Type::Int => "int",
+            Type::String => "string",
+            Type::Bool => "bool",
+        };
+        write!(f, "{}", string)
+    }
+}
+
 pub fn get_literal_type(literal: &Literal) -> Type {
     match literal {
         Literal::Bool(_) => Type::Bool,

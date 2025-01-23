@@ -1,6 +1,6 @@
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, Expr, LetNode, Program, Term, Type
+    get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, LetNode, Program, Term, Type
 };
 
 type ValidationResult = Result<Type, Vec<IntepreterError>>;
@@ -20,7 +20,7 @@ pub fn validate(
 fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(program, b),
-        Expr::Cond(c) => todo!("cannot parse expr: {c:#?}"),
+        Expr::Cond(c) => validate_cond_expr(program, c),
     }
 }
 
@@ -28,12 +28,12 @@ fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
 fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResult {
     // TODO: dont escape an error on the first token, collect it into the errors vector
     let mut result_type = validate_term(program, &expr.first)?;
-    let mut error = Vec::<IntepreterError>::new();
+    let mut errors = Vec::<IntepreterError>::new();
 
     for (op, term) in &expr.rest {
         let right_result = validate_term(program, &term);
         if right_result.is_err() {
-            error.extend(right_result.err().unwrap());
+            errors.extend(right_result.err().unwrap());
             continue;
         }
         let right_type = right_result.unwrap();
@@ -44,12 +44,34 @@ fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResul
         }
         result_type = binary_op_return_type(*op, result_type)?;
     }
-
-    if error.is_empty() {
+    
+    if errors.is_empty() {
         return Ok(result_type);
     } else {
-        return Err(error);
+        return Err(errors);
     }
+}
+
+/// Check that the condition is a boolean type, and the "if" and "else" branches
+/// are of the same type
+fn validate_cond_expr(program: &Program, expr: &CondExpr) -> ValidationResult {
+    let cond_type = validate_expr(program, &expr.cond)?;
+    if cond_type != Type::Bool {
+        let err = IntepreterError::InvalidType { datatype: cond_type };
+        return Err(vec![err]);
+    }
+
+    let true_type = validate_expr(program, &expr.if_true)?;
+    let false_type = validate_expr(program, &expr.if_false)?;
+    if true_type == false_type {
+        return Ok(true_type);
+    }
+
+    let err = IntepreterError::MismatchedTypes {
+        type1: true_type,
+        type2: false_type
+    };
+    return Err(vec![err]);
 }
 
 /// For symbols (ID tokens), check that they exist and their type matches any
@@ -191,7 +213,7 @@ mod test_validate {
         }
     }
 
-    mod operator {
+    mod binary_expr {
         use super::*;
 
         #[rstest]
@@ -214,10 +236,10 @@ mod test_validate {
         #[rstest]
         // right arg undefined
         #[case("a + 3", vec![error::undefined_id("a")])]
-
+        
         // left arg undefined
         #[case("1 + c", vec![error::undefined_id("c")])]
-
+        
         // both args undefined
         #[case("x + y - z", ["x", "y", "z"].map(error::undefined_id).to_vec())]
         fn it_returns_error_for_child_error(
@@ -253,6 +275,35 @@ mod test_validate {
         fn it_returns_ok_for_boolean_operator_on_same_type(#[case] tree: AbstractSyntaxTree) {
             let expected = Ok(Type::Bool);
             assert_eq!(validate(&Program::new(), &tree), expected);
+        }
+    }
+
+    mod cond_expr {
+        use super::*;
+
+        #[test]
+        fn it_returns_error_for_non_bool_condition() {
+            let input = make_tree("if (3) false else true");
+            let expected = IntepreterError::InvalidType { datatype: Type::Int };
+
+            assert_eq!(validate(&Program::new(), &input), Err(vec![expected]));
+        }
+
+        #[test]
+        fn it_returns_error_for_mismatched_types() {
+            let input = make_tree("if (true) 3 else \"\"");
+
+            let expected = IntepreterError::MismatchedTypes {
+                type1: Type::Int,
+                type2: Type::String
+            };
+            assert_eq!(validate(&Program::new(), &input), Err(vec![expected]));
+        }
+
+        #[test]
+        fn it_returns_ok_for_valid_types() {
+            let input = make_tree("if (true) 3 else 4");
+            assert_eq!(validate(&Program::new(), &input), Ok(Type::Int));
         }
     }
 

@@ -1,9 +1,13 @@
 extern crate custom_error;
 use custom_error::custom_error;
 
+use crate::models::Type;
+
 custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
     TypeError { message: String } = "Type Error: {message}",
+    MismatchedTypes { type1: Type, type2: Type } = "Mismatched Types: got {type1} and {type2}",
+    InvalidType { datatype: Type } = "Expression of type '{datatype}' not allowed in this position",
     IOError { message: String } = "IO Error: {message}",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",
