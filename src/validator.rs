@@ -26,27 +26,39 @@ fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
 
 /// Check that the types for every term in the expression are valid
 fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResult {
-    // TODO: dont escape an error on the first token, collect it into the errors vector
-    let mut result_type = validate_term(program, &expr.first)?;
     let mut errors = Vec::<IntepreterError>::new();
+    let mut result = None;
+
+    match validate_term(program, &expr.first) {
+        Ok(t) => result = Some(t),
+        Err(e) => errors.extend(e),
+    }
 
     for (op, term) in &expr.rest {
-        let right_result = validate_term(program, &term);
-        if right_result.is_err() {
-            errors.extend(right_result.err().unwrap());
-            continue;
-        }
-        let right_type = right_result.unwrap();
+        let new_type = match validate_term(program, &term) {
+            Ok(t) => t,
+            Err(e) => {
+                errors.extend(e);
+                continue;
+            }
+        };
+        let result_type = match result {
+            Some(t) => t,
+            None => continue,
+        }; 
 
-        if result_type != right_type {
-            let err = error::binary_op_types(*op, result_type, right_type);
-            return Err(vec![err]);
+        if result_type != new_type {
+            let err = error::binary_op_types(*op, result_type, new_type);
+            errors.push(err);
         }
-        result_type = binary_op_return_type(*op, result_type)?;
+        match binary_op_return_type(*op, result_type) {
+            Ok(t) => result = Some(t),
+            Err(e) => errors.extend(e),
+        }
     }
-    
+
     if errors.is_empty() {
-        return Ok(result_type);
+        return Ok(result.unwrap());
     } else {
         return Err(errors);
     }
@@ -55,23 +67,28 @@ fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResul
 /// Check that the condition is a boolean type, and the "if" and "else" branches
 /// are of the same type
 fn validate_cond_expr(program: &Program, expr: &CondExpr) -> ValidationResult {
+    let mut errors = Vec::<IntepreterError>::new();
+
     let cond_type = validate_expr(program, &expr.cond)?;
     if cond_type != Type::Bool {
-        let err = IntepreterError::InvalidType { datatype: cond_type };
-        return Err(vec![err]);
+        errors.push(IntepreterError::InvalidType { datatype: cond_type });
     }
 
     let true_type = validate_expr(program, &expr.if_true)?;
     let false_type = validate_expr(program, &expr.if_false)?;
-    if true_type == false_type {
-        return Ok(true_type);
+    if true_type != false_type {
+        let err = IntepreterError::MismatchedTypes {
+            type1: true_type,
+            type2: false_type
+        };
+        errors.push(err);
     }
 
-    let err = IntepreterError::MismatchedTypes {
-        type1: true_type,
-        type2: false_type
-    };
-    return Err(vec![err]);
+    if errors.is_empty() {
+        return Ok(true_type);
+    } else {
+        return Err(errors);
+    }
 }
 
 /// For symbols (ID tokens), check that they exist and their type matches any
@@ -291,13 +308,16 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_mismatched_types() {
-            let input = make_tree("if (true) 3 else \"\"");
+            let input = make_tree("if (1) 2 else \"\"");
 
-            let expected = IntepreterError::MismatchedTypes {
-                type1: Type::Int,
-                type2: Type::String
-            };
-            assert_eq!(validate(&Program::new(), &input), Err(vec![expected]));
+            let expected = vec![
+                IntepreterError::InvalidType { datatype: Type::Int },
+                IntepreterError::MismatchedTypes {
+                    type1: Type::Int,
+                    type2: Type::String
+                },
+            ];
+            assert_eq!(validate(&Program::new(), &input), Err(expected));
         }
 
         #[test]

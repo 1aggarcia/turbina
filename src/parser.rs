@@ -91,7 +91,7 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
 }
 
 /// ```
-/// <binary_expr> ::= <term> {BinaryOp <term>
+/// <binary_expr> ::= <term> {BinaryOp <term>}
 /// ```
 fn parse_binary_expr(tokens: &mut TokenStream) -> ParseResult<BinaryExpr> {
     /// to decide when to stop parsing, since expr is variable length
