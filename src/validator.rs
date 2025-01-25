@@ -194,7 +194,7 @@ mod test_validate {
         fn returns_ok_for_literals(#[case] literal: Literal) {
             let tree = term_tree(Term::Literal(literal.clone()));
             let expected = get_literal_type(&literal);
-            assert_eq!(validate(&Program::new(), &tree), Ok(expected));
+            assert_eq!(validate_fresh(tree), Ok(expected));
         }
 
         #[test]
@@ -213,7 +213,7 @@ mod test_validate {
         fn it_returns_error_for_non_existent_symbol() {
             let tree = make_tree("x");
             let expected = vec![error::undefined_id("x")];
-            assert_eq!(validate(&Program::new(), &tree), Err(expected));
+            assert_eq!(validate_fresh(tree), Err(expected));
         }
 
         #[rstest]
@@ -226,7 +226,7 @@ mod test_validate {
             #[case] error: IntepreterError,
         ) {
             let tree = make_tree(input);
-            assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
+            assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
     }
 
@@ -247,7 +247,7 @@ mod test_validate {
         ) {
             let tree = make_tree(input);
             let expected = error::binary_op_types(op, left_type, right_type);
-            assert_eq!(validate(&Program::new(), &tree), Err(vec![expected]));
+            assert_eq!(validate_fresh(tree), Err(vec![expected]));
         }
 
         #[rstest]
@@ -264,25 +264,25 @@ mod test_validate {
         ) {
             // symbol does not exist
             let tree = make_tree(input);
-            assert_eq!(validate(&Program::new(), &tree), Err(error));
+            assert_eq!(validate_fresh(tree), Err(error));
         }
 
         #[test]
         fn it_returns_ok_for_int_addition() {
             let tree = make_tree("2 + 2");
-            assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), Ok(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_int_division() {
             let tree = make_tree("2 / 2");
-            assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), Ok(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_string_concatenation() {
             let tree = make_tree("\"a\" + \"b\"");
-            assert_eq!(validate(&Program::new(), &tree), Ok(Type::String));
+            assert_eq!(validate_fresh(tree), Ok(Type::String));
         }
 
         #[rstest]
@@ -291,7 +291,7 @@ mod test_validate {
         #[case(make_tree("\"a\" == \"b\""))]
         fn it_returns_ok_for_boolean_operator_on_same_type(#[case] tree: AbstractSyntaxTree) {
             let expected = Ok(Type::Bool);
-            assert_eq!(validate(&Program::new(), &tree), expected);
+            assert_eq!(validate_fresh(tree), expected);
         }
     }
 
@@ -303,7 +303,7 @@ mod test_validate {
             let input = make_tree("if (3) false else true");
             let expected = IntepreterError::InvalidType { datatype: Type::Int };
 
-            assert_eq!(validate(&Program::new(), &input), Err(vec![expected]));
+            assert_eq!(validate_fresh(input), Err(vec![expected]));
         }
 
         #[test]
@@ -317,13 +317,13 @@ mod test_validate {
                     type2: Type::String
                 },
             ];
-            assert_eq!(validate(&Program::new(), &input), Err(expected));
+            assert_eq!(validate_fresh(input), Err(expected));
         }
 
         #[test]
         fn it_returns_ok_for_valid_types() {
             let input = make_tree("if (true) 3 else 4");
-            assert_eq!(validate(&Program::new(), &input), Ok(Type::Int));
+            assert_eq!(validate_fresh(input), Ok(Type::Int));
         }
     }
 
@@ -333,33 +333,33 @@ mod test_validate {
         #[test]
         fn it_infers_correct_type_for_math_expr() {
             let tree = make_tree("let something = 5 + 2");
-            assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), Ok(Type::Int));
         }
 
         #[test]
         fn it_infers_correct_type_for_string_expr() {
             let tree = make_tree("let something = \"a\" + \"b\"");
-            assert_eq!(validate(&Program::new(), &tree), Ok(Type::String));
+            assert_eq!(validate_fresh(tree), Ok(Type::String));
         }
 
         #[test]
         fn it_returns_ok_for_declared_type() {
             let tree = make_tree("let x: int = 2 + 3");
-            assert_eq!(validate(&Program::new(), &tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), Ok(Type::Int));
         }
 
         #[test]
         fn it_returns_type_error_for_conflicting_types() {
             let tree = make_tree("let x: int = \"string\"");
             let error = error::declared_type("x", Type::Int, Type::String);
-            assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
+            assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
 
         #[test]
         fn it_propagates_error_in_expression() {
             let tree = make_tree("let y: string = undefined");
             let error = error::undefined_id("undefined");
-            assert_eq!(validate(&Program::new(), &tree), Err(vec![error]));
+            assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
 
         #[test]
@@ -377,5 +377,9 @@ mod test_validate {
 
     fn make_tree(statement: &str) -> AbstractSyntaxTree {
         return parse(tokenize(statement)).unwrap();
+    }
+
+    fn validate_fresh(input: AbstractSyntaxTree) -> ValidationResult {
+        validate(&Program::new(), &input)
     }
 }

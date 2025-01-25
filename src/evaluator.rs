@@ -137,7 +137,7 @@ mod test_evalutate {
     #[case(Literal::String("so many tesssssts".to_string()))]
     fn it_returns_input_on_literals(#[case] literal: Literal) {
         let input = term_tree(Term::Literal(literal.clone()));
-        assert_eq!(evaluate_fresh(&input), literal);
+        assert_eq!(evaluate_fresh(input), literal);
     }
 
     #[rstest]
@@ -146,7 +146,7 @@ mod test_evalutate {
     #[case("-15", Literal::Int(-15))]
     fn it_negates_literals(#[case] input: &str, #[case] expected: Literal) {
         let tree = make_tree(input);
-        assert_eq!(evaluate_fresh(&tree), expected);
+        assert_eq!(evaluate_fresh(tree), expected);
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod test_evalutate {
     fn it_returns_value_of_var_after_binding() {
         let input = make_tree("let t = 12345 - 98765");
         let expected = Literal::Int(12345 - 98765);
-        assert_eq!(evaluate(&mut Program::new(), &input), expected);
+        assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[rstest]
@@ -195,7 +195,7 @@ mod test_evalutate {
     ) {
         let input = make_tree(input);
         let expected = Literal::Int(expected_val);
-        assert_eq!(evaluate(&mut Program::new(), &input), expected);
+        assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[rstest]
@@ -209,7 +209,7 @@ mod test_evalutate {
     ) {
         let input = make_tree(input);
         let expected = Literal::Int(expected_val);
-        assert_eq!(evaluate(&mut Program::new(), &input), expected);
+        assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[rstest]
@@ -235,18 +235,18 @@ mod test_evalutate {
     ) {
         let input = make_tree(input);
         let expected = Literal::Bool(expected_val);
-        assert_eq!(evaluate(&mut Program::new(), &input), expected);
+        assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[test]
     fn it_evaluates_string_concatenation() {
         let input = make_tree("\"abc\" + \"xyz\"");
         let expected = Literal::String("abcxyz".to_string());
-        assert_eq!(evaluate(&mut Program::new(), &input), expected);
+        assert_eq!(evaluate_fresh(input), expected);
     }
 
     // evaluate an AST on a new program
-    fn evaluate_fresh(tree: &AbstractSyntaxTree) -> Literal{
+    fn evaluate_fresh(tree: AbstractSyntaxTree) -> Literal{
         return evaluate(&mut Program::new(), &tree);
     }
 
