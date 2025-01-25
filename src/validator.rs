@@ -376,7 +376,7 @@ mod test_validate {
     }
 
     fn make_tree(statement: &str) -> AbstractSyntaxTree {
-        return parse(tokenize(statement)).unwrap();
+        return parse(tokenize(statement).unwrap()).unwrap();
     }
 
     fn validate_fresh(input: AbstractSyntaxTree) -> ValidationResult {

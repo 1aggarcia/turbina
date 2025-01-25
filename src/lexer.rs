@@ -1,8 +1,8 @@
 use regex::Regex;
 
-use crate::models::{
+use crate::{errors::IntepreterError, models::{
     BinaryOp, Literal, Token, Type, UnaryOp
-};
+}};
 
 /// Parse source code text into a list of tokens according to the language's
 /// grammar. All whitespace is eliminated, unless is is part of a string.
@@ -16,7 +16,7 @@ use crate::models::{
 /// - formatters: (parenthesis, brackets, semicolon, comma)
 /// 
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
-pub fn tokenize(line: &str) -> Vec<Token> {
+pub fn tokenize(line: &str) -> Result<Vec<Token>, IntepreterError> {
     let line_without_comments = line.split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
@@ -57,7 +57,7 @@ pub fn tokenize(line: &str) -> Vec<Token> {
         })  
         .collect::<Vec<Token>>();
 
-    return tokens;
+    return Ok(tokens);
 }
 
 fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
@@ -110,28 +110,96 @@ mod tests {
     use crate::models::test_utils::*;
     use rstest::rstest;
 
-    #[test]
-    fn booleans() {
-        assert_eq!(tokenize("true"), [bool_token(true)]);
-        assert_eq!(tokenize("false"), [bool_token(false)]);
+    // one token
+    #[rstest]
+    #[case::bool("true", bool_token(true))]
+    #[case::bool("false", bool_token(false))]
+
+    #[case::empty_string("\"\"", string_token(""))]
+    #[case::normal_string(r#""hola""#, string_token("hola"))]
+    #[case::string_with_spaces(r#""a b c""#, string_token("a b c"))]
+
+    #[case::symbol("let", Token::Let)]
+    #[case::symbol_with_underscore(
+        "multi_word_var_name", Token::Id("multi_word_var_name".into()))]
+    fn one_token(#[case] line: &str, #[case] expected: Token) {
+        assert_eq!(tokenize(line), Ok(vec![expected]));
     }
 
-    #[test]
-    fn empty_string() {
-        let expected = [string_token("")];
-        assert_eq!(tokenize("\"\""), expected);
-    }
+    // multiple tokens
+    #[rstest]
+    #[case::repeated_not("!!!false!", &[
+        unary_op_token(UnaryOp::Not),
+        unary_op_token(UnaryOp::Not),
+        unary_op_token(UnaryOp::Not),
+        bool_token(false),
+        unary_op_token(UnaryOp::Not),
+    ])]
 
-    #[test]
-    fn normal_string() {
-        let expected = [string_token("hola")];
-        assert_eq!(tokenize("\"hola\""), expected);
-    }
+    // identifying negative numbers is a job for the parser, not the lexer
+    #[case::negative_int("-9", &[
+        op_token(BinaryOp::Minus),
+        int_token(9),
+    ])]
 
-    #[test]
-    fn string_with_spaces() {
-        let expected = [string_token("a b c")];
-        assert_eq!(tokenize("\"a b c\""), expected);
+    #[case::operators_and_numbers("4+5", &[
+        int_token(4),
+        op_token(BinaryOp::Plus),
+        int_token(5),
+    ])]
+
+    #[case::operators_and_numbers("56-439%4", &[
+        int_token(56),
+        op_token(BinaryOp::Minus),
+        int_token(439),
+        op_token(BinaryOp::Percent),
+        int_token(4),
+    ])]
+
+    #[case::operators_with_spaces("1* 2  +   3", &[
+        int_token(1),
+        op_token(BinaryOp::Star),
+        int_token(2),
+        op_token(BinaryOp::Plus),
+        int_token(3),
+    ])]
+
+    #[case::var_declaration("let x = 5;", &[
+        Token::Let,
+        id_token("x"),
+        unary_op_token(UnaryOp::Equals),
+        int_token(5),
+        formatter_token(";")
+    ])]
+
+    #[case::declared_type("let x: int = 5;", &[
+        Token::Let,
+        id_token("x"),
+        formatter_token(":"),
+        type_token(Type::Int),
+        unary_op_token(UnaryOp::Equals),
+        int_token(5),
+        formatter_token(";")
+    ])]
+
+    #[case::symbols("fn customSymbol data if else", &[
+        id_token("fn"),
+        id_token("customSymbol"),
+        id_token("data"),
+        Token::If,
+        Token::Else,
+    ])]
+
+    #[case::function_call("print(x + 1)", &[
+        id_token("print"),
+        formatter_token("("),
+        id_token("x"),
+        op_token(BinaryOp::Plus),
+        int_token(1),
+        formatter_token(")"),
+    ])]
+    fn many_tokens(#[case] line: &str, #[case] expected: &[Token]) {
+        assert_eq!(tokenize(line), Ok(expected.to_vec()));
     }
 
     #[test]
@@ -147,17 +215,8 @@ mod tests {
         let input = strings
             .map(|s| "\"".to_string() + s + "\"")
             .join(" ");
-        let expected = strings.map(|s| string_token(s));
-        assert_eq!(tokenize(input.as_str()), expected);
-    }
-
-    // identifying negative numbers is a job for the parser, not the lexer
-    #[test]
-    fn negative_int() {
-        assert_eq!(tokenize("-9"), [
-            op_token(BinaryOp::Minus),
-            int_token(9),
-        ]);
+        let expected = strings.map(|s| string_token(s)).to_vec();
+        assert_eq!(tokenize(input.as_str()), Ok(expected));
     }
 
     #[rstest]
@@ -169,26 +228,14 @@ mod tests {
     #[case("==", BinaryOp::Equals)]
     #[case("!=", BinaryOp::NotEq)]
     fn binary_operators(#[case] token: &str, #[case] op: BinaryOp) {
-        assert_eq!(tokenize(token), [op_token(op)]);
+        assert_eq!(tokenize(token), Ok(vec![op_token(op)]));
     }
 
-    // this will include the ! operator in the future
     #[rstest]
     #[case("=", UnaryOp::Equals)]
     #[case("!", UnaryOp::Not)]
     fn unary_operators(#[case] token: &str, #[case] op: UnaryOp) {
-        assert_eq!(tokenize(token), [unary_op_token(op)]);
-    }
-
-    #[test]
-    fn repeated_not() {
-        assert_eq!(tokenize("!!!false!"), vec![
-            unary_op_token(UnaryOp::Not),
-            unary_op_token(UnaryOp::Not),
-            unary_op_token(UnaryOp::Not),
-            bool_token(false),
-            unary_op_token(UnaryOp::Not),
-        ])
+        assert_eq!(tokenize(token), Ok(vec![unary_op_token(op)]));
     }
 
     #[rstest]
@@ -199,112 +246,18 @@ mod tests {
     #[case("[")]
     #[case("]")]
     fn formatters(#[case] token: &str) {
-        assert_eq!(tokenize(token), [formatter_token(token)]);
-    }
-
-    #[test]
-    fn operators_and_numbers() {
-        let expected_basic = [
-            int_token(4),
-            op_token(BinaryOp::Plus),
-            int_token(5),
-        ];
-        assert_eq!(tokenize("4+5"),  expected_basic);
-
-        let expected_long = [
-            int_token(56),
-            op_token(BinaryOp::Minus),
-            int_token(439),
-            op_token(BinaryOp::Percent),
-            int_token(4),
-        ];
-        assert_eq!(tokenize("56-439%4"),  expected_long);
-    }
-
-    #[test]
-    fn operators_with_spaces() {
-        let expected = [
-            int_token(1),
-            op_token(BinaryOp::Star),
-            int_token(2),
-            op_token(BinaryOp::Plus),
-            int_token(3),
-        ];
-        assert_eq!(tokenize("1* 2  +   3"), expected);
-    }
-
-    #[test]
-    fn one_symbol() {
-        assert_eq!(tokenize("let"), [Token::Let]);
-    }
-
-    #[test]
-    fn many_symbols() {
-        let expected = [
-            id_token("fn"),
-            id_token("customSymbol"),
-            id_token("data"),
-            Token::If,
-            Token::Else,
-        ];
-        assert_eq!(tokenize("fn customSymbol data if else"), expected);
-    }
-
-    #[test]
-    fn symbol_with_underscore() {
-        let expected = vec![Token::Id("multi_word_var_name".to_string())];
-        assert_eq!(tokenize("multi_word_var_name"), expected);
+        assert_eq!(tokenize(token), Ok(vec![formatter_token(token)]));
     }
 
     // TODO: dont panic for invalid tokens, have `tokenize` return detailed errors
     #[test]
-    #[should_panic]
     fn symbol_starting_with_numbers() {
-        tokenize("23sdf");
-    }
-
-    #[test]
-    fn var_declaration() {
-        let expected = [
-            Token::Let,
-            id_token("x"),
-            unary_op_token(UnaryOp::Equals),
-            int_token(5),
-            formatter_token(";")
-        ];
-        assert_eq!(tokenize("let x = 5;"), expected);
-    }
-
-    #[test]
-    fn var_declaration_with_type() {
-        let expected = [
-            Token::Let,
-            id_token("x"),
-            formatter_token(":"),
-            type_token(Type::Int),
-            unary_op_token(UnaryOp::Equals),
-            int_token(5),
-            formatter_token(";")
-        ];
-        assert_eq!(tokenize("let x: int = 5;"), expected);
-    }
-
-    #[test]
-    fn function_call() {
-        let expected = [
-            id_token("print"),
-            formatter_token("("),
-            id_token("x"),
-            op_token(BinaryOp::Plus),
-            int_token(1),
-            formatter_token(")"),
-        ];
-        assert_eq!(tokenize("print(x + 1)"), expected);
+        assert_eq!(tokenize("23sdf"), Err(IntepreterError::UnrecognizedToken { payload: "23sdf".into() }));
     }
 
     #[test]
     fn comments() {
-        assert_eq!(tokenize("// a comment"), vec![]);
+        assert_eq!(tokenize("// a comment"), Ok(vec![]));
         assert_eq!(tokenize("x * 3 // another comment"), tokenize("x * 3"));
     }
 }

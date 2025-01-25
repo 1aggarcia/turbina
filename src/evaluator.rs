@@ -267,6 +267,6 @@ mod test_evalutate {
     }
 
     fn make_tree(statement: &str) -> AbstractSyntaxTree {
-        return parse(tokenize(statement)).unwrap();
+        return parse(tokenize(statement).unwrap()).unwrap();
     }
 }

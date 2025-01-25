@@ -11,7 +11,9 @@ custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     IOError { message: String } = "IO Error: {message}",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",
-    EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS"
+    UnrecognizedToken { payload: String } = "UnrecognizedToken: {payload}",
+
+    EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS",
 }
 
 impl IntepreterError {

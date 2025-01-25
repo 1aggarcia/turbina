@@ -273,11 +273,11 @@ mod test_parse {
     }
 
     #[rstest]
-    #[case(tokenize("3 + 2"), BinaryOp::Plus, 3, 2)]
-    #[case(tokenize("1 % 4"), BinaryOp::Percent, 1, 4)]
-    #[case(tokenize("1 - 8"), BinaryOp::Minus, 1, 8)]
-    #[case(tokenize("0 == 1"), BinaryOp::Equals, 0, 1)]
-    #[case(tokenize("2 != 3"), BinaryOp::NotEq, 2, 3)]
+    #[case(force_tokenize("3 + 2"), BinaryOp::Plus, 3, 2)]
+    #[case(force_tokenize("1 % 4"), BinaryOp::Percent, 1, 4)]
+    #[case(force_tokenize("1 - 8"), BinaryOp::Minus, 1, 8)]
+    #[case(force_tokenize("0 == 1"), BinaryOp::Equals, 0, 1)]
+    #[case(force_tokenize("2 != 3"), BinaryOp::NotEq, 2, 3)]
     fn it_parses_binary_expressions(
         #[case] input: Vec<Token>,
         #[case] operator: BinaryOp,
@@ -293,8 +293,8 @@ mod test_parse {
     }
 
     #[rstest]
-    #[case(tokenize("-9"), -9)]
-    #[case(tokenize("- 123"), -123)]
+    #[case(force_tokenize("-9"), -9)]
+    #[case(force_tokenize("- 123"), -123)]
     fn it_parses_negavite_numbers(
         #[case] input: Vec<Token>,
         #[case] negative_num: i32
@@ -309,7 +309,7 @@ mod test_parse {
     fn it_parses_negated_boolean() {
         let term = Term::negated_bool(Term::Id("someVariable".into()));
         let expected = term_tree(term);
-        assert_eq!(parse(tokenize("!someVariable")), Ok(expected));
+        assert_eq!(parse(force_tokenize("!someVariable")), Ok(expected));
     }
 
     #[test]
@@ -320,7 +320,7 @@ mod test_parse {
             )
         );
         let expected = term_tree(term);
-        assert_eq!(parse(tokenize("!!!x")), Ok(expected));
+        assert_eq!(parse(force_tokenize("!!!x")), Ok(expected));
     }
 
     #[test]
@@ -329,19 +329,19 @@ mod test_parse {
             "identifier or literal",
             Token::BinaryOp(BinaryOp::Minus)
         );
-        assert_eq!(parse(tokenize("---9")), Err(error));
+        assert_eq!(parse(force_tokenize("---9")), Err(error));
     }
 
     #[test]
     fn it_returns_error_for_multiple_ints() {
-        let input = tokenize("3 2");
+        let input = force_tokenize("3 2");
         let error = error::unexpected_token("end of line", int_token(2));
         assert_eq!(parse(input), Err(error));
     }
 
     #[test]
     fn it_parses_string_plus_string() {
-        let input = tokenize("\"a\" + \"b\"");
+        let input = force_tokenize("\"a\" + \"b\"");
 
         let expr = bin_expr(
             str_term("a"),
@@ -353,7 +353,7 @@ mod test_parse {
 
     #[test]
     fn it_parses_var_binding_to_literal() {
-        let input = tokenize("let x = 4");
+        let input = force_tokenize("let x = 4");
         let let_node = LetNode {
             id: "x".to_string(),
             datatype: None,
@@ -365,7 +365,7 @@ mod test_parse {
 
     #[test]
     fn it_parses_expression_in_parens() {
-        let input = tokenize("3 * (2 - 5)");
+        let input = force_tokenize("3 * (2 - 5)");
 
         let inner_expr = bin_expr(
             int_term(2),
@@ -381,7 +381,7 @@ mod test_parse {
 
     #[test]
     fn it_parses_if_else_expression() {
-        let input = tokenize("if (cond) \"abc\" else \"def\"");
+        let input = force_tokenize("if (cond) \"abc\" else \"def\"");
 
         let expr = Expr::Cond(CondExpr {
             cond: Box::new(term_expr(Term::Id("cond".into()))),
@@ -395,14 +395,14 @@ mod test_parse {
 
     #[test]
     fn it_returns_error_for_bad_var_id() {
-        let input = tokenize("let 3 = 3");
+        let input = force_tokenize("let 3 = 3");
         let error = error::unexpected_token("identifier", int_token(3));
         assert_eq!(parse(input), Err(error));
     }
 
     #[test]
     fn it_returns_error_for_equals_in_let_expr() {
-        let input = tokenize("let x = 1 = 0");
+        let input = force_tokenize("let x = 1 = 0");
         let error = error::unexpected_token(
             "end of line",
             Token::UnaryOp(UnaryOp::Equals)
@@ -412,7 +412,7 @@ mod test_parse {
 
     #[test]
     fn it_parses_var_binding_to_expr() {
-        let input = tokenize("let two = 6 / 3");
+        let input = force_tokenize("let two = 6 / 3");
         let let_node = LetNode {
             id: "two".to_string(),
             datatype: None,
@@ -427,7 +427,7 @@ mod test_parse {
 
     #[test]
     fn it_parses_var_binding_with_declared_type() {
-        let input = tokenize("let two_strings: string = \"a\" + \"b\"");
+        let input = force_tokenize("let two_strings: string = \"a\" + \"b\"");
         let let_node = LetNode {
             id: "two_strings".to_string(),
             datatype: Some(Type::String),
@@ -442,26 +442,30 @@ mod test_parse {
 
     #[test]
     fn it_returns_error_for_invalid_let_type() {
-        let input = tokenize("let x: y = z");
+        let input = force_tokenize("let x: y = z");
         let error = error::not_a_type(Token::Id("y".to_string()));
         assert_eq!(parse(input), Err(error)); 
     }
 
     #[test]
     fn it_returns_error_for_unexpected_let() {
-        let input = tokenize("let x = let y = 2");
+        let input = force_tokenize("let x = let y = 2");
         let error = error::unexpected_token("identifier or literal", Token::Let);
         assert_eq!(parse(input), Err(error));
     }
 
     #[rstest]
-    #[case(tokenize("let"), error::unexpected_end_of_input())]
-    #[case(tokenize("let x"),error::unexpected_end_of_input())]
-    #[case(tokenize("3 +"), error::unexpected_end_of_input())]
+    #[case(force_tokenize("let"), error::unexpected_end_of_input())]
+    #[case(force_tokenize("let x"),error::unexpected_end_of_input())]
+    #[case(force_tokenize("3 +"), error::unexpected_end_of_input())]
     fn it_returns_error_for_incomplete_statements(
         #[case] tokens: Vec<Token>,
         #[case] error: IntepreterError
     ) {
         assert_eq!(parse(tokens), Err(error));
+    }
+
+    fn force_tokenize(line: &str) -> Vec<Token> {
+        return tokenize(line).unwrap();
     }
 }
