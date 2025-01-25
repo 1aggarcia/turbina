@@ -1,4 +1,4 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, Expr, LetNode, Literal, Program, Term, Variable};
+use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, LetNode, Literal, Program, Term, Variable};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// Syntax errors will cause a panic and should be checked with the
@@ -29,7 +29,7 @@ fn eval_let(program: &mut Program, node: &LetNode) -> Literal {
 fn eval_expr(program: &mut Program, expr: &Expr) -> Literal {
     match expr {
         Expr::Binary(b) => eval_binary_expr(program, b),
-        Expr::Cond(_) => todo!(),
+        Expr::Cond(c) => eval_cond_expr(program, c),
     }
 }
 
@@ -43,7 +43,15 @@ fn eval_binary_expr(program: &mut Program, expr: &BinaryExpr) -> Literal {
     }
 
     return result;
+}
 
+fn eval_cond_expr(program: &mut Program, expr: &CondExpr) -> Literal {
+    let cond_result = eval_expr(program, &expr.cond);
+    match cond_result {
+        Literal::Bool(true) => eval_expr(program, &expr.if_true),
+        Literal::Bool(false) => eval_expr(program, &expr.if_false),
+        _ => panic!("TYPE CHECKER FAILED: condition did not evaluate to bool: {cond_result:?}")
+    }
 }
 
 fn eval_term(program: &mut Program, term: &Term) -> Literal {
@@ -243,6 +251,14 @@ mod test_evalutate {
         let input = make_tree("\"abc\" + \"xyz\"");
         let expected = Literal::String("abcxyz".to_string());
         assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[rstest]
+    #[case("if (2 == 3) 1 else 2", 2)]
+    #[case("if (2 != 3) 3 else 4", 3)]
+    fn it_evaluates_conditional_expression(#[case] input: &str, #[case] expected: i32) {
+        let input = make_tree(input);
+        assert_eq!(evaluate_fresh(input), Literal::Int(expected));
     }
 
     // evaluate an AST on a new program
