@@ -16,7 +16,7 @@ use crate::{errors::IntepreterError, models::{
 /// - formatters: (parenthesis, brackets, semicolon, comma)
 /// 
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
-pub fn tokenize(line: &str) -> Result<Vec<Token>, IntepreterError> {
+pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
     let line_without_comments = line.split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
@@ -25,13 +25,16 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, IntepreterError> {
         | (?P<fmt>[:;(),\[\]])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
-        | \d+[a-zA-Z] # capture illegal tokens so that remaining numbers are legal
+        | \d+[a-zA-Z]+ # capture illegal tokens so that remaining numbers are legal
         | (?P<int>\d+)
     "#;
     let re = Regex::new(&pattern).unwrap();
     let capture_matches = re.captures_iter(line_without_comments);
-    let tokens = capture_matches
-        .map(|x| {
+    let mut tokens = Vec::<Token>::new();
+    let mut errors = Vec::<IntepreterError>::new();
+
+    for x in capture_matches {
+        let token = {
             if let Some(m) = x.name("int") {
                 let int_value = m.as_str().parse::<i32>().unwrap();
                 Token::Literal(Literal::Int(int_value))
@@ -52,12 +55,20 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, IntepreterError> {
             } else if let Some(m) = x.name("symbol") {
                 symbol_to_token(m.as_str())
             } else {
-                panic!("Unrecognized token: {:?}", x);
+                // ok to unwrap get() with 0, guaranteed not to be None
+                let payload = x.get(0).unwrap().as_str().to_string();
+                errors.push(IntepreterError::UnrecognizedToken { payload });
+                continue;
             }
-        })  
-        .collect::<Vec<Token>>();
+        };
+        tokens.push(token);
+    }
 
-    return Ok(tokens);
+    if errors.is_empty() {
+        return Ok(tokens);
+    } else {
+        return Err(errors);
+    }
 }
 
 fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
@@ -249,10 +260,13 @@ mod tests {
         assert_eq!(tokenize(token), Ok(vec![formatter_token(token)]));
     }
 
-    // TODO: dont panic for invalid tokens, have `tokenize` return detailed errors
     #[test]
     fn symbol_starting_with_numbers() {
-        assert_eq!(tokenize("23sdf"), Err(IntepreterError::UnrecognizedToken { payload: "23sdf".into() }));
+        let errors = vec![
+            IntepreterError::UnrecognizedToken { payload: "23sdf".into() },
+            IntepreterError::UnrecognizedToken { payload: "5l".into() }
+        ];
+        assert_eq!(tokenize("23sdf 5l"), Err(errors));
     }
 
     #[test]

@@ -80,7 +80,7 @@ fn process_next_line(
     input_stream: &mut InputStream
 ) -> Result<Literal, Vec<IntepreterError>> {
     let next_line = input_stream.next_line().map_err(|e| vec![e])?;
-    let tokens = tokenize(&next_line).map_err(|e| vec![e])?;
+    let tokens = tokenize(&next_line)?;
     let syntax_tree = parse(tokens).map_err(|e| vec![e])?;
     validate(program, &syntax_tree)?;
     let result = evaluate(program, &syntax_tree);
