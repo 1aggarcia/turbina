@@ -1,6 +1,6 @@
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, LetNode, Program, Term, Type
+    get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Program, Term, Type
 };
 
 type ValidationResult = Result<Type, Vec<IntepreterError>>;
@@ -21,7 +21,7 @@ fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(program, b),
         Expr::Cond(c) => validate_cond_expr(program, c),
-        Expr::FuncCall(f) => todo!("cannot validate {:?}", f),
+        Expr::FuncCall(f) => validate_func_call(program, f),
     }
 }
 
@@ -90,6 +90,39 @@ fn validate_cond_expr(program: &Program, expr: &CondExpr) -> ValidationResult {
     } else {
         return Err(errors);
     }
+}
+
+/// Check that the function being called is defined and the input types match
+/// the argument list
+fn validate_func_call(program: &Program, call: &FuncCall) -> ValidationResult {
+    let (param_types, output_type) = match validate_term(program, &call.func)? {
+        Type::Func { input, output } => (input, output),
+        _ => {
+            let err = IntepreterError::not_a_function(&call.func); 
+            return Err(vec![err]);
+        }
+    };
+    if call.args.len() != param_types.len() {
+        let err = IntepreterError::ArgCount {
+            got: call.args.len(),
+            expected: param_types.len()
+        };
+        return Err(vec![err]);
+    }
+    
+    let mut errors = vec![];
+    for (arg, param_type) in call.args.iter().zip(param_types.iter()) {
+        let arg_type = validate_expr(program, arg)?;
+        if arg_type == *param_type {
+            continue;
+        }
+        errors.push(IntepreterError::UnexpectedType {
+            got: arg_type,
+            expected: param_type.clone()
+        });
+    }
+
+    if errors.is_empty() { Ok(*output_type) } else { Err(errors) }
 }
 
 /// For symbols (ID tokens), check that they exist and their type matches any
@@ -332,7 +365,6 @@ mod test_validate {
         use super::*;
 
         #[test]
-        #[ignore = "unimplemented"]
         fn it_returns_error_for_undefined_function() {
             let input = make_tree("test(5)");
             let expected = vec![
@@ -342,23 +374,68 @@ mod test_validate {
         }
 
         #[test]
-        #[ignore = "unimplemented"]
-        fn it_returns_ok_for_empty_defined_function() {
-            let input = make_tree(r#"randInt()"#);
-            let expected = Type::Func { input: vec![], output: Box::new(Type::Int) };
+        fn it_returns_error_for_non_function_id() {
+            let tree = make_tree("five()");
+            
+            let mut program = Program::new();
+            let five = Variable { datatype: Type::Int, value: Literal::Int(5) };
+            program.vars.insert("five".into(), five);
+            
+            let err = IntepreterError::not_a_function(&Term::Id("five".into()));
+            assert_eq!(validate(&program, &tree), Err(vec![err]));
+        }
 
-            let rand_int_func = Literal::Func(Func {
-                params: vec![],
+        #[test]
+        fn it_returns_error_for_wrong_num_args() {
+            let tree = make_tree("f(1, 2, 3)");
+            let program = make_program_with_func("f", vec![Type::Int]);
+
+            let err = IntepreterError::ArgCount { got: 3, expected: 1 };
+            assert_eq!(validate(&program, &tree), Err(vec![err])); 
+        }
+
+        #[test]
+        fn it_returns_error_for_mismatched_types() {
+            let tree = make_tree(r#"f(false, "")"#);
+            let program =
+                make_program_with_func("f", vec![Type::Int, Type::Bool]);
+
+            let errs = vec![
+                IntepreterError::UnexpectedType { got: Type::Bool, expected: Type::Int },
+                IntepreterError::UnexpectedType { got: Type::String, expected: Type::Bool },
+            ];
+            assert_eq!(validate(&program, &tree), Err(errs));
+        }
+
+        #[test]
+        fn it_returns_ok_for_empty_defined_function() {
+            let tree = make_tree("randInt()");
+            let program = make_program_with_func("randInt",  vec![]);
+            assert_eq!(validate(&program, &tree), Ok(Type::Int));
+        }
+
+        #[test]
+        fn it_returns_ok_for_multi_arg_function() {
+            let tree = make_tree("f(1, false)");
+            let program = make_program_with_func("f",  vec![Type::Int, Type::Bool]);
+            assert_eq!(validate(&program, &tree), Ok(Type::Int));
+        }
+
+        /// Create a `Program` with a function of name `name`,
+        /// and input types `params`, and return type int
+        fn make_program_with_func(name: &str, params: Vec<Type>) -> Program {
+            let function = Literal::Func(Func {
+                params: params.iter().map(|t| (String::new(), t.clone())).collect(),
                 return_type: Type::Int,
                 body: FuncBody::Native(dummy_func),
             });
-            let mut program = Program::new();
-            program.vars.insert("randInt".into(), Variable {
-                datatype: get_literal_type(&rand_int_func),
-                value: rand_int_func,
-            });
 
-            assert_eq!(validate(&program, &input), Ok(expected));
+            let mut program = Program::new();
+            program.vars.insert(name.to_string(), Variable {
+                datatype: get_literal_type(&function),
+                value: function,
+            });
+            program
         }
 
         /// Mock function to construct function literals

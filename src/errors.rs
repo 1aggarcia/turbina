@@ -1,17 +1,19 @@
 extern crate custom_error;
 use custom_error::custom_error;
 
-use crate::models::Type;
+use crate::models::{Term, Type};
 
 custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
     TypeError { message: String } = "Type Error: {message}",
     MismatchedTypes { type1: Type, type2: Type } = "Mismatched Types: got {type1} and {type2}",
     InvalidType { datatype: Type } = "Expression of type '{datatype}' not allowed in this position",
+    UnexpectedType { got: Type, expected: Type } = "Expression of type '{got}' cannot be assigned to '{expected}'",
     IOError { message: String } = "IO Error: {message}",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",
-    UnrecognizedToken { payload: String } = "UnrecognizedToken: {payload}",
+    UnrecognizedToken { payload: String } = "Unrecognized Token: {payload}",
+    ArgCount { got: usize, expected: usize } = "Passed {got} args to function but expected {expected}",
 
     EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS",
 }
@@ -19,6 +21,12 @@ custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
 impl IntepreterError {
     pub fn io_err(err: std::io::Error) -> Self {
         Self::IOError { message: err.to_string() }
+    }
+
+    pub fn not_a_function(term: &Term) -> Self {
+        Self::TypeError {
+            message: format!("Tried to call '{term:?}', but it is not a function")
+        }
     }
 }
 
@@ -62,6 +70,7 @@ pub mod error {
         return TypeError { message };
     }
 
+    // TODO: merge with UnexpectedType
     pub fn declared_type(id: &str, declared: Type, expression: Type) -> IntepreterError {
         let message = format!(
             "Declared type {:?} for '{}' does not match expression type {:?}",
