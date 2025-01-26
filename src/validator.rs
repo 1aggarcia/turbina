@@ -44,12 +44,12 @@ fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResul
             }
         };
         let result_type = match result {
-            Some(t) => t,
+            Some(ref t) => t.clone(),
             None => continue,
         }; 
 
         if result_type != new_type {
-            let err = error::binary_op_types(*op, result_type, new_type);
+            let err = error::binary_op_types(*op, &result_type, &new_type);
             errors.push(err);
         }
         match binary_op_return_type(*op, result_type) {
@@ -79,7 +79,7 @@ fn validate_cond_expr(program: &Program, expr: &CondExpr) -> ValidationResult {
     let false_type = validate_expr(program, &expr.if_false)?;
     if true_type != false_type {
         let err = IntepreterError::MismatchedTypes {
-            type1: true_type,
+            type1: true_type.clone(),
             type2: false_type
         };
         errors.push(err);
@@ -113,7 +113,7 @@ fn validate_id(program: &Program, id: &String) -> ValidationResult {
         return Err(vec![error]);
     }
     let var = program.vars.get(id).unwrap();
-    return Ok(var.datatype);
+    return Ok(var.datatype.clone());
 }
 
 /// Check that the passed in term is a boolean
@@ -138,7 +138,7 @@ fn validated_negated_int(program: &Program, inner_term: &Term) -> ValidationResu
 /// Get the return type of a binary operator if `input_type` is valid,
 /// otherwise return a validation error
 fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> ValidationResult {
-    let type_error = error::binary_op_types(operator, input_type, input_type);
+    let type_error = error::binary_op_types(operator, &input_type, &input_type);
     match operator {
         // equality operators
         BinaryOp::NotEq | BinaryOp::Equals => Ok(Type::Bool),
@@ -167,7 +167,7 @@ fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
     }
 
     let expr_type = validate_expr(program, &node.value)?;
-    let declared_type = match node.datatype {
+    let declared_type = match node.datatype.clone() {
         Some(t) => t,
         None => return Ok(expr_type),
     };
@@ -247,7 +247,7 @@ mod test_validate {
             #[case] right_type: Type
         ) {
             let tree = make_tree(input);
-            let expected = error::binary_op_types(op, left_type, right_type);
+            let expected = error::binary_op_types(op, &left_type, &right_type);
             assert_eq!(validate_fresh(tree), Err(vec![expected]));
         }
 
@@ -325,6 +325,45 @@ mod test_validate {
         fn it_returns_ok_for_valid_types() {
             let input = make_tree("if (true) 3 else 4");
             assert_eq!(validate_fresh(input), Ok(Type::Int));
+        }
+    }
+
+    mod func_call {
+        use super::*;
+
+        #[test]
+        #[ignore = "unimplemented"]
+        fn it_returns_error_for_undefined_function() {
+            let input = make_tree("test(5)");
+            let expected = vec![
+                IntepreterError::UndefinedError { id: "test".into() }
+            ];
+            assert_eq!(validate_fresh(input), Err(expected));
+        }
+
+        #[test]
+        #[ignore = "unimplemented"]
+        fn it_returns_ok_for_empty_defined_function() {
+            let input = make_tree(r#"randInt()"#);
+            let expected = Type::Func { input: vec![], output: Box::new(Type::Int) };
+
+            let rand_int_func = Literal::Func(Func {
+                params: vec![],
+                return_type: Type::Int,
+                body: FuncBody::Native(dummy_func),
+            });
+            let mut program = Program::new();
+            program.vars.insert("randInt".into(), Variable {
+                datatype: get_literal_type(&rand_int_func),
+                value: rand_int_func,
+            });
+
+            assert_eq!(validate(&program, &input), Ok(expected));
+        }
+
+        /// Mock function to construct function literals
+        fn dummy_func(_args: Vec<Expr>) -> Literal {
+            Literal::Int(0)
         }
     }
 

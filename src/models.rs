@@ -40,25 +40,47 @@ pub enum Literal {
     Int(i32),
     String(String),
     Bool(bool),
+    Func(Func),
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct Func {
+   pub params: Vec<(String, Type)>,
+   pub return_type: Type,
+   pub body: FuncBody,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum FuncBody {
+    Expr(Box<Expr>),
+    Native(fn(Vec<Expr>) -> Literal)
 }
 
 // will be extended beyond literal types (e.g. functions, arrays, structs)
 // so should not be merged with enum `Literal`
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Type {
     Int,
     String,
     Bool,
+    Func { input: Vec<Type>, output: Box<Type> },
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = match self {
-            Type::Int => "int",
-            Type::String => "string",
-            Type::Bool => "bool",
-        };
-        write!(f, "{}", string)
+        match self {
+            Type::Int => write!(f, "int"),
+            Type::String => write!(f, "string"),
+            Type::Bool => write!(f, "bool"),
+            Type::Func { input, output } => {
+                let input_str = input.iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                write!(f, "({}) -> {}", input_str, output)
+            }
+        }
     }
 }
 
@@ -67,6 +89,10 @@ pub fn get_literal_type(literal: &Literal) -> Type {
         Literal::Bool(_) => Type::Bool,
         Literal::Int(_) => Type::Int,
         Literal::String(_) => Type::String,
+        Literal::Func(func) => Type::Func {
+            input: func.params.iter().map(|(_, t)| t.clone()).collect(),
+            output: Box::new(func.return_type.clone()),
+        }
     }
 }
 

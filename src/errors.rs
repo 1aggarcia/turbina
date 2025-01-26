@@ -45,8 +45,8 @@ pub mod error {
 
     pub fn binary_op_types(
         operator: BinaryOp,
-        left_type: Type,
-        right_type: Type
+        left_type: &Type,
+        right_type: &Type
     ) -> IntepreterError {
         let message = format!(
             "Illegal types for '{:?}' operator: {:?}, {:?}",
