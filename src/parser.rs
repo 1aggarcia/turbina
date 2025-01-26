@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, LetNode, Term, Token, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Term, Token, UnaryOp
 };
 
 use crate::errors::{IntepreterError, error};
@@ -64,15 +64,25 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
 }
 
 /// ```
-/// <expr> ::= <cond_expr> | <binary_expr>
+/// <expr> ::= <cond_expr> | <term> (<arg_list> | <binary_op_list>)
 /// ```
 fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
     if tokens.peek()? == Token::If {
         let cond_expr = parse_cond_expr(tokens)?;
         return Ok(Expr::Cond(cond_expr));
     }
-    let binary_expr = parse_binary_expr(tokens)?;
-    return Ok(Expr::Binary(binary_expr));
+
+    let first = parse_term(tokens)?;
+    let is_func_call =
+        tokens.has_next() && token_matches_formatter(&tokens.peek()?, "("); 
+
+    if is_func_call {
+        let arg_list = parse_arg_list(tokens)?;
+        return Ok(Expr::FuncCall(FuncCall { func: first, args: arg_list }));
+    } else {
+        let binary_op_list = parse_binary_op_list(tokens)?;
+        return Ok(Expr::Binary(BinaryExpr { first, rest: binary_op_list }));
+    };
 }
 
 /// ```
@@ -90,10 +100,31 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
     return Ok(CondExpr { cond: condition, if_true, if_false });
 }
 
+/// For function calls
 /// ```
-/// <binary_expr> ::= <term> {BinaryOp <term>}
+/// <arg_list> ::= "(" [<expr> {"," <expr>}] ")"
 /// ```
-fn parse_binary_expr(tokens: &mut TokenStream) -> ParseResult<BinaryExpr> {
+fn parse_arg_list(tokens: &mut TokenStream) -> ParseResult<Vec<Expr>> {
+    let mut arg_list = Vec::<Expr>::new();
+
+    match_next(tokens, Token::Formatter("(".into()))?;
+    if !token_matches_formatter(&tokens.peek()?, ")") {
+        arg_list.push(parse_expr(tokens)?);
+        while token_matches_formatter(&tokens.peek()?, ",") {
+            tokens.pop()?;
+            arg_list.push(parse_expr(tokens)?);
+        }
+    } 
+    match_next(tokens, Token::Formatter(")".into()))?;
+
+    return Ok(arg_list);
+}
+
+/// For binary operator expressions
+/// ```
+/// <binary_op_list> ::= {BinaryOp <term>}
+/// ```
+fn parse_binary_op_list(tokens: &mut TokenStream) -> ParseResult<Vec::<(BinaryOp, Term)>> {
     /// to decide when to stop parsing, since expr is variable length
     fn next_is_operator(tokens: &mut TokenStream) -> bool {
         match tokens.peek() {
@@ -102,8 +133,7 @@ fn parse_binary_expr(tokens: &mut TokenStream) -> ParseResult<BinaryExpr> {
         }
     }
 
-    let first = parse_term(tokens)?;
-    let mut rest = Vec::<(BinaryOp, Term)>::new();
+    let mut op_list = Vec::<(BinaryOp, Term)>::new();
 
     while next_is_operator(tokens) {
         let op_token = tokens.pop()?;
@@ -112,10 +142,10 @@ fn parse_binary_expr(tokens: &mut TokenStream) -> ParseResult<BinaryExpr> {
             _ => return Err(error::unexpected_token("binary op", op_token))
         };
         let term = parse_term(tokens)?;
-        rest.push((operator, term));
+        op_list.push((operator, term));
     }
 
-    return Ok(BinaryExpr { first, rest });
+    return Ok(op_list);
 }
 
 /// Build an AST node for a Term, which follows the below rule:
@@ -391,6 +421,24 @@ mod test_parse {
         let expected = Ok(AbstractSyntaxTree::Expr(expr));
 
         assert_eq!(parse(input), expected);
+    }
+
+    #[rstest]
+    #[case::empty("doSomething()", FuncCall {
+        func: Term::Id("doSomething".into()), args: vec![]
+    })]
+    #[case::one_arg("print(3)", FuncCall {
+        func: Term::Id("print".into()), args: vec![term_expr(int_term(3))]
+    })]
+    #[case::many_args("list(1, 2, 3)", FuncCall {
+        func: Term::Id("list".into()),
+        args: [1, 2, 3].iter().map(|i| term_expr(int_term(*i))).collect()
+    })]
+    fn it_parses_function_call(#[case] input: &str, #[case] call: FuncCall) {
+        let tree = force_tokenize(input);
+        let expr = Expr::FuncCall(call);
+        let expected = Ok(AbstractSyntaxTree::Expr(expr));
+        assert_eq!(parse(tree), expected);
     }
 
     #[test]

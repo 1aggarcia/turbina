@@ -21,6 +21,7 @@ fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(program, b),
         Expr::Cond(c) => validate_cond_expr(program, c),
+        Expr::FuncCall(f) => todo!("cannot validate {:?}", f),
     }
 }
 

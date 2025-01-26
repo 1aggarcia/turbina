@@ -30,6 +30,7 @@ fn eval_expr(program: &mut Program, expr: &Expr) -> Literal {
     match expr {
         Expr::Binary(b) => eval_binary_expr(program, b),
         Expr::Cond(c) => eval_cond_expr(program, c),
+        Expr::FuncCall(f) => todo!("cannot evaluate {:?}", f),
     }
 }
 
