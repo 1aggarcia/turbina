@@ -8,6 +8,7 @@ mod lexer;
 mod parser;
 mod validator;
 mod evaluator;
+mod library;
 
 use errors::IntepreterError;
 use models::{Literal, Program};
@@ -56,7 +57,7 @@ fn main() {
     };
 
     println!("Starting interpreter");
-    let mut program = Program::new();
+    let mut program = Program::init();
     loop {
         match process_next_line(&mut program, &mut input_stream) {
             Ok(result) => println!("{result:?}"),

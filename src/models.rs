@@ -1,6 +1,8 @@
 use core::fmt;
 use std::collections::HashMap;
 
+use crate::library::LIBRARY;
+
 /// State of the running program
 #[derive(Debug)]
 pub struct Program {
@@ -8,8 +10,20 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn new() -> Program {
-        Self { vars: HashMap::new ()}
+    /// Initialize a `Program` with library functions imported into the enviorment
+    pub fn init() -> Program {
+        let mut vars = HashMap::<String, Variable>::new();
+
+        // cloning here is needed to insert into the hashmap
+        for (name, func) in LIBRARY.clone() {
+            let literal = Literal::Func(func);
+            vars.insert(name.into(), Variable {
+                datatype: get_literal_type(&literal),
+                value: literal
+            });
+        }
+
+        Self { vars }
     }
 }
 
@@ -53,7 +67,7 @@ pub struct Func {
 #[derive(PartialEq, Debug, Clone)]
 pub enum FuncBody {
     Expr(Box<Expr>),
-    Native(fn(Vec<Expr>) -> Literal)
+    Native(fn(Vec<Literal>) -> Literal)
 }
 
 // will be extended beyond literal types (e.g. functions, arrays, structs)
@@ -64,6 +78,7 @@ pub enum Type {
     String,
     Bool,
     Func { input: Vec<Type>, output: Box<Type> },
+    // TODO: Add empty type
 }
 
 impl fmt::Display for Type {

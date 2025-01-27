@@ -1,4 +1,4 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, LetNode, Literal, Program, Term, Variable};
+use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncBody, FuncCall, LetNode, Literal, Program, Term, Variable};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// Syntax errors will cause a panic and should be checked with the
@@ -30,7 +30,7 @@ fn eval_expr(program: &mut Program, expr: &Expr) -> Literal {
     match expr {
         Expr::Binary(b) => eval_binary_expr(program, b),
         Expr::Cond(c) => eval_cond_expr(program, c),
-        Expr::FuncCall(f) => todo!("cannot evaluate {:?}", f),
+        Expr::FuncCall(f) => eval_func_call(program, f),
     }
 }
 
@@ -52,6 +52,21 @@ fn eval_cond_expr(program: &mut Program, expr: &CondExpr) -> Literal {
         Literal::Bool(true) => eval_expr(program, &expr.if_true),
         Literal::Bool(false) => eval_expr(program, &expr.if_false),
         _ => panic!("TYPE CHECKER FAILED: condition did not evaluate to bool: {cond_result:?}")
+    }
+}
+
+/// Invoke a function with the passed in arguments
+fn eval_func_call(program: &mut Program, call: &FuncCall) -> Literal {
+    let func = match eval_term(program, &call.func) {
+        Literal::Func(f) => f,
+        _ => panic!("bad type"),
+    };
+    let args: Vec<Literal> = call.args.iter()
+        .map(|a| eval_expr(program, a)).collect();
+
+    match func.body {
+        FuncBody::Native(native_func) => native_func(args),
+        _ => todo!(),
     }
 }
 
@@ -160,7 +175,7 @@ mod test_evalutate {
 
     #[test]
     fn it_looks_up_variables_correctly() {
-        let mut program = Program::new();
+        let mut program = Program::init();
         program.vars.insert("is_lang_good".to_string(), Variable {
             datatype: Type::Bool,
             value: Literal::Bool(true),
@@ -176,7 +191,7 @@ mod test_evalutate {
 
     #[test]
     fn it_binds_literal_value_to_symbol() {
-        let mut program = Program::new();
+        let mut program = Program::init();
         let input = make_tree("let t = true");
 
         evaluate(&mut program, &input);
@@ -262,9 +277,16 @@ mod test_evalutate {
         assert_eq!(evaluate_fresh(input), Literal::Int(expected));
     }
 
+    #[test]
+    fn it_calls_native_library_function() {
+        let input = make_tree(r#"reverse("12345")"#);
+        let expected = Literal::String("54321".into());
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
     // evaluate an AST on a new program
     fn evaluate_fresh(tree: AbstractSyntaxTree) -> Literal{
-        return evaluate(&mut Program::new(), &tree);
+        return evaluate(&mut Program::init(), &tree);
     }
 
     fn make_tree(statement: &str) -> AbstractSyntaxTree {

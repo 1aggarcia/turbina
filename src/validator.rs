@@ -234,7 +234,7 @@ mod test_validate {
         #[test]
         fn it_returns_ok_for_valid_symbol() {
             let tree = make_tree("x");
-            let mut program = Program::new();
+            let mut program = Program::init();
             program.vars.insert("x".to_string(), Variable {
                 datatype: Type::Int,
                 value: Literal::Int(3),
@@ -377,7 +377,7 @@ mod test_validate {
         fn it_returns_error_for_non_function_id() {
             let tree = make_tree("five()");
             
-            let mut program = Program::new();
+            let mut program = Program::init();
             let five = Variable { datatype: Type::Int, value: Literal::Int(5) };
             program.vars.insert("five".into(), five);
             
@@ -430,7 +430,7 @@ mod test_validate {
                 body: FuncBody::Native(dummy_func),
             });
 
-            let mut program = Program::new();
+            let mut program = Program::init();
             program.vars.insert(name.to_string(), Variable {
                 datatype: get_literal_type(&function),
                 value: function,
@@ -439,7 +439,7 @@ mod test_validate {
         }
 
         /// Mock function to construct function literals
-        fn dummy_func(_args: Vec<Expr>) -> Literal {
+        fn dummy_func(_args: Vec<Literal>) -> Literal {
             Literal::Int(0)
         }
     }
@@ -481,7 +481,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_err_for_duplicate_id() {
-            let mut program = Program::new();
+            let mut program = Program::init();
             program.vars.insert("b".to_string(), Variable {
                 datatype: Type::Bool,
                 value: Literal::Bool(false),
@@ -497,6 +497,6 @@ mod test_validate {
     }
 
     fn validate_fresh(input: AbstractSyntaxTree) -> ValidationResult {
-        validate(&Program::new(), &input)
+        validate(&Program::init(), &input)
     }
 }
