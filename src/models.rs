@@ -47,6 +47,9 @@ pub enum Token {
     If,
     Else,
     Type(Type),
+
+    // null token for lexing needed since type vs literal "null" is ambiguous
+    Null,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -55,6 +58,7 @@ pub enum Literal {
     String(String),
     Bool(bool),
     Func(Func),
+    Null,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -78,7 +82,7 @@ pub enum Type {
     String,
     Bool,
     Func { input: Vec<Type>, output: Box<Type> },
-    // TODO: Add empty type
+    Null,
 }
 
 impl fmt::Display for Type {
@@ -87,6 +91,7 @@ impl fmt::Display for Type {
             Type::Int => write!(f, "int"),
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
+            Type::Null => write!(f, "null"),
             Type::Func { input, output } => {
                 let input_str = input.iter()
                     .map(|t| t.to_string())
@@ -107,7 +112,8 @@ pub fn get_literal_type(literal: &Literal) -> Type {
         Literal::Func(func) => Type::Func {
             input: func.params.iter().map(|(_, t)| t.clone()).collect(),
             output: Box::new(func.return_type.clone()),
-        }
+        },
+        Literal::Null => Type::Null,
     }
 }
 

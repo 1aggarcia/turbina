@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Term, Token, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
 };
 
 use crate::errors::{IntepreterError, error};
@@ -130,10 +130,13 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 }
 
 /// ```
-/// <base-term> = Literal | (Id | "(" <expr> ")") {<arg-list>}
+/// <base-term> = Literal | (Id | "(" <expr> ")") {<arg-list>} | Null
 /// ```
 fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     let first = tokens.pop()?;
+    if Token::Null == first {
+        return Ok(Term::Literal(Literal::Null));
+    }
     if let Token::Literal(lit) = first {
         return Ok(Term::Literal(lit));
     }
@@ -203,6 +206,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
         let type_token = tokens.pop()?;
         match type_token {
             Token::Type(t) => Some(t.to_owned()),
+            Token::Null => Some(Type::Null),
             _ => return Err(error::not_a_type(type_token)) 
         }
     } else {

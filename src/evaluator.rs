@@ -189,16 +189,19 @@ mod test_evalutate {
         assert_eq!(evaluate(&mut program, &input), Literal::Bool(true));
     }
 
-    #[test]
-    fn it_binds_literal_value_to_symbol() {
+    #[rstest]
+    #[case("let t = true", Type::Bool, Literal::Bool(true))]
+    #[case("let t: null = null", Type::Null, Literal::Null)]
+    fn it_binds_literal_value_to_symbol(
+        #[case] input: &str,
+        #[case] datatype: Type,
+        #[case] value: Literal,
+    ) {
         let mut program = Program::init();
-        let input = make_tree("let t = true");
+        let tree = make_tree(input);
 
-        evaluate(&mut program, &input);
-        assert_eq!(program.vars["t"], Variable {
-            datatype: Type::Bool,
-            value: Literal::Bool(true),
-        });
+        evaluate(&mut program, &tree);
+        assert_eq!(program.vars["t"], Variable { value, datatype });
     }
 
     #[test]

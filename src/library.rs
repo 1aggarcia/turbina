@@ -12,7 +12,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Func)>> = Lazy::new(|| {vec![
     }),
     ("exit", Func {
         params: vec![("code".into(), Type::Int)],
-        return_type: Type::Bool,  // complete lie, I should add some sort of empty type
+        return_type: Type::Null,
         body: FuncBody::Native(lib_exit),
     })
 ]});
