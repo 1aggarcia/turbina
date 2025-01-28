@@ -64,7 +64,7 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
 }
 
 /// ```
-/// <expr> ::= <cond_expr> | <term> (<arg_list> | <binary_op_list>)
+/// <expr> ::= <cond_expr> | <term> {BinaryOp <term>}
 /// ```
 fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
     if tokens.peek()? == Token::If {
@@ -72,17 +72,27 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
         return Ok(Expr::Cond(cond_expr));
     }
 
-    let first = parse_term(tokens)?;
-    let is_func_call =
-        tokens.has_next() && token_matches_formatter(&tokens.peek()?, "("); 
+    /// to decide when to stop parsing, since expr is variable length
+    fn next_is_operator(tokens: &mut TokenStream) -> bool {
+        match tokens.peek() {
+            Ok(Token::BinaryOp(_)) => true,
+            _ => false,
+        }
+    }
 
-    if is_func_call {
-        let arg_list = parse_arg_list(tokens)?;
-        return Ok(Expr::FuncCall(FuncCall { func: first, args: arg_list }));
-    } else {
-        let binary_op_list = parse_binary_op_list(tokens)?;
-        return Ok(Expr::Binary(BinaryExpr { first, rest: binary_op_list }));
-    };
+    let first = parse_term(tokens)?;
+    let mut rest = Vec::<(BinaryOp, Term)>::new();
+
+    while next_is_operator(tokens) {
+        let op_token = tokens.pop()?;
+        let operator = match op_token {
+            Token::BinaryOp(op) => op,
+            _ => return Err(error::unexpected_token("binary op", op_token))
+        };
+        let term = parse_term(tokens)?;
+        rest.push((operator, term));
+    }
+    Ok(Expr::Binary(BinaryExpr { first, rest }))
 }
 
 /// ```
@@ -100,91 +110,77 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
     return Ok(CondExpr { cond: condition, if_true, if_false });
 }
 
-/// For function calls
+/// ```
+/// <term> = "!" <term> | ["-"] <base-term>
+/// ```
+fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
+    let first = tokens.peek()?;
+
+    if first == Token::UnaryOp(UnaryOp::Not) {
+        tokens.pop()?;
+        let inner_term = parse_term(tokens)?;
+        return Ok(Term::negated_bool(inner_term));
+    }
+    if first == Token::BinaryOp(BinaryOp::Minus) {
+        tokens.pop()?;
+        let base_term = parse_base_term(tokens)?;
+        return Ok(Term::negative_int(base_term));
+    }
+    parse_base_term(tokens)
+}
+
+/// ```
+/// <base-term> = Literal | (Id | "(" <expr> ")") {<arg-list>}
+/// ```
+fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
+    let first = tokens.pop()?;
+    if let Token::Literal(lit) = first {
+        return Ok(Term::Literal(lit));
+    }
+
+    let callable = if let Token::Id(id) = first {
+        Term::Id(id)
+    } else if token_matches_formatter(&first, "(") {
+        let expr = parse_expr(tokens)?;
+        match_next(tokens, Token::Formatter(")".into()))?;
+        Term::Expr(Box::new(expr))
+    } else {
+        return Err(error::unexpected_token("identifier or expression", first));
+    };
+    complete_term_with_arg_list(callable, tokens)
+}
+
+/// Try to construct a function call term with the function supplied as a
+/// callable term. If a function call cannot be constructed, the callable term is returned.
+/// 
+/// The `<arg_list>` below is preceeded by the callable term.
 /// ```
 /// <arg_list> ::= "(" [<expr> {"," <expr>}] ")"
 /// ```
-fn parse_arg_list(tokens: &mut TokenStream) -> ParseResult<Vec<Expr>> {
-    let mut arg_list = Vec::<Expr>::new();
+fn complete_term_with_arg_list(
+    callable: Term,
+    tokens: &mut TokenStream
+) -> ParseResult<Term> {
+    // we might be at the end of the stream, but that's allowed since
+    // callable is a valid term
+    match tokens.peek() {
+        Ok(Token::Formatter(ref f)) if f == "(" => {},
+        _ => return Ok(callable),
+    }
+    tokens.pop()?;
+    let mut args = Vec::<Expr>::new();
 
-    match_next(tokens, Token::Formatter("(".into()))?;
     if !token_matches_formatter(&tokens.peek()?, ")") {
-        arg_list.push(parse_expr(tokens)?);
+        args.push(parse_expr(tokens)?);
         while token_matches_formatter(&tokens.peek()?, ",") {
             tokens.pop()?;
-            arg_list.push(parse_expr(tokens)?);
+            args.push(parse_expr(tokens)?);
         }
     } 
     match_next(tokens, Token::Formatter(")".into()))?;
 
-    return Ok(arg_list);
-}
-
-/// For binary operator expressions
-/// ```
-/// <binary_op_list> ::= {BinaryOp <term>}
-/// ```
-fn parse_binary_op_list(tokens: &mut TokenStream) -> ParseResult<Vec::<(BinaryOp, Term)>> {
-    /// to decide when to stop parsing, since expr is variable length
-    fn next_is_operator(tokens: &mut TokenStream) -> bool {
-        match tokens.peek() {
-            Ok(Token::BinaryOp(_)) => true,
-            _ => false,
-        }
-    }
-
-    let mut op_list = Vec::<(BinaryOp, Term)>::new();
-
-    while next_is_operator(tokens) {
-        let op_token = tokens.pop()?;
-        let operator = match op_token {
-            Token::BinaryOp(op) => op,
-            _ => return Err(error::unexpected_token("binary op", op_token))
-        };
-        let term = parse_term(tokens)?;
-        op_list.push((operator, term));
-    }
-
-    return Ok(op_list);
-}
-
-/// Build an AST node for a Term, which follows the below rule:
-/// ```
-/// <term> ::= ["-"] (Literal | Id) | "!" <term> | "(" <expr> ")"
-/// ```
-fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
-    let mut starts_with_minus = false;
-    
-    let first = tokens.peek()?;
-    if first == Token::UnaryOp(UnaryOp::Not) {
-        tokens.pop()?;
-        let inner_term = parse_term(tokens)?;
-
-        return Ok(Term::negated_bool(inner_term));
-    } else if token_matches_formatter(&tokens.peek()?, "(") {
-        tokens.pop()?;
-        let expr = parse_expr(tokens)?;
-        match_next(tokens, Token::Formatter(")".into()))?;
-
-        return Ok(Term::Expr(Box::new(expr)));
-    } else if first == Token::BinaryOp(BinaryOp::Minus) {
-        tokens.pop()?;
-        starts_with_minus = true;
-    }
-
-    let value_token = tokens.pop()?;
-    let value = match value_token {
-        Token::Literal(lit) => Term::Literal(lit),
-        Token::Id(id) => Term::Id(id),
-        _ => return Err(
-            error::unexpected_token("identifier or literal", value_token)
-        ),
-    };
-
-    if starts_with_minus {
-        return Ok(Term::negative_int(value))
-    }
-    return Ok(value);
+    let func_call = FuncCall { func: Box::new(callable), args };
+    complete_term_with_arg_list(Term::FuncCall(func_call), tokens)
 }
 
 /// Create an AST for the "let" keyword given the remaining tokens
@@ -298,7 +294,7 @@ mod test_parse {
     #[case(op_token(BinaryOp::Percent))]
     #[case(unary_op_token(UnaryOp::Equals))]
     fn it_returns_error_for_one_operator(#[case] op: Token) {
-        let error = error::unexpected_token("identifier or literal", op.clone());
+        let error = error::unexpected_token("identifier or expression", op.clone());
         assert_eq!(parse(vec![op]), Err(error));
     }
 
@@ -325,7 +321,7 @@ mod test_parse {
     #[rstest]
     #[case(force_tokenize("-9"), -9)]
     #[case(force_tokenize("- 123"), -123)]
-    fn it_parses_negavite_numbers(
+    fn it_parses_negative_numbers(
         #[case] input: Vec<Token>,
         #[case] negative_num: i32
     ) {
@@ -333,6 +329,19 @@ mod test_parse {
         let term = Term::negative_int(inner_term);
         let expected = term_tree(term);
         assert_eq!(parse(input), Ok(expected));
+    }
+
+    #[test]
+    fn it_parses_negative_num_in_parens() {
+        let input = force_tokenize("-(9)");
+
+        // the parentheses creates this unfortunate indirection in the AST
+        let nine = term_expr(int_term(9));
+        let nine_as_term = Term::Expr(Box::new(nine));
+        let negative_nine = Term::negative_int(nine_as_term);
+        let expected_tree = term_tree(negative_nine);
+
+        assert_eq!(parse(input), Ok(expected_tree)); 
     }
 
     #[test]
@@ -356,7 +365,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_many_negative_symbols() {
         let error = error::unexpected_token(
-            "identifier or literal",
+            "identifier or expression",
             Token::BinaryOp(BinaryOp::Minus)
         );
         assert_eq!(parse(force_tokenize("---9")), Err(error));
@@ -425,20 +434,48 @@ mod test_parse {
 
     #[rstest]
     #[case::empty("doSomething()", FuncCall {
-        func: Term::Id("doSomething".into()), args: vec![]
+        func: Box::new(Term::Id("doSomething".into())), args: vec![]
     })]
     #[case::one_arg("print(3)", FuncCall {
-        func: Term::Id("print".into()), args: vec![term_expr(int_term(3))]
+        func: Box::new(Term::Id("print".into())), args: vec![term_expr(int_term(3))]
     })]
     #[case::many_args("list(1, 2, 3)", FuncCall {
-        func: Term::Id("list".into()),
+        func: Box::new(Term::Id("list".into())),
         args: [1, 2, 3].iter().map(|i| term_expr(int_term(*i))).collect()
+    })]
+    #[case::curried_function("x(1)(2)", FuncCall {
+        func: Box::new(Term::FuncCall(FuncCall {
+            func: Box::new(Term::Id("x".into())),
+            args: vec![term_expr(int_term(1))],
+        })),
+        args: vec![term_expr(int_term(2))],
     })]
     fn it_parses_function_call(#[case] input: &str, #[case] call: FuncCall) {
         let tree = force_tokenize(input);
-        let expr = Expr::FuncCall(call);
+        let expr = term_expr(Term::FuncCall(call));
         let expected = Ok(AbstractSyntaxTree::Expr(expr));
         assert_eq!(parse(tree), expected);
+    }
+
+    #[test]
+    fn it_parses_expression_with_multiple_functions() {
+        let input = force_tokenize("x() + y()");
+
+        let x_call = FuncCall {
+            func: Box::new(Term::Id("x".into())),
+            args: vec![],
+        };
+        let y_call = FuncCall {
+            func: Box::new(Term::Id("y".into())),
+            args: vec![],
+        }; 
+        let expr = BinaryExpr {
+            first: Term::FuncCall(x_call),
+            rest: vec![(BinaryOp::Plus, Term::FuncCall(y_call))]
+        };
+        let expected = AbstractSyntaxTree::Expr(Expr::Binary(expr));
+
+        assert_eq!(parse(input), Ok(expected));
     }
 
     #[test]
@@ -498,7 +535,7 @@ mod test_parse {
     #[test]
     fn it_returns_error_for_unexpected_let() {
         let input = force_tokenize("let x = let y = 2");
-        let error = error::unexpected_token("identifier or literal", Token::Let);
+        let error = error::unexpected_token("identifier or expression", Token::Let);
         assert_eq!(parse(input), Err(error));
     }
 

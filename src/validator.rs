@@ -21,7 +21,6 @@ fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(program, b),
         Expr::Cond(c) => validate_cond_expr(program, c),
-        Expr::FuncCall(f) => validate_func_call(program, f),
     }
 }
 
@@ -136,6 +135,7 @@ fn validate_term(program: &Program, term: &Term) -> ValidationResult {
         Term::Not(term) => validate_negated_bool(program, term),
         Term::Minus(term) => validated_negated_int(program, term),
         Term::Expr(expr) => validate_expr(program, expr),
+        Term::FuncCall(call) => validate_func_call(program, call),
     }
 }
 

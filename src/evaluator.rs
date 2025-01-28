@@ -30,7 +30,6 @@ fn eval_expr(program: &mut Program, expr: &Expr) -> Literal {
     match expr {
         Expr::Binary(b) => eval_binary_expr(program, b),
         Expr::Cond(c) => eval_cond_expr(program, c),
-        Expr::FuncCall(f) => eval_func_call(program, f),
     }
 }
 
@@ -86,6 +85,7 @@ fn eval_term(program: &mut Program, term: &Term) -> Literal {
         Term::Id(id) => eval_id(program, id),
         Term::Not(t) | Term::Minus(t) => eval_negated(program, t),
         Term::Expr(expr) => eval_expr(program, expr),
+        Term::FuncCall(call) => eval_func_call(program, call),
     }
 }
 

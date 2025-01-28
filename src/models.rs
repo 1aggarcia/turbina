@@ -165,9 +165,17 @@ pub enum AbstractSyntaxTree {
 pub enum Term {
     Literal(Literal),
     Id(String),
+    FuncCall(FuncCall),
+    Expr(Box<Expr>),
     Not(Box<Term>),  // negate boolean terms
     Minus(Box<Term>),  // negate int terms
-    Expr(Box<Expr>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FuncCall {
+    // a function might be a variety of expressions, so we use the blanket type `Term`
+    pub func: Box<Term>,
+    pub args: Vec<Expr>,
 }
 
 // to make construction easier
@@ -185,7 +193,7 @@ impl Term {
 pub enum Expr {
     Binary(BinaryExpr),
     Cond(CondExpr),
-    FuncCall(FuncCall),
+    //FuncCall(FuncCall),
 }
 
 /// For variable length expressions on binary operators
@@ -201,13 +209,6 @@ pub struct CondExpr {
     pub cond: Box<Expr>,
     pub if_true: Box<Expr>,
     pub if_false: Box<Expr>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct FuncCall {
-    // a function might be a variety of expressions, so we use the blanket type `Term`
-    pub func: Term,
-    pub args: Vec<Expr>,
 }
 
 #[derive(Debug, PartialEq)]
