@@ -50,6 +50,7 @@ fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResul
         if result_type != new_type {
             let err = error::binary_op_types(*op, &result_type, &new_type);
             errors.push(err);
+            continue;
         }
         match binary_op_return_type(*op, result_type) {
             Ok(t) => result = Some(t),
@@ -269,6 +270,7 @@ mod test_validate {
 
         #[rstest]
         #[case("3 + \"\"", BinaryOp::Plus, Type::Int, Type::String)]
+        #[case("null + 5", BinaryOp::Plus, Type::Null, Type::Int)]
         #[case("\"\" - \"\"", BinaryOp::Minus, Type::String, Type::String)]
         #[case("true % false", BinaryOp::Percent, Type::Bool, Type::Bool)]
         #[case("0 == false", BinaryOp::Equals, Type::Int, Type::Bool)]
