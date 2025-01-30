@@ -6,32 +6,27 @@ use crate::library::LIBRARY;
 /// State of the running program
 #[derive(Debug)]
 pub struct Program {
-    pub vars: HashMap<String, Variable>,
+    pub bindings: HashMap<String, Literal>,
+    pub type_context: HashMap<String, Type>,
 }
 
 impl Program {
     /// Initialize a `Program` with library functions imported into the enviorment
     pub fn init() -> Program {
-        let mut vars = HashMap::<String, Variable>::new();
+        let mut bindings = HashMap::<String, Literal>::new();
+        let mut type_context = HashMap::<String, Type>::new();
 
         // cloning here is needed to insert into the hashmap
         for (name, func) in LIBRARY.clone() {
-            let literal = Literal::Func(func);
-            vars.insert(name.into(), Variable {
-                datatype: get_literal_type(&literal),
-                value: literal
+            bindings.insert(name.to_owned(), Literal::Func(func.clone()));
+            type_context.insert(name.to_owned(), Type::Func {
+                input: func.params.iter().map(|(_, t)| t.clone()).collect(),
+                output: Box::new(func.return_type),
             });
         }
 
-        Self { vars }
+        Self { bindings, type_context }
     }
-}
-
-/// Raw data with an assigned type
-#[derive(PartialEq, Debug)]
-pub struct Variable {
-    pub datatype: Type,
-    pub value: Literal,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -120,6 +115,7 @@ impl fmt::Display for Type {
     }
 }
 
+// TODO: remove and replace with type-context aware function
 pub fn get_literal_type(literal: &Literal) -> Type {
     match literal {
         Literal::Bool(_) => Type::Bool,

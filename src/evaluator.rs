@@ -1,6 +1,7 @@
-use crate::models::{get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncBody, FuncCall, LetNode, Literal, Program, Term, Variable};
+use crate::models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncBody, FuncCall, LetNode, Literal, Program, Term};
 
 /// Execute the statement represented by the AST on the program passed in.
+/// 
 /// Syntax errors will cause a panic and should be checked with the
 /// `validate` function first.
 pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
@@ -13,15 +14,11 @@ pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
 
 /// Bind an expression to a name
 fn eval_let(program: &mut Program, node: &LetNode) -> Literal {
-    if program.vars.contains_key(&node.id) {
+    if program.bindings.contains_key(&node.id) {
         panic!("variable '{}' already defined", node.id);
     }
     let literal_value = eval_expr(program, &node.value);
-
-    program.vars.insert(node.id.clone(), Variable {
-        datatype: get_literal_type(&literal_value),
-        value: literal_value.clone(),
-    });
+    program.bindings.insert(node.id.clone(), literal_value.clone());
 
     return literal_value;
 }
@@ -91,8 +88,8 @@ fn eval_term(program: &mut Program, term: &Term) -> Literal {
 
 /// Lookup the value stored for a variable name
 fn eval_id(program: &mut Program, id: &str) -> Literal {
-    match program.vars.get(id) {
-        Some(var) => var.value.clone(),
+    match program.bindings.get(id) {
+        Some(literal) => literal.clone(),
 
         // TODO: this should never happen, but use result type anyway
         None => panic!("variable '{}' does not exist", id),
@@ -150,7 +147,7 @@ fn literal_to_string(literal: Literal) -> Option<String> {
 
 #[cfg(test)]
 mod test_evalutate {
-    use crate::{lexer::tokenize, models::{test_utils::term_tree, Type, Variable}, parser::parse};
+    use crate::{lexer::tokenize, models::test_utils::term_tree, parser::parse};
 
     use super::*;
     use rstest::rstest;
@@ -176,32 +173,25 @@ mod test_evalutate {
     #[test]
     fn it_looks_up_variables_correctly() {
         let mut program = Program::init();
-        program.vars.insert("is_lang_good".to_string(), Variable {
-            datatype: Type::Bool,
-            value: Literal::Bool(true),
-        });
-        program.vars.insert("some_int".to_string(), Variable {
-            datatype: Type::Int,
-            value: Literal::Int(-5),
-        });
+        program.bindings.insert("is_lang_good".to_string(), Literal::Bool(true));
+        program.bindings.insert("some_int".to_string(), Literal::Int(-5));
 
         let input = make_tree("is_lang_good");
         assert_eq!(evaluate(&mut program, &input), Literal::Bool(true));
     }
 
     #[rstest]
-    #[case("let t = true", Type::Bool, Literal::Bool(true))]
-    #[case("let t: null = null", Type::Null, Literal::Null)]
+    #[case("let t = true", Literal::Bool(true))]
+    #[case("let t: null = null", Literal::Null)]
     fn it_binds_literal_value_to_symbol(
         #[case] input: &str,
-        #[case] datatype: Type,
         #[case] value: Literal,
     ) {
         let mut program = Program::init();
         let tree = make_tree(input);
 
         evaluate(&mut program, &tree);
-        assert_eq!(program.vars["t"], Variable { value, datatype });
+        assert_eq!(program.bindings["t"], value);
     }
 
     #[test]

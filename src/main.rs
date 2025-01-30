@@ -59,6 +59,7 @@ fn main() {
     println!("Starting interpreter");
     let mut program = Program::init();
     loop {
+        // TODO: type-check complete file before evaluating
         match process_next_line(&mut program, &mut input_stream) {
             Ok(result) => println!("{result}"),
             Err(errors) => {
@@ -80,10 +81,15 @@ fn process_next_line(
     program: &mut Program,
     input_stream: &mut InputStream
 ) -> Result<Literal, Vec<IntepreterError>> {
+    // TODO: end-to-end tests to show working bindings across multiple evaluations
     let next_line = input_stream.next_line()?;
     let tokens = tokenize(&next_line)?;
     let syntax_tree = parse(tokens)?;
-    validate(program, &syntax_tree)?;
+
+    let tree_type = validate(program, &syntax_tree)?;
+    if let Some(name) = tree_type.name_to_bind {
+        program.type_context.insert(name, tree_type.datatype);
+    }
     let result = evaluate(program, &syntax_tree);
 
     return Ok(result);

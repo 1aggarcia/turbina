@@ -156,14 +156,15 @@ fn validate_term(program: &Program, term: &Term) -> SubResult {
     }
 }
 
-/// Check that the id exists in the program
+/// Check that the id exists in the program's type enviornment
+/// The id may not have an associated value until evaluation
 fn validate_id(program: &Program, id: &String) -> SubResult {
-    if !program.vars.contains_key(id) {
+    if !program.type_context.contains_key(id) {
         let error = error::undefined_id(id);
         return Err(vec![error]);
     }
-    let var = program.vars.get(id).unwrap();
-    return Ok(var.datatype.clone());
+    let id_type = program.type_context.get(id).unwrap();
+    return Ok(id_type.clone());
 }
 
 /// Check that the passed in term is a boolean
@@ -212,7 +213,7 @@ fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> SubResult {
 /// Check that the expression type does not conflict with the declared type
 /// and that the variable name is unique
 fn validate_let(program: &Program, node: &LetNode) -> SubResult {
-    if program.vars.contains_key(&node.id) {
+    if program.type_context.contains_key(&node.id) {
         return Err(vec![error::already_defined(&node.id)]);
     }
 
@@ -253,10 +254,7 @@ mod test_validate {
         fn it_returns_ok_for_valid_symbol() {
             let tree = make_tree("x");
             let mut program = Program::init();
-            program.vars.insert("x".to_string(), Variable {
-                datatype: Type::Int,
-                value: Literal::Int(3),
-            });
+            program.type_context.insert("x".to_string(), Type::Int);
 
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
@@ -397,8 +395,7 @@ mod test_validate {
             let tree = make_tree("five()");
             
             let mut program = Program::init();
-            let five = Variable { datatype: Type::Int, value: Literal::Int(5) };
-            program.vars.insert("five".into(), five);
+            program.type_context.insert("five".into(), Type::Int);
             
             let err = IntepreterError::not_a_function(&Term::Id("five".into()));
             assert_eq!(validate(&program, &tree), Err(vec![err]));
@@ -441,25 +438,13 @@ mod test_validate {
         }
 
         /// Create a `Program` with a function of name `name`,
-        /// and input types `params`, and return type int
+        /// and input types `params`, and return type int in the type context
         fn make_program_with_func(name: &str, params: Vec<Type>) -> Program {
-            let function = Literal::Func(Func {
-                params: params.iter().map(|t| (String::new(), t.clone())).collect(),
-                return_type: Type::Int,
-                body: FuncBody::Native(dummy_func),
-            });
+            let func_type = Type::Func { input: params, output: Box::new(Type::Int) };
 
             let mut program = Program::init();
-            program.vars.insert(name.to_string(), Variable {
-                datatype: get_literal_type(&function),
-                value: function,
-            });
+            program.type_context.insert(name.to_string(), func_type);
             program
-        }
-
-        /// Mock function to construct function literals
-        fn dummy_func(_args: Vec<Literal>) -> Literal {
-            Literal::Int(0)
         }
     }
 
@@ -510,10 +495,7 @@ mod test_validate {
         #[test]
         fn it_returns_err_for_duplicate_id() {
             let mut program = Program::init();
-            program.vars.insert("b".to_string(), Variable {
-                datatype: Type::Bool,
-                value: Literal::Bool(false),
-            });
+            program.type_context.insert("b".to_string(), Type::Bool);
             let tree = make_tree("let b = true");
             let error = error::already_defined("b");
             assert_eq!(validate(&program, &tree), Err(vec![error])); 
