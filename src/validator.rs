@@ -3,21 +3,37 @@ use crate::models::{
     get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Program, Term, Type
 };
 
-type ValidationResult = Result<Type, Vec<IntepreterError>>;
+type ValidationResult = Result<TreeType, Vec<IntepreterError>>;
+type SubResult = Result<Type, Vec<IntepreterError>>;
+
+#[derive(PartialEq, Debug)]
+pub struct TreeType {
+    pub datatype: Type,
+
+    /// if present, datatype should be bound to this name in the global scope
+    pub name_to_bind: Option<String>,
+}
 
 /// Find syntax errors not caught while parsing
 /// - Check that all symbols exist in the program
 /// - Type-check all nodes
+/// 
+/// Return the type of the tree, and optionally a name to bind it to
 pub fn validate(
     program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
     match tree {
-        AbstractSyntaxTree::Let(node) => validate_let(program, node),
-        AbstractSyntaxTree::Expr(node) => validate_expr(program, node),
+        AbstractSyntaxTree::Let(node) => validate_let(program, node)
+            .map(|datatype| TreeType {
+                datatype,
+                name_to_bind: Some(node.id.clone())
+            }),
+        AbstractSyntaxTree::Expr(node) => validate_expr(program, node)
+            .map(|datatype| TreeType { datatype, name_to_bind: None })
     }
 }
 
-fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
+fn validate_expr(program: &Program, expr: &Expr) -> SubResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(program, b),
         Expr::Cond(c) => validate_cond_expr(program, c),
@@ -25,7 +41,7 @@ fn validate_expr(program: &Program, expr: &Expr) -> ValidationResult {
 }
 
 /// Check that the types for every term in the expression are valid
-fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResult {
+fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> SubResult {
     let mut errors = Vec::<IntepreterError>::new();
     let mut result = None;
 
@@ -67,7 +83,7 @@ fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> ValidationResul
 
 /// Check that the condition is a boolean type, and the "if" and "else" branches
 /// are of the same type
-fn validate_cond_expr(program: &Program, expr: &CondExpr) -> ValidationResult {
+fn validate_cond_expr(program: &Program, expr: &CondExpr) -> SubResult {
     let mut errors = Vec::<IntepreterError>::new();
 
     let cond_type = validate_expr(program, &expr.cond)?;
@@ -94,7 +110,7 @@ fn validate_cond_expr(program: &Program, expr: &CondExpr) -> ValidationResult {
 
 /// Check that the function being called is defined and the input types match
 /// the argument list
-fn validate_func_call(program: &Program, call: &FuncCall) -> ValidationResult {
+fn validate_func_call(program: &Program, call: &FuncCall) -> SubResult {
     let (param_types, output_type) = match validate_term(program, &call.func)? {
         Type::Func { input, output } => (input, output),
         _ => {
@@ -129,7 +145,7 @@ fn validate_func_call(program: &Program, call: &FuncCall) -> ValidationResult {
 /// unary operators applied (! and -).
 /// 
 /// For literals, check that the type matches any unary operators.
-fn validate_term(program: &Program, term: &Term) -> ValidationResult {
+fn validate_term(program: &Program, term: &Term) -> SubResult {
     match term {
         Term::Literal(lit) => Ok(get_literal_type(&lit)),
         Term::Id(id) => validate_id(program, &id),
@@ -141,7 +157,7 @@ fn validate_term(program: &Program, term: &Term) -> ValidationResult {
 }
 
 /// Check that the id exists in the program
-fn validate_id(program: &Program, id: &String) -> ValidationResult {
+fn validate_id(program: &Program, id: &String) -> SubResult {
     if !program.vars.contains_key(id) {
         let error = error::undefined_id(id);
         return Err(vec![error]);
@@ -151,7 +167,7 @@ fn validate_id(program: &Program, id: &String) -> ValidationResult {
 }
 
 /// Check that the passed in term is a boolean
-fn validate_negated_bool(program: &Program, inner_term: &Term) -> ValidationResult {
+fn validate_negated_bool(program: &Program, inner_term: &Term) -> SubResult {
     let datatype = validate_term(program, inner_term)?;
     match datatype {
         Type::Bool => Ok(datatype),
@@ -160,7 +176,7 @@ fn validate_negated_bool(program: &Program, inner_term: &Term) -> ValidationResu
 }
 
 /// Check that the passed in term is an int
-fn validated_negated_int(program: &Program, inner_term: &Term) -> ValidationResult {
+fn validated_negated_int(program: &Program, inner_term: &Term) -> SubResult {
     let datatype = validate_term(program, inner_term)?;
     match datatype {
         Type::Int=> Ok(datatype),
@@ -171,7 +187,7 @@ fn validated_negated_int(program: &Program, inner_term: &Term) -> ValidationResu
 
 /// Get the return type of a binary operator if `input_type` is valid,
 /// otherwise return a validation error
-fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> ValidationResult {
+fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> SubResult {
     let type_error = error::binary_op_types(operator, &input_type, &input_type);
     match operator {
         // equality operators
@@ -193,9 +209,9 @@ fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> ValidationResu
     }
 }
 
-/// Check that the expression type does not conflic with the declared type
+/// Check that the expression type does not conflict with the declared type
 /// and that the variable name is unique
-fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
+fn validate_let(program: &Program, node: &LetNode) -> SubResult {
     if program.vars.contains_key(&node.id) {
         return Err(vec![error::already_defined(&node.id)]);
     }
@@ -210,7 +226,8 @@ fn validate_let(program: &Program, node: &LetNode) -> ValidationResult {
         let err = error::declared_type(&node.id, declared_type, expr_type);
         return Err(vec![err]);
     }
-    return Ok(expr_type);
+    // declared takes precedence if present
+    return Ok(declared_type);
 }
 
 #[cfg(test)]
@@ -229,7 +246,7 @@ mod test_validate {
         fn returns_ok_for_literals(#[case] literal: Literal) {
             let tree = term_tree(Term::Literal(literal.clone()));
             let expected = get_literal_type(&literal);
-            assert_eq!(validate_fresh(tree), Ok(expected));
+            assert_eq!(validate_fresh(tree), ok_without_binding(expected));
         }
 
         #[test]
@@ -241,7 +258,7 @@ mod test_validate {
                 value: Literal::Int(3),
             });
 
-            assert_eq!(validate(&program, &tree), Ok(Type::Int));
+            assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
 
         #[test]
@@ -306,19 +323,19 @@ mod test_validate {
         #[test]
         fn it_returns_ok_for_int_addition() {
             let tree = make_tree("2 + 2");
-            assert_eq!(validate_fresh(tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_int_division() {
             let tree = make_tree("2 / 2");
-            assert_eq!(validate_fresh(tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_string_concatenation() {
             let tree = make_tree("\"a\" + \"b\"");
-            assert_eq!(validate_fresh(tree), Ok(Type::String));
+            assert_eq!(validate_fresh(tree), ok_without_binding(Type::String));
         }
 
         #[rstest]
@@ -326,7 +343,7 @@ mod test_validate {
         #[case(make_tree("true != false"))]
         #[case(make_tree("\"a\" == \"b\""))]
         fn it_returns_ok_for_boolean_operator_on_same_type(#[case] tree: AbstractSyntaxTree) {
-            let expected = Ok(Type::Bool);
+            let expected = ok_without_binding(Type::Bool);
             assert_eq!(validate_fresh(tree), expected);
         }
     }
@@ -359,7 +376,7 @@ mod test_validate {
         #[test]
         fn it_returns_ok_for_valid_types() {
             let input = make_tree("if (true) 3 else 4");
-            assert_eq!(validate_fresh(input), Ok(Type::Int));
+            assert_eq!(validate_fresh(input), ok_without_binding(Type::Int));
         }
     }
 
@@ -413,14 +430,14 @@ mod test_validate {
         fn it_returns_ok_for_empty_defined_function() {
             let tree = make_tree("randInt()");
             let program = make_program_with_func("randInt",  vec![]);
-            assert_eq!(validate(&program, &tree), Ok(Type::Int));
+            assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_multi_arg_function() {
             let tree = make_tree("f(1, false)");
             let program = make_program_with_func("f",  vec![Type::Int, Type::Bool]);
-            assert_eq!(validate(&program, &tree), Ok(Type::Int));
+            assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
 
         /// Create a `Program` with a function of name `name`,
@@ -450,21 +467,30 @@ mod test_validate {
         use super::*;
 
         #[test]
+        fn it_returns_correct_binding_for_let_statement() {
+            let tree = make_tree("let x: int = 3");
+            let expected =
+                TreeType {datatype: Type::Int, name_to_bind: Some("x".into())};
+
+            assert_eq!(validate_fresh(tree), Ok(expected));
+        }
+
+        #[test]
         fn it_infers_correct_type_for_math_expr() {
             let tree = make_tree("let something = 5 + 2");
-            assert_eq!(validate_fresh(tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), ok_with_binding("something", Type::Int));
         }
 
         #[test]
         fn it_infers_correct_type_for_string_expr() {
             let tree = make_tree("let something = \"a\" + \"b\"");
-            assert_eq!(validate_fresh(tree), Ok(Type::String));
+            assert_eq!(validate_fresh(tree), ok_with_binding("something", Type::String));
         }
 
         #[test]
         fn it_returns_ok_for_declared_type() {
             let tree = make_tree("let x: int = 2 + 3");
-            assert_eq!(validate_fresh(tree), Ok(Type::Int));
+            assert_eq!(validate_fresh(tree), ok_with_binding("x", Type::Int));
         }
 
         #[test]
@@ -500,5 +526,13 @@ mod test_validate {
 
     fn validate_fresh(input: AbstractSyntaxTree) -> ValidationResult {
         validate(&Program::init(), &input)
+    }
+
+    fn ok_without_binding(datatype: Type) -> ValidationResult {
+        Ok(TreeType { datatype, name_to_bind: None })
+    }
+
+    fn ok_with_binding(id: &str, datatype: Type) -> ValidationResult {
+        Ok(TreeType { datatype, name_to_bind: Some(id.into()) })
     }
 }
