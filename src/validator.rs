@@ -1,6 +1,6 @@
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    get_literal_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Program, Term, Type
+    resolve_function_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Literal, Program, Term, Type
 };
 
 type ValidationResult = Result<TreeType, Vec<IntepreterError>>;
@@ -147,13 +147,27 @@ fn validate_func_call(program: &Program, call: &FuncCall) -> SubResult {
 /// For literals, check that the type matches any unary operators.
 fn validate_term(program: &Program, term: &Term) -> SubResult {
     match term {
-        Term::Literal(lit) => Ok(get_literal_type(&lit)),
+        Term::Literal(lit) => validate_literal(program, lit),
         Term::Id(id) => validate_id(program, &id),
         Term::Not(term) => validate_negated_bool(program, term),
         Term::Minus(term) => validated_negated_int(program, term),
         Term::Expr(expr) => validate_expr(program, expr),
         Term::FuncCall(call) => validate_func_call(program, call),
     }
+}
+
+/// For primitive values, just return its type
+/// For functions, check that the function body has the correct types
+fn validate_literal(_: &Program, literal: &Literal) -> SubResult {
+    // program context will be needed once user-defined functions are supported
+    let datatype = match literal {
+        Literal::Bool(_) => Type::Bool,
+        Literal::Int(_) => Type::Int,
+        Literal::String(_) => Type::String,
+        Literal::Func(func) => resolve_function_type(func),
+        Literal::Null => Type::Null,
+    };
+    Ok(datatype)
 }
 
 /// Check that the id exists in the program's type enviornment
@@ -241,12 +255,11 @@ mod test_validate {
         use super::*;
 
         #[rstest]
-        #[case(Literal::Int(3))]
-        #[case(Literal::String("asdf".to_string()))]
-        #[case(Literal::Bool(false))]
-        fn returns_ok_for_literals(#[case] literal: Literal) {
+        #[case(Literal::Int(3), Type::Int)]
+        #[case(Literal::String("asdf".to_string()), Type::String)]
+        #[case(Literal::Bool(false), Type::Bool)]
+        fn returns_ok_for_literals(#[case] literal: Literal, #[case] expected: Type) {
             let tree = term_tree(Term::Literal(literal.clone()));
-            let expected = get_literal_type(&literal);
             assert_eq!(validate_fresh(tree), ok_without_binding(expected));
         }
 

@@ -62,7 +62,7 @@ impl std::fmt::Display for Literal {
             Self::Int(i) => write!(f, "{i}"),
             Self::String(s) => write!(f, "\"{s}\""),
             Self::Bool(s) => write!(f, "{s}"),
-            Self::Func(_) => write!(f, "{}", get_literal_type(self)),
+            Self::Func(func) => write!(f, "{}", resolve_function_type(func)),
             Self::Null => write!(f, "null"),
         }
     }
@@ -73,6 +73,16 @@ pub struct Func {
    pub params: Vec<(String, Type)>,
    pub return_type: Type,
    pub body: FuncBody,
+}
+
+// This will require program context with inferred return types
+// Maybe the validator can supply return types explicitly to avoid
+// depending on the program context
+pub fn resolve_function_type(function: &Func) -> Type {
+    Type::Func {
+        input: function.params.iter().map(|(_, t)| t.clone()).collect(),
+        output: Box::new(function.return_type.clone()),
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -112,20 +122,6 @@ impl fmt::Display for Type {
                 write!(f, "({}) -> {}", args, output)
             }
         }
-    }
-}
-
-// TODO: remove and replace with type-context aware function
-pub fn get_literal_type(literal: &Literal) -> Type {
-    match literal {
-        Literal::Bool(_) => Type::Bool,
-        Literal::Int(_) => Type::Int,
-        Literal::String(_) => Type::String,
-        Literal::Func(func) => Type::Func {
-            input: func.params.iter().map(|(_, t)| t.clone()).collect(),
-            output: Box::new(func.return_type.clone()),
-        },
-        Literal::Null => Type::Null,
     }
 }
 
