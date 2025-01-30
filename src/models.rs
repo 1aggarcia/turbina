@@ -18,10 +18,14 @@ impl Program {
 
         // cloning here is needed to insert into the hashmap
         for (name, func) in LIBRARY.clone() {
+            let Some(return_type) = &func.return_type else {
+                eprintln!("WARNING: Cannot resolve return type for library function {}", name);
+                continue;
+            };
             bindings.insert(name.to_owned(), Literal::Func(func.clone()));
             type_context.insert(name.to_owned(), Type::Func {
                 input: func.params.iter().map(|(_, t)| t.clone()).collect(),
-                output: Box::new(func.return_type),
+                output: Box::new(return_type.clone())
             });
         }
 
@@ -62,7 +66,7 @@ impl std::fmt::Display for Literal {
             Self::Int(i) => write!(f, "{i}"),
             Self::String(s) => write!(f, "\"{s}\""),
             Self::Bool(s) => write!(f, "{s}"),
-            Self::Func(func) => write!(f, "{}", resolve_function_type(func)),
+            Self::Func(_) => write!(f, "<function>"),
             Self::Null => write!(f, "null"),
         }
     }
@@ -71,18 +75,8 @@ impl std::fmt::Display for Literal {
 #[derive(PartialEq, Debug, Clone)]
 pub struct Func {
    pub params: Vec<(String, Type)>,
-   pub return_type: Type,
+   pub return_type: Option<Type>,
    pub body: FuncBody,
-}
-
-// This will require program context with inferred return types
-// Maybe the validator can supply return types explicitly to avoid
-// depending on the program context
-pub fn resolve_function_type(function: &Func) -> Type {
-    Type::Func {
-        input: function.params.iter().map(|(_, t)| t.clone()).collect(),
-        output: Box::new(function.return_type.clone()),
-    }
 }
 
 #[derive(PartialEq, Debug, Clone)]

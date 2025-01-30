@@ -1,6 +1,6 @@
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    resolve_function_type, AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Literal, Program, Term, Type
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Literal, Program, Term, Type
 };
 
 type ValidationResult = Result<TreeType, Vec<IntepreterError>>;
@@ -164,7 +164,7 @@ fn validate_literal(_: &Program, literal: &Literal) -> SubResult {
         Literal::Bool(_) => Type::Bool,
         Literal::Int(_) => Type::Int,
         Literal::String(_) => Type::String,
-        Literal::Func(func) => resolve_function_type(func),
+        Literal::Func(_) => todo!(),
         Literal::Null => Type::Null,
     };
     Ok(datatype)

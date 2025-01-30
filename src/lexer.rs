@@ -20,9 +20,9 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
     let line_without_comments = line.split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
+        | (?P<fmt>[:;(),\[\]]|->)
         | (?P<binary_op>==|!=|[+*\-/%])
         | (?P<unary_op>[=!])
-        | (?P<fmt>[:;(),\[\]])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
         | \d+[a-zA-Z]+ # capture illegal tokens so that remaining numbers are legal
@@ -258,6 +258,7 @@ mod tests {
     #[case(",")]
     #[case("[")]
     #[case("]")]
+    #[case("->")]
     fn formatters(#[case] token: &str) {
         assert_eq!(tokenize(token), Ok(vec![formatter_token(token)]));
     }

@@ -7,12 +7,12 @@ use once_cell::sync::Lazy;
 pub static LIBRARY: Lazy<Vec<(&str, Func)>> = Lazy::new(|| {vec![
     ("reverse", Func {
         params: vec![("text".into(), Type::String)],
-        return_type: Type::String,
+        return_type: Some(Type::String),
         body: FuncBody::Native(lib_reverse),
     }),
     ("exit", Func {
         params: vec![("code".into(), Type::Int)],
-        return_type: Type::Null,
+        return_type: Some(Type::Null),
         body: FuncBody::Native(lib_exit),
     })
 ]});

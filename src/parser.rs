@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Func, FuncBody, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
 };
 
 use crate::errors::{IntepreterError, error};
@@ -31,7 +31,12 @@ impl TokenStream {
 
     /// Returns the token currently being pointed to
     fn peek(&self) -> Result<Token, IntepreterError> {
-        match self.tokens.get(self.position) {
+        self.lookahead(0)
+    }
+
+    /// Returns the token at the current position plus `offset`
+    fn lookahead(&self, offset: usize) -> Result<Token, IntepreterError> {
+        match self.tokens.get(self.position + offset) {
             Some(token) => Ok(token.clone()),
             None => Err(error::unexpected_end_of_input()),
         }
@@ -64,7 +69,7 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
 }
 
 /// ```
-/// <expr> ::= <cond_expr> | <term> {BinaryOp <term>}
+/// <expr> ::= <cond_expr> | <function> | <term> {BinaryOp <term>}
 /// ```
 fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
     if tokens.peek()? == Token::If {
@@ -78,6 +83,20 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
             Ok(Token::BinaryOp(_)) => true,
             _ => false,
         }
+    }
+
+    let next_is_function =
+        token_matches_formatter(&tokens.lookahead(0)?, "(")
+        && (
+            token_matches_formatter(&tokens.lookahead(1)?, ")")
+            || token_matches_formatter(&tokens.lookahead(2)?, ":")
+        );
+
+    if next_is_function {
+        let function = parse_function(tokens)?;
+        let func_term = Term::Literal(Literal::Func(function));
+        let expr = Expr::Binary(BinaryExpr { first: func_term, rest: vec![] });
+        return Ok(expr);
     }
 
     let first = parse_term(tokens)?;
@@ -108,6 +127,36 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
     let if_false = Box::new(parse_expr(tokens)?);
 
     return Ok(CondExpr { cond: condition, if_true, if_false });
+}
+
+/// ```
+/// <function> ::= "(" <param_list> ")" [<type_declaration>] "->" <expr>
+/// 
+/// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
+/// ```
+fn parse_function(tokens: &mut TokenStream) -> ParseResult<Func> {
+    let mut params = Vec::<(String, Type)>::new();
+
+    match_next(tokens, Token::Formatter("(".into()))?;
+    while !token_matches_formatter(&tokens.peek()?, ")") {
+        // skip comma for first parameter
+        if !params.is_empty() {
+            match_next(tokens, Token::Formatter(",".into()))?;
+        }
+        let id = parse_id(tokens)?; 
+        let datatype = parse_type_declaration(tokens)?;
+        params.push((id, datatype));
+    }
+    match_next(tokens, Token::Formatter(")".into()))?;
+    let return_type = if token_matches_formatter(&tokens.peek()?, ":") {
+        Some(parse_type_declaration(tokens)?)
+    } else {
+        None
+    };
+    match_next(tokens, Token::Formatter("->".into()))?;
+    let body_expr = parse_expr(tokens)?;
+
+    Ok(Func { params, return_type, body: FuncBody::Expr(Box::new(body_expr)) })
 }
 
 /// ```
@@ -188,27 +237,16 @@ fn complete_term_with_arg_list(
 
 /// Create an AST for the "let" keyword given the remaining tokens
 /// ```
-/// <let> = Let Id [":" Type] Equals <expression>
+/// <let> = Let Id [<type_declaration>] Equals <expression>
 /// ```
 fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
     match_next(tokens, Token::Let)?;
-
-    let id_token = tokens.pop()?;
-    let id = match id_token {
-        Token::Id(s) => s.to_string(),
-        _ => return Err(error::unexpected_token("identifier", id_token))
-    };
+    let id = parse_id(tokens)?;
 
     // look for optional declared type (e.g. ": int")
     let is_token_colon = token_matches_formatter(&tokens.peek()?, ":");
     let datatype = if is_token_colon {
-        tokens.pop()?;
-        let type_token = tokens.pop()?;
-        match type_token {
-            Token::Type(t) => Some(t.to_owned()),
-            Token::Null => Some(Type::Null),
-            _ => return Err(error::not_a_type(type_token)) 
-        }
+        Some(parse_type_declaration(tokens)?)
     } else {
         None
     };
@@ -217,6 +255,28 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
     let expr = parse_expr(tokens)?;
 
     return Ok(LetNode { id, datatype, value: expr });
+}
+
+/// Match the next token as an Id and extract the String name from it
+fn parse_id(tokens: &mut TokenStream) -> ParseResult<String> {
+    let id_token = tokens.pop()?;
+    match id_token {
+        Token::Id(s) => Ok(s.to_string()),
+        _ => Err(error::unexpected_token("identifier", id_token)),
+    }
+}
+
+/// ```
+/// <type_declaration> :: = ":" Type | ":" Null
+/// ```
+fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
+    match_next(tokens, Token::Formatter(":".into()))?;
+    let type_token = tokens.pop()?;
+    match type_token {
+        Token::Type(t) => Ok(t.to_owned()),
+        Token::Null => Ok(Type::Null),
+        _ => return Err(error::not_a_type(type_token)) 
+    }
 }
 
 fn token_matches_formatter(token: &Token, formatter: &str) -> bool {
@@ -480,6 +540,42 @@ mod test_parse {
         let expected = AbstractSyntaxTree::Expr(Expr::Binary(expr));
 
         assert_eq!(parse(input), Ok(expected));
+    }
+
+    #[rstest]
+    #[case::thunk("() -> 3", vec![], None, int_term(3))]
+    #[case::many_params("(x: int, y: string) -> 3",
+        vec![("x".into(), Type::Int), ("y".into(), Type::String)],
+        None,
+        int_term(3)
+    )]
+    #[case::declared_return_type("(): bool -> true",
+        vec![],
+        Some(Type::Bool),
+        Term::Literal(Literal::Bool(true))
+    )]
+    fn it_parses_function(
+        #[case] input: &str,
+        #[case] params: Vec<(String, Type)>,
+        #[case] return_type: Option<Type>,
+        #[case] body_term: Term,
+    ) {
+        let tokens = force_tokenize(input);
+        let function = Func {
+            params,
+            return_type,
+            body: FuncBody::Expr(Box::new(term_expr(body_term)))
+        };
+        let expr = term_expr(Term::Literal(Literal::Func(function)));
+        let expected = AbstractSyntaxTree::Expr(expr);
+        assert_eq!(parse(tokens), Ok(expected));
+    }
+
+    #[test]
+    fn it_returns_error_for_non_id_param() {
+        let input = force_tokenize("(x: int, 3: int) => x");
+        let err = error::unexpected_token("identifier", int_token(3));
+        assert_eq!(parse(input), Err(err));
     }
 
     #[test]
