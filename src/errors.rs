@@ -19,14 +19,23 @@ custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
 }
 
 impl IntepreterError {
-    pub fn io_err(err: std::io::Error) -> Self {
-        Self::IOError { message: err.to_string() }
-    }
-
     pub fn not_a_function(term: &Term) -> Self {
         Self::TypeError {
             message: format!("Tried to call '{term:?}', but it is not a function")
         }
+    }
+}
+
+// allows implicit conversion using ? operator
+impl From<std::io::Error> for IntepreterError {
+    fn from(value: std::io::Error) -> Self {
+        Self::IOError { message: value.to_string() }
+    }
+}
+
+impl From<IntepreterError> for Vec<IntepreterError> {
+    fn from(value: IntepreterError) -> Self {
+        vec![value]
     }
 }
 

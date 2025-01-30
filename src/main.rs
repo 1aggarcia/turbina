@@ -30,12 +30,12 @@ impl InputStream {
         // keep reading until a non-empty line is found
         while buf.trim().is_empty() {
             let bytes_read = if let Self::File(reader) = self {
-                reader.read_line(&mut buf)
+                reader.read_line(&mut buf)?
             } else {
                 print!("> ");
-                self::stdout().flush().map_err(IntepreterError::io_err)?;
-                stdin().read_line(&mut buf)
-            }.map_err(IntepreterError::io_err)?;
+                self::stdout().flush()?;
+                stdin().read_line(&mut buf)?
+            };
 
             if bytes_read == 0 {
                 return Err(IntepreterError::EndOfFile);
@@ -80,9 +80,9 @@ fn process_next_line(
     program: &mut Program,
     input_stream: &mut InputStream
 ) -> Result<Literal, Vec<IntepreterError>> {
-    let next_line = input_stream.next_line().map_err(|e| vec![e])?;
+    let next_line = input_stream.next_line()?;
     let tokens = tokenize(&next_line)?;
-    let syntax_tree = parse(tokens).map_err(|e| vec![e])?;
+    let syntax_tree = parse(tokens)?;
     validate(program, &syntax_tree)?;
     let result = evaluate(program, &syntax_tree);
 
