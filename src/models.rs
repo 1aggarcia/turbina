@@ -61,6 +61,18 @@ pub enum Literal {
     Null,
 }
 
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Int(i) => write!(f, "{i}"),
+            Self::String(s) => write!(f, "\"{s}\""),
+            Self::Bool(s) => write!(f, "{s}"),
+            Self::Func(_) => write!(f, "{}", get_literal_type(self)),
+            Self::Null => write!(f, "null"),
+        }
+    }
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub struct Func {
    pub params: Vec<(String, Type)>,
@@ -93,12 +105,16 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Null => write!(f, "null"),
             Type::Func { input, output } => {
-                let input_str = input.iter()
+                // don't show parentheses for functions with one argument
+                if input.len() == 1 {
+                    return write!(f, "{} -> {}", input[0], output)
+                }
+                let args = input.iter()
                     .map(|t| t.to_string())
                     .collect::<Vec<String>>()
                     .join(", ");
 
-                write!(f, "({}) -> {}", input_str, output)
+                write!(f, "({}) -> {}", args, output)
             }
         }
     }

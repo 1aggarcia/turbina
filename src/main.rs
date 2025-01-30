@@ -60,7 +60,7 @@ fn main() {
     let mut program = Program::init();
     loop {
         match process_next_line(&mut program, &mut input_stream) {
-            Ok(result) => println!("{result:?}"),
+            Ok(result) => println!("{result}"),
             Err(errors) => {
                 if errors.contains(&IntepreterError::EndOfFile) {
                     break;
