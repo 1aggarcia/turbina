@@ -77,20 +77,25 @@ fn main() {
 }
 
 /// Read the next line from the input stream and evaluate it on the program
+/// Returns the value produced by evaluating the line
 fn process_next_line(
     program: &mut Program,
     input_stream: &mut InputStream
-) -> Result<Literal, Vec<IntepreterError>> {
+) -> Result<String, Vec<IntepreterError>> {
     // TODO: end-to-end tests to show working bindings across multiple evaluations
     let next_line = input_stream.next_line()?;
     let tokens = tokenize(&next_line)?;
     let syntax_tree = parse(tokens)?;
 
     let tree_type = validate(program, &syntax_tree)?;
-    if let Some(name) = tree_type.name_to_bind {
-        program.type_context.insert(name, tree_type.datatype);
+    if let Some(name) = &tree_type.name_to_bind {
+        program.type_context.insert(name.clone(), tree_type.datatype.clone());
     }
-    let result = evaluate(program, &syntax_tree);
 
-    return Ok(result);
+    let output = match evaluate(program, &syntax_tree) {
+        // Function types look nicer to print than anything inside the function
+        Literal::Func(_) => tree_type.datatype.to_string(),
+        literal => literal.to_string(),
+    };
+    Ok(output)
 }
