@@ -27,8 +27,9 @@ impl InputStream {
     fn next_line(&mut self) -> Result<String, IntepreterError> {
         let mut buf: String = String::new();
 
-        // keep reading until a non-empty line is found
-        while buf.trim().is_empty() {
+        // re-read if the last line is empty or a comment
+        while buf.trim().is_empty() || buf.starts_with("//") {
+            buf.clear();
             let bytes_read = if let Self::File(reader) = self {
                 reader.read_line(&mut buf)?
             } else {

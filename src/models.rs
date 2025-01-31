@@ -87,8 +87,6 @@ pub enum FuncBody {
     Native(fn(Vec<Literal>) -> Literal)
 }
 
-// will be extended beyond literal types (e.g. functions, arrays, structs)
-// so should not be merged with enum `Literal`
 #[derive(PartialEq, Debug, Clone)]
 pub enum Type {
     Int,

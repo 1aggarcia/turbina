@@ -161,7 +161,6 @@ fn validate_term(context: &TypeContext, term: &Term) -> SubResult {
 /// For primitive values, just return its type
 /// For functions, check that the function body has the correct types
 fn validate_literal(context: &TypeContext, literal: &Literal) -> SubResult {
-    // program context will be needed once user-defined functions are supported
     let datatype = match literal {
         Literal::Bool(_) => Type::Bool,
         Literal::Int(_) => Type::Int,
