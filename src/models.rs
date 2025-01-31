@@ -3,11 +3,13 @@ use std::collections::HashMap;
 
 use crate::library::LIBRARY;
 
+pub type TypeContext = HashMap<String, Type>; 
+
 /// State of the running program
 #[derive(Debug)]
 pub struct Program {
     pub bindings: HashMap<String, Literal>,
-    pub type_context: HashMap<String, Type>,
+    pub type_context: TypeContext,
 }
 
 impl Program {

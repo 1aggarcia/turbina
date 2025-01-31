@@ -1,6 +1,6 @@
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncCall, LetNode, Literal, Program, Term, Type
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Func, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type, TypeContext
 };
 
 type ValidationResult = Result<TreeType, Vec<IntepreterError>>;
@@ -23,35 +23,37 @@ pub fn validate(
     program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
     match tree {
-        AbstractSyntaxTree::Let(node) => validate_let(program, node)
-            .map(|datatype| TreeType {
-                datatype,
-                name_to_bind: Some(node.id.clone())
-            }),
-        AbstractSyntaxTree::Expr(node) => validate_expr(program, node)
-            .map(|datatype| TreeType { datatype, name_to_bind: None })
+        AbstractSyntaxTree::Let(node) =>
+            validate_let(&program.type_context, node)
+                .map(|datatype| TreeType {
+                    datatype,
+                    name_to_bind: Some(node.id.clone())
+                }),
+        AbstractSyntaxTree::Expr(node) =>
+            validate_expr(&program.type_context, node)
+                .map(|datatype| TreeType { datatype, name_to_bind: None })
     }
 }
 
-fn validate_expr(program: &Program, expr: &Expr) -> SubResult {
+fn validate_expr(context: &TypeContext, expr: &Expr) -> SubResult {
     match expr {
-        Expr::Binary(b) => validate_binary_expr(program, b),
-        Expr::Cond(c) => validate_cond_expr(program, c),
+        Expr::Binary(b) => validate_binary_expr(context, b),
+        Expr::Cond(c) => validate_cond_expr(context, c),
     }
 }
 
 /// Check that the types for every term in the expression are valid
-fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> SubResult {
+fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
     let mut errors = Vec::<IntepreterError>::new();
     let mut result = None;
 
-    match validate_term(program, &expr.first) {
+    match validate_term(context, &expr.first) {
         Ok(t) => result = Some(t),
         Err(e) => errors.extend(e),
     }
 
     for (op, term) in &expr.rest {
-        let new_type = match validate_term(program, &term) {
+        let new_type = match validate_term(context, &term) {
             Ok(t) => t,
             Err(e) => {
                 errors.extend(e);
@@ -83,16 +85,16 @@ fn validate_binary_expr(program: &Program, expr: &BinaryExpr) -> SubResult {
 
 /// Check that the condition is a boolean type, and the "if" and "else" branches
 /// are of the same type
-fn validate_cond_expr(program: &Program, expr: &CondExpr) -> SubResult {
+fn validate_cond_expr(context: &TypeContext, expr: &CondExpr) -> SubResult {
     let mut errors = Vec::<IntepreterError>::new();
 
-    let cond_type = validate_expr(program, &expr.cond)?;
+    let cond_type = validate_expr(context, &expr.cond)?;
     if cond_type != Type::Bool {
         errors.push(IntepreterError::InvalidType { datatype: cond_type });
     }
 
-    let true_type = validate_expr(program, &expr.if_true)?;
-    let false_type = validate_expr(program, &expr.if_false)?;
+    let true_type = validate_expr(context, &expr.if_true)?;
+    let false_type = validate_expr(context, &expr.if_false)?;
     if true_type != false_type {
         let err = IntepreterError::MismatchedTypes {
             type1: true_type.clone(),
@@ -110,8 +112,8 @@ fn validate_cond_expr(program: &Program, expr: &CondExpr) -> SubResult {
 
 /// Check that the function being called is defined and the input types match
 /// the argument list
-fn validate_func_call(program: &Program, call: &FuncCall) -> SubResult {
-    let (param_types, output_type) = match validate_term(program, &call.func)? {
+fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
+    let (param_types, output_type) = match validate_term(context, &call.func)? {
         Type::Func { input, output } => (input, output),
         _ => {
             let err = IntepreterError::not_a_function(&call.func); 
@@ -128,7 +130,7 @@ fn validate_func_call(program: &Program, call: &FuncCall) -> SubResult {
     
     let mut errors = vec![];
     for (arg, param_type) in call.args.iter().zip(param_types.iter()) {
-        let arg_type = validate_expr(program, arg)?;
+        let arg_type = validate_expr(context, arg)?;
         if arg_type == *param_type {
             continue;
         }
@@ -145,45 +147,85 @@ fn validate_func_call(program: &Program, call: &FuncCall) -> SubResult {
 /// unary operators applied (! and -).
 /// 
 /// For literals, check that the type matches any unary operators.
-fn validate_term(program: &Program, term: &Term) -> SubResult {
+fn validate_term(context: &TypeContext, term: &Term) -> SubResult {
     match term {
-        Term::Literal(lit) => validate_literal(program, lit),
-        Term::Id(id) => validate_id(program, &id),
-        Term::Not(term) => validate_negated_bool(program, term),
-        Term::Minus(term) => validated_negated_int(program, term),
-        Term::Expr(expr) => validate_expr(program, expr),
-        Term::FuncCall(call) => validate_func_call(program, call),
+        Term::Literal(lit) => validate_literal(context, lit),
+        Term::Id(id) => validate_id(context, &id),
+        Term::Not(term) => validate_negated_bool(context, term),
+        Term::Minus(term) => validated_negated_int(context, term),
+        Term::Expr(expr) => validate_expr(context, expr),
+        Term::FuncCall(call) => validate_func_call(context, call),
     }
 }
 
 /// For primitive values, just return its type
 /// For functions, check that the function body has the correct types
-fn validate_literal(_: &Program, literal: &Literal) -> SubResult {
+fn validate_literal(context: &TypeContext, literal: &Literal) -> SubResult {
     // program context will be needed once user-defined functions are supported
     let datatype = match literal {
         Literal::Bool(_) => Type::Bool,
         Literal::Int(_) => Type::Int,
         Literal::String(_) => Type::String,
-        Literal::Func(_) => todo!(),
+        Literal::Func(function) => validate_function(context, function)?,
         Literal::Null => Type::Null,
     };
     Ok(datatype)
 }
 
+/// Check that the return type can be resolved with global bindings and new
+/// bindings introduced by the input parameters
+fn validate_function(context: &TypeContext, function: &Func) -> SubResult {
+    let mut local_context = context.clone();
+    let mut param_types = Vec::<Type>::new();
+
+    for (id, datatype) in function.params.clone() {
+        local_context.insert(id, datatype.clone());
+        param_types.push(datatype);
+    }
+
+    let body_type = match &function.body {
+        FuncBody::Expr(expr) => Some(validate_expr(&local_context, &expr)?),
+        FuncBody::Native(_) => None,
+    };
+
+    let return_type: Type = match (&function.return_type, body_type) {
+        (Some(return_t), None) => return_t.clone(),
+        (Some(return_t), Some(body_t)) => {
+            if *return_t != body_t {
+                let err = IntepreterError::bad_return_type(return_t, &body_t);
+                return Err(err.into());
+            }
+            return_t.clone()
+        }
+        (None, Some(body_t)) => body_t,
+        (None, None) => {
+            // this should never happen
+            let message = "Function type is undecidable".to_string();
+            return Err(IntepreterError::TypeError { message }.into());
+        }
+    };
+
+    let function_type = Type::Func {
+        input: param_types,
+        output: Box::new(return_type),
+    };
+    Ok(function_type)
+}
+
 /// Check that the id exists in the program's type enviornment
 /// The id may not have an associated value until evaluation
-fn validate_id(program: &Program, id: &String) -> SubResult {
-    if !program.type_context.contains_key(id) {
+fn validate_id(context: &TypeContext, id: &String) -> SubResult {
+    if !context.contains_key(id) {
         let error = error::undefined_id(id);
         return Err(vec![error]);
     }
-    let id_type = program.type_context.get(id).unwrap();
+    let id_type = context.get(id).unwrap();
     return Ok(id_type.clone());
 }
 
 /// Check that the passed in term is a boolean
-fn validate_negated_bool(program: &Program, inner_term: &Term) -> SubResult {
-    let datatype = validate_term(program, inner_term)?;
+fn validate_negated_bool(context: &TypeContext, inner_term: &Term) -> SubResult {
+    let datatype = validate_term(context, inner_term)?;
     match datatype {
         Type::Bool => Ok(datatype),
         _ => Err(vec![error::unary_op_type("!", datatype)])
@@ -191,8 +233,8 @@ fn validate_negated_bool(program: &Program, inner_term: &Term) -> SubResult {
 }
 
 /// Check that the passed in term is an int
-fn validated_negated_int(program: &Program, inner_term: &Term) -> SubResult {
-    let datatype = validate_term(program, inner_term)?;
+fn validated_negated_int(context: &TypeContext, inner_term: &Term) -> SubResult {
+    let datatype = validate_term(context, inner_term)?;
     match datatype {
         Type::Int=> Ok(datatype),
         _ => Err(vec![error::unary_op_type("-", datatype)])
@@ -226,12 +268,12 @@ fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> SubResult {
 
 /// Check that the expression type does not conflict with the declared type
 /// and that the variable name is unique
-fn validate_let(program: &Program, node: &LetNode) -> SubResult {
-    if program.type_context.contains_key(&node.id) {
+fn validate_let(context: &TypeContext, node: &LetNode) -> SubResult {
+    if context.contains_key(&node.id) {
         return Err(vec![error::already_defined(&node.id)]);
     }
 
-    let expr_type = validate_expr(program, &node.value)?;
+    let expr_type = validate_expr(context, &node.value)?;
     let declared_type = match node.datatype.clone() {
         Some(t) => t,
         None => return Ok(expr_type),
@@ -458,6 +500,46 @@ mod test_validate {
             let mut program = Program::init();
             program.type_context.insert(name.to_string(), func_type);
             program
+        }
+    }
+
+    mod function {
+        use super::*;
+
+        #[rstest]
+        #[case::native_func("reverse", &[Type::String], Type::String)]
+        #[case::explicit_return_type("(): bool -> true", &[], Type::Bool)]
+        #[case::param_used_in_body("(x: int) -> x * x", &[Type::Int], Type::Int)]
+        #[case::curried_function(
+            // this function returns another function
+            "(x: int) -> (y: int) -> x + y",
+            // input
+            &[Type::Int],
+            // return type
+            Type::Func { input: vec![Type::Int], output: Box::new(Type::Int) }
+        )]
+        fn it_returns_correct_function_type(
+            #[case] input: &str,
+            #[case] parameter_types: &[Type],
+            #[case] return_type: Type,
+        ) {
+            let tree = make_tree(input);
+            let expected = Type::Func {
+                input: parameter_types.to_vec(),
+                output: Box::new(return_type)
+            };
+            assert_eq!(validate_fresh(tree), ok_without_binding(expected));
+        }
+
+        #[rstest]
+        #[case::undefined_symbol("(y: int) -> x", error::undefined_id("x"))]
+        #[case::bad_return_type(
+            "(): bool -> \"\"",
+            IntepreterError::bad_return_type(&Type::Bool, &Type::String)
+        )]
+        fn it_returns_error(#[case] input: &str, #[case] error: IntepreterError) {
+            let tree = make_tree(input);
+            assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
     }
 

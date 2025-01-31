@@ -24,6 +24,11 @@ impl IntepreterError {
             message: format!("Tried to call '{term:?}', but it is not a function")
         }
     }
+
+    pub fn bad_return_type(declared: &Type, body: &Type) -> Self {
+        let message = format!("Function should return {declared}, but evaluates to {body}");
+        Self::TypeError { message }
+    }
 }
 
 // allows implicit conversion using ? operator
