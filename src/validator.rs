@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Func, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type, TypeContext
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Func, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type
 };
 
 type ValidationResult = Result<TreeType, Vec<IntepreterError>>;
@@ -14,6 +16,45 @@ pub struct TreeType {
     pub name_to_bind: Option<String>,
 }
 
+/// The types associated to all bindings in a typing scope.
+/// Gives access to parent scoped with the `parent` field
+struct TypeContext<'a> {
+    /// bindings created with with the `let` keyword
+    variable_types: &'a HashMap<String, Type>,
+
+    /// bindings created as function parameters
+    parameter_types: &'a HashMap<String, Type>,
+
+    parent: Option<&'a TypeContext<'a>>
+}
+
+impl TypeContext<'_> {
+    /// Find the type associated to an ID, if any, in the local scope and
+    /// all parent scopes.
+    pub fn lookup(&self, id: &str) -> Option<Type> {
+        if let Some(t) = self.variable_types.get(id) {
+            debug_assert!(!self.parameter_types.contains_key(id),
+                "binding should not be defined twice in the same scope");
+            return Some(t.clone());
+        }
+        if let Some(t) = self.parameter_types.get(id) {
+            return Some(t.clone());
+        }
+        self.parent.and_then(|parent_context| parent_context.lookup(id))
+    }
+
+    /// Recursively search through all type contexts and determine if the
+    /// given ID is associated to a parameter
+    pub fn contains_parameter(&self, id: &str) -> bool {
+        if self.parameter_types.contains_key(id) {
+            return true;
+        }
+        self.parent
+            .map(|parent_context| parent_context.contains_parameter(id))
+            .unwrap_or(false)  // base case
+    }
+}
+
 /// Find syntax errors not caught while parsing
 /// - Check that all symbols exist in the program
 /// - Type-check all nodes
@@ -22,16 +63,20 @@ pub struct TreeType {
 pub fn validate(
     program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
+    let global_context = TypeContext {
+        variable_types: &program.type_context,
+        parameter_types: &HashMap::new(),
+        parent: None,
+    };
+
     match tree {
-        AbstractSyntaxTree::Let(node) =>
-            validate_let(&program.type_context, node)
-                .map(|datatype| TreeType {
-                    datatype,
-                    name_to_bind: Some(node.id.clone())
-                }),
-        AbstractSyntaxTree::Expr(node) =>
-            validate_expr(&program.type_context, node)
-                .map(|datatype| TreeType { datatype, name_to_bind: None })
+        AbstractSyntaxTree::Let(node) => validate_let(&global_context, node)
+            .map(|datatype| TreeType {
+                datatype,
+                name_to_bind: Some(node.id.clone())
+            }),
+        AbstractSyntaxTree::Expr(node) => validate_expr(&global_context, node)
+            .map(|datatype| TreeType { datatype, name_to_bind: None })
     }
 }
 
@@ -174,13 +219,29 @@ fn validate_literal(context: &TypeContext, literal: &Literal) -> SubResult {
 /// Check that the return type can be resolved with global bindings and new
 /// bindings introduced by the input parameters
 fn validate_function(context: &TypeContext, function: &Func) -> SubResult {
-    let mut local_context = context.clone();
-    let mut param_types = Vec::<Type>::new();
+    let mut param_types = HashMap::<String, Type>::new();
+    // must also be stored as a list since maps don't have order
+    let mut param_type_list = Vec::<Type>::new();
+    let mut errors = Vec::<IntepreterError>::new();
 
     for (id, datatype) in function.params.clone() {
-        local_context.insert(id, datatype.clone());
-        param_types.push(datatype);
+        if context.contains_parameter(&id) {
+            errors.push(IntepreterError::ReassignError { id });
+            continue;
+        }
+        param_types.insert(id.clone(), datatype.clone());
+        param_type_list.push(datatype);
     }
+
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    let local_context = TypeContext {
+        variable_types: &mut HashMap::new(),
+        parameter_types: &param_types,
+        parent: Some(context),
+    };
 
     let body_type = match &function.body {
         FuncBody::Expr(expr) => Some(validate_expr(&local_context, &expr)?),
@@ -205,7 +266,7 @@ fn validate_function(context: &TypeContext, function: &Func) -> SubResult {
     };
 
     let function_type = Type::Func {
-        input: param_types,
+        input: param_type_list,
         output: Box::new(return_type),
     };
     Ok(function_type)
@@ -214,12 +275,11 @@ fn validate_function(context: &TypeContext, function: &Func) -> SubResult {
 /// Check that the id exists in the program's type enviornment
 /// The id may not have an associated value until evaluation
 fn validate_id(context: &TypeContext, id: &String) -> SubResult {
-    if !context.contains_key(id) {
+    let Some(id_type) = context.lookup(id) else {
         let error = error::undefined_id(id);
         return Err(vec![error]);
-    }
-    let id_type = context.get(id).unwrap();
-    return Ok(id_type.clone());
+    };
+    Ok(id_type.clone())
 }
 
 /// Check that the passed in term is a boolean
@@ -268,7 +328,7 @@ fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> SubResult {
 /// Check that the expression type does not conflict with the declared type
 /// and that the variable name is unique
 fn validate_let(context: &TypeContext, node: &LetNode) -> SubResult {
-    if context.contains_key(&node.id) {
+    if let Some(_) = context.lookup(&node.id) {
         return Err(vec![error::already_defined(&node.id)]);
     }
 
@@ -530,15 +590,40 @@ mod test_validate {
             assert_eq!(validate_fresh(tree), ok_without_binding(expected));
         }
 
+        #[test]
+        fn it_returns_ok_for_reused_variable_name_as_parameter() {
+            let mut program = Program::init();
+            program.type_context.insert("x".into(), Type::Bool);
+
+            let input = make_tree("(x: null) -> x");
+            let result = validate(&mut program, &input);
+
+            assert_eq!(result, ok_without_binding(Type::Func {
+                input: vec![Type::Null],
+                output: Box::new(Type::Null),
+            }));
+        }
+
         #[rstest]
-        #[case::undefined_symbol("(y: int) -> x", error::undefined_id("x"))]
+        #[case::undefined_symbol("(y: int) -> x", &[error::undefined_id("x")])]
         #[case::bad_return_type(
             "(): bool -> \"\"",
-            IntepreterError::bad_return_type(&Type::Bool, &Type::String)
+            &[IntepreterError::bad_return_type(&Type::Bool, &Type::String)]
         )]
-        fn it_returns_error(#[case] input: &str, #[case] error: IntepreterError) {
+        #[case::reused_parameter(
+            "(x: int) -> (y: bool) -> (x: int) -> x",
+            &[IntepreterError::ReassignError { id: "x".into() }]
+        )]
+        #[case::many_reused_parameters(
+            "(x: int, y: int) -> (y: string, a: int, x: null) -> null",
+            &[
+                IntepreterError::ReassignError { id: "y".into() },
+                IntepreterError::ReassignError { id: "x".into() }
+            ]
+        )]
+        fn it_returns_error(#[case] input: &str, #[case] errors: &[IntepreterError]) {
             let tree = make_tree(input);
-            assert_eq!(validate_fresh(tree), Err(vec![error]));
+            assert_eq!(validate_fresh(tree), Err(errors.to_vec()));
         }
     }
 
