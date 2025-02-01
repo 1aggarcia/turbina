@@ -5,7 +5,7 @@ use crate::models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Fu
 /// Linked-list like structure to model all bindings that a can be accessed
 /// in a scope.
 /// 
-/// Stores references to data for memory efficiency.
+/// Stores references to data (instead of copying) for memory efficiency.
 #[derive(Debug)]
 struct Scope<'a> {
     bindings: &'a mut HashMap<String, Literal>,
@@ -82,30 +82,30 @@ fn eval_cond_expr(scope: &mut Scope, expr: &CondExpr) -> Literal {
 
 /// Invoke a function with the passed in arguments
 fn eval_func_call(scope: &mut Scope, call: &FuncCall) -> Literal {
-    let func = match eval_term(scope, &call.func) {
+    let function = match eval_term(scope, &call.func) {
         Literal::Func(f) => f,
         _ => panic!("bad type"),
     };
     let args: Vec<Literal> = call.args.iter()
         .map(|a| eval_expr(scope, a)).collect();
 
-    let func_body = match func.body {
+    let function_body = match function.body {
         FuncBody::Native(native_func) => return native_func(args),
         FuncBody::Expr(expr) => *expr,
     };
 
     // create local scope with arguments bound to parameters
-    let mut local_bindings = HashMap::new();
+    let mut function_bindings = HashMap::new();
 
-    for ((param_name, _), arg) in func.params.iter().zip(args.iter()) {
-        local_bindings.insert(param_name.clone(), arg.clone());
+    for ((param_name, _), arg) in function.params.iter().zip(args.iter()) {
+        function_bindings.insert(param_name.clone(), arg.clone());
     }
-    let mut local_scope = Scope {
-        bindings: &mut local_bindings,
-        parent: Some(&scope),
+    let mut function_scope = Scope {
+        bindings: &mut function_bindings,
+        parent: Some(scope),
     };
 
-    eval_expr(&mut local_scope, &func_body)
+    eval_expr(&mut function_scope, &function_body)
 }
 
 fn eval_term(scope: &mut Scope, term: &Term) -> Literal {
