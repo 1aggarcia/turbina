@@ -17,7 +17,7 @@ pub struct TreeType {
 }
 
 /// The types associated to all bindings in a typing scope.
-/// Gives access to parent scoped with the `parent` field
+/// Gives access to parent scope with the `parent` field
 struct TypeContext<'a> {
     /// bindings created with with the `let` keyword
     variable_types: &'a HashMap<String, Type>,
@@ -275,11 +275,7 @@ fn validate_function(context: &TypeContext, function: &Func) -> SubResult {
 /// Check that the id exists in the program's type enviornment
 /// The id may not have an associated value until evaluation
 fn validate_id(context: &TypeContext, id: &String) -> SubResult {
-    let Some(id_type) = context.lookup(id) else {
-        let error = error::undefined_id(id);
-        return Err(vec![error]);
-    };
-    Ok(id_type.clone())
+    context.lookup(id).ok_or(error::undefined_id(id).into())
 }
 
 /// Check that the passed in term is a boolean

@@ -33,6 +33,58 @@ impl Program {
     }
 }
 
+/// Linked-list like structure to model all bindings that a can be accessed
+/// in a scope.
+/// 
+/// Stores references to data (instead of copying) for memory efficiency.
+#[derive(Debug)]
+pub struct Scope<'a> {
+    pub bindings: &'a mut HashMap<String, Literal>,
+    pub parent: Option<&'a Scope<'a>>,
+}
+
+impl Scope<'_> {
+    /// Search for a binding in the local scope. If it is not found,
+    /// recursively search the parent scopes until reaching the global scope.
+    pub fn lookup(&self, id: &str) -> Option<Literal> {
+        match self.bindings.get(id) {
+            Some(value) => Some(value.clone()),
+            None => self.parent
+                .and_then(|parent_scope| parent_scope.lookup(id)),
+        }
+    }
+}
+
+
+impl std::fmt::Display for Scope<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        format_scope(f, self, 0)
+    }
+}
+
+static INDENT_SPACES: usize = 2;
+
+/// For the Display trait of Scope.
+/// Recursively format the scope and parent scopes as string
+fn format_scope(
+    f: &mut std::fmt::Formatter<'_>,
+    scope: &Scope,
+    indent_level: usize
+) -> std::fmt::Result {
+    let outer_indent = " ".repeat(indent_level * INDENT_SPACES);
+    let inner_indent = " ".repeat((indent_level + 1) * INDENT_SPACES);
+
+    writeln!(f, "{outer_indent}{{")?;
+    for (k, v) in scope.bindings.clone() {
+        writeln!(f, "{inner_indent}{}: {}", k, v)?;
+    }
+    if let Some(parent) = scope.parent {
+        format_scope(f, parent, indent_level + 1)?;
+        writeln!(f)?;
+    }
+    write!(f, "{outer_indent}{}", "}")
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum Token {
     Literal(Literal),
@@ -82,7 +134,7 @@ pub struct Func {
 #[derive(PartialEq, Debug, Clone)]
 pub enum FuncBody {
     Expr(Box<Expr>),
-    Native(fn(Vec<Literal>) -> Literal)
+    Native(fn(Vec<Literal>, &Scope) -> Literal)
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -199,7 +251,6 @@ impl Term {
 pub enum Expr {
     Binary(BinaryExpr),
     Cond(CondExpr),
-    //FuncCall(FuncCall),
 }
 
 /// For variable length expressions on binary operators

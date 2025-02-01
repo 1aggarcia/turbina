@@ -1,28 +1,6 @@
 use std::collections::HashMap;
 
-use crate::models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncBody, FuncCall, LetNode, Literal, Program, Term};
-
-/// Linked-list like structure to model all bindings that a can be accessed
-/// in a scope.
-/// 
-/// Stores references to data (instead of copying) for memory efficiency.
-#[derive(Debug)]
-struct Scope<'a> {
-    bindings: &'a mut HashMap<String, Literal>,
-    parent: Option<&'a Scope<'a>>,
-}
-
-impl Scope<'_> {
-    /// Search for a binding in the local scope. If it is not found,
-    /// recursively search the parent scopes until reaching the global scope.
-    pub fn lookup(&self, id: &str) -> Option<Literal> {
-        match self.bindings.get(id) {
-            Some(value) => Some(value.clone()),
-            None => self.parent
-                .and_then(|parent_scope| parent_scope.lookup(id)),
-        }
-    }
-}
+use crate::models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncBody, FuncCall, LetNode, Literal, Program, Scope, Term};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// 
@@ -90,7 +68,7 @@ fn eval_func_call(scope: &mut Scope, call: &FuncCall) -> Literal {
         .map(|a| eval_expr(scope, a)).collect();
 
     let function_body = match function.body {
-        FuncBody::Native(native_func) => return native_func(args),
+        FuncBody::Native(native_func) => return native_func(args, scope),
         FuncBody::Expr(expr) => *expr,
     };
 
