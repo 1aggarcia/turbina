@@ -1,4 +1,4 @@
-use std::io::{stdin, stdout, BufRead, BufReader, Write};
+use std::io::BufReader;
 use std::env;
 use std::fs::File;
 
@@ -9,46 +9,19 @@ mod parser;
 mod validator;
 mod evaluator;
 mod library;
+mod streams;
 
 use errors::IntepreterError;
 use models::{AbstractSyntaxTree, Literal, Program, Type};
 use lexer::tokenize;
 use parser::parse;
+use streams::{FileStream, InputStream, StdinStream};
 use validator::validate;
 use evaluator::evaluate;
 
 /// Executable unit of code.
 /// The type is only needed when a function is printed.
 type Statement = (AbstractSyntaxTree, Type);
-
-/// Abstraction over source code input
-enum InputStream {
-    File(BufReader<File>),
-    Stdin,
-}
-
-impl InputStream {
-    fn next_line(&mut self) -> Result<String, IntepreterError> {
-        let mut buf: String = String::new();
-
-        // re-read if the last line is empty or a comment
-        while buf.trim().is_empty() || buf.starts_with("//") {
-            buf.clear();
-            let bytes_read = if let Self::File(reader) = self {
-                reader.read_line(&mut buf)?
-            } else {
-                print!("> ");
-                self::stdout().flush()?;
-                stdin().read_line(&mut buf)?
-            };
-
-            if bytes_read == 0 {
-                return Err(IntepreterError::EndOfFile);
-            }
-        }
-        return Ok(buf.trim().to_string());
-    }
-}
 
 fn main() {
     // TODO: end-to-end tests reading and checking stdout results
@@ -63,9 +36,7 @@ fn main() {
 }
 
 fn run_from_file(file: File) {
-    let reader = BufReader::new(file);
-    let mut file_stream = InputStream::File(reader);
-
+    let mut file_stream = FileStream { reader: BufReader::new(file) };
     let mut program = Program::init();
 
     let mut statements = Vec::new();
@@ -104,7 +75,7 @@ fn run_from_file(file: File) {
 /// Command line interface for using Turbina.
 /// REPL = Read-eval-print loop
 fn run_repl() {
-    let mut stdin = InputStream::Stdin;
+    let mut stdin = StdinStream{};
     let mut program = Program::init();
 
     println!("Welcome to Turbina");
@@ -132,7 +103,7 @@ fn run_repl() {
 /// Returns a validated statement that is safe to execute.
 fn validate_next_line(
     program: &mut Program,
-    input_stream: &mut InputStream
+    input_stream: &mut impl InputStream
 ) -> Result<Statement, Vec<IntepreterError>> {
     let next_line = input_stream.next_line()?;
     let tokens = tokenize(&next_line)?;
