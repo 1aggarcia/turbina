@@ -25,7 +25,7 @@ impl InputStream for FileStream {
                 return Err(IntepreterError::EndOfFile);
             }
         }
-        Ok(buf.trim().to_string())
+        Ok(buf.to_string())
     }
 }
 
@@ -43,6 +43,6 @@ impl InputStream for StdinStream {
                 return Err(IntepreterError::EndOfFile);
             }
         }
-        Ok(buf.trim().to_string())
+        Ok(buf.to_string())
     }
 }

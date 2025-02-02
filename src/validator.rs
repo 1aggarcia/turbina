@@ -362,7 +362,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_ok_for_valid_symbol() {
-            let tree = make_tree("x");
+            let tree = make_tree("x;");
             let mut program = Program::init();
             program.type_context.insert("x".to_string(), Type::Int);
 
@@ -371,16 +371,16 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_non_existent_symbol() {
-            let tree = make_tree("x");
+            let tree = make_tree("x;");
             let expected = vec![error::undefined_id("x")];
             assert_eq!(validate_fresh(tree), Err(expected));
         }
 
         #[rstest]
-        #[case("!3", error::unary_op_type("!", Type::Int))]
-        #[case("!\"str\"", error::unary_op_type("!", Type::String))]
-        #[case("-false", error::unary_op_type("-", Type::Bool))]
-        #[case("-\"str\"", error::unary_op_type("-", Type::String))]
+        #[case("!3;", error::unary_op_type("!", Type::Int))]
+        #[case("!\"str\";", error::unary_op_type("!", Type::String))]
+        #[case("-false;", error::unary_op_type("-", Type::Bool))]
+        #[case("-\"str\";", error::unary_op_type("-", Type::String))]
         fn it_returns_error_for_bad_negated_types(
             #[case] input: &str,
             #[case] error: IntepreterError,
@@ -394,12 +394,12 @@ mod test_validate {
         use super::*;
 
         #[rstest]
-        #[case("3 + \"\"", BinaryOp::Plus, Type::Int, Type::String)]
-        #[case("null + 5", BinaryOp::Plus, Type::Null, Type::Int)]
-        #[case("\"\" - \"\"", BinaryOp::Minus, Type::String, Type::String)]
-        #[case("true % false", BinaryOp::Percent, Type::Bool, Type::Bool)]
-        #[case("0 == false", BinaryOp::Equals, Type::Int, Type::Bool)]
-        #[case("\"\" != 1", BinaryOp::NotEq, Type::String, Type::Int)]
+        #[case("3 + \"\";", BinaryOp::Plus, Type::Int, Type::String)]
+        #[case("null + 5;", BinaryOp::Plus, Type::Null, Type::Int)]
+        #[case("\"\" - \"\";", BinaryOp::Minus, Type::String, Type::String)]
+        #[case("true % false;", BinaryOp::Percent, Type::Bool, Type::Bool)]
+        #[case("0 == false;", BinaryOp::Equals, Type::Int, Type::Bool)]
+        #[case("\"\" != 1;", BinaryOp::NotEq, Type::String, Type::Int)]
         fn it_returns_error_for_illegal_types(
             #[case] input: &str,
             #[case] op: BinaryOp,
@@ -413,13 +413,13 @@ mod test_validate {
 
         #[rstest]
         // right arg undefined
-        #[case("a + 3", vec![error::undefined_id("a")])]
+        #[case("a + 3;", vec![error::undefined_id("a")])]
         
         // left arg undefined
-        #[case("1 + c", vec![error::undefined_id("c")])]
+        #[case("1 + c;", vec![error::undefined_id("c")])]
         
         // both args undefined
-        #[case("x + y - z", ["x", "y", "z"].map(error::undefined_id).to_vec())]
+        #[case("x + y - z;", ["x", "y", "z"].map(error::undefined_id).to_vec())]
         fn it_returns_error_for_child_error(
             #[case] input: &str, #[case] error: Vec<IntepreterError>
         ) {
@@ -430,26 +430,26 @@ mod test_validate {
 
         #[test]
         fn it_returns_ok_for_int_addition() {
-            let tree = make_tree("2 + 2");
+            let tree = make_tree("2 + 2;");
             assert_eq!(validate_fresh(tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_int_division() {
-            let tree = make_tree("2 / 2");
+            let tree = make_tree("2 / 2;");
             assert_eq!(validate_fresh(tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_string_concatenation() {
-            let tree = make_tree("\"a\" + \"b\"");
+            let tree = make_tree("\"a\" + \"b\";");
             assert_eq!(validate_fresh(tree), ok_without_binding(Type::String));
         }
 
         #[rstest]
-        #[case(make_tree("0 == 1"))]
-        #[case(make_tree("true != false"))]
-        #[case(make_tree("\"a\" == \"b\""))]
+        #[case(make_tree("0 == 1;"))]
+        #[case(make_tree("true != false;"))]
+        #[case(make_tree("\"a\" == \"b\";"))]
         fn it_returns_ok_for_boolean_operator_on_same_type(#[case] tree: AbstractSyntaxTree) {
             let expected = ok_without_binding(Type::Bool);
             assert_eq!(validate_fresh(tree), expected);
@@ -461,7 +461,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_non_bool_condition() {
-            let input = make_tree("if (3) false else true");
+            let input = make_tree("if (3) false else true;");
             let expected = IntepreterError::InvalidType { datatype: Type::Int };
 
             assert_eq!(validate_fresh(input), Err(vec![expected]));
@@ -469,7 +469,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_mismatched_types() {
-            let input = make_tree("if (1) 2 else \"\"");
+            let input = make_tree("if (1) 2 else \"\";");
 
             let expected = vec![
                 IntepreterError::InvalidType { datatype: Type::Int },
@@ -483,7 +483,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_ok_for_valid_types() {
-            let input = make_tree("if (true) 3 else 4");
+            let input = make_tree("if (true) 3 else 4;");
             assert_eq!(validate_fresh(input), ok_without_binding(Type::Int));
         }
     }
@@ -493,7 +493,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_undefined_function() {
-            let input = make_tree("test(5)");
+            let input = make_tree("test(5);");
             let expected = vec![
                 IntepreterError::UndefinedError { id: "test".into() }
             ];
@@ -502,7 +502,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_non_function_id() {
-            let tree = make_tree("five()");
+            let tree = make_tree("five();");
             
             let mut program = Program::init();
             program.type_context.insert("five".into(), Type::Int);
@@ -513,7 +513,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_wrong_num_args() {
-            let tree = make_tree("f(1, 2, 3)");
+            let tree = make_tree("f(1, 2, 3);");
             let program = make_program_with_func("f", vec![Type::Int]);
 
             let err = IntepreterError::ArgCount { got: 3, expected: 1 };
@@ -522,7 +522,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_mismatched_types() {
-            let tree = make_tree(r#"f(false, "")"#);
+            let tree = make_tree(r#"f(false, "");"#);
             let program =
                 make_program_with_func("f", vec![Type::Int, Type::Bool]);
 
@@ -535,14 +535,14 @@ mod test_validate {
 
         #[test]
         fn it_returns_ok_for_empty_defined_function() {
-            let tree = make_tree("randInt()");
+            let tree = make_tree("randInt();");
             let program = make_program_with_func("randInt",  vec![]);
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_multi_arg_function() {
-            let tree = make_tree("f(1, false)");
+            let tree = make_tree("f(1, false);");
             let program = make_program_with_func("f",  vec![Type::Int, Type::Bool]);
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
@@ -562,12 +562,12 @@ mod test_validate {
         use super::*;
 
         #[rstest]
-        #[case::native_func("reverse", &[Type::String], Type::String)]
-        #[case::explicit_return_type("(): bool -> true", &[], Type::Bool)]
-        #[case::param_used_in_body("(x: int) -> x * x", &[Type::Int], Type::Int)]
+        #[case::native_func("reverse;", &[Type::String], Type::String)]
+        #[case::explicit_return_type("(): bool -> true;", &[], Type::Bool)]
+        #[case::param_used_in_body("(x: int) -> x * x;", &[Type::Int], Type::Int)]
         #[case::curried_function(
             // this function returns another function
-            "(x: int) -> (y: int) -> x + y",
+            "(x: int) -> (y: int) -> x + y;",
             // input
             &[Type::Int],
             // return type
@@ -591,7 +591,7 @@ mod test_validate {
             let mut program = Program::init();
             program.type_context.insert("x".into(), Type::Bool);
 
-            let input = make_tree("(x: null) -> x");
+            let input = make_tree("(x: null) -> x;");
             let result = validate(&mut program, &input);
 
             assert_eq!(result, ok_without_binding(Type::Func {
@@ -601,17 +601,17 @@ mod test_validate {
         }
 
         #[rstest]
-        #[case::undefined_symbol("(y: int) -> x", &[error::undefined_id("x")])]
+        #[case::undefined_symbol("(y: int) -> x;", &[error::undefined_id("x")])]
         #[case::bad_return_type(
-            "(): bool -> \"\"",
+            "(): bool -> \"\";",
             &[IntepreterError::bad_return_type(&Type::Bool, &Type::String)]
         )]
         #[case::reused_parameter(
-            "(x: int) -> (y: bool) -> (x: int) -> x",
+            "(x: int) -> (y: bool) -> (x: int) -> x;",
             &[IntepreterError::ReassignError { id: "x".into() }]
         )]
         #[case::many_reused_parameters(
-            "(x: int, y: int) -> (y: string, a: int, x: null) -> null",
+            "(x: int, y: int) -> (y: string, a: int, x: null) -> null;",
             &[
                 IntepreterError::ReassignError { id: "y".into() },
                 IntepreterError::ReassignError { id: "x".into() }
@@ -628,7 +628,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_correct_binding_for_let_statement() {
-            let tree = make_tree("let x: int = 3");
+            let tree = make_tree("let x: int = 3;");
             let expected =
                 TreeType {datatype: Type::Int, name_to_bind: Some("x".into())};
 
@@ -637,32 +637,32 @@ mod test_validate {
 
         #[test]
         fn it_infers_correct_type_for_math_expr() {
-            let tree = make_tree("let something = 5 + 2");
+            let tree = make_tree("let something = 5 + 2;");
             assert_eq!(validate_fresh(tree), ok_with_binding("something", Type::Int));
         }
 
         #[test]
         fn it_infers_correct_type_for_string_expr() {
-            let tree = make_tree("let something = \"a\" + \"b\"");
+            let tree = make_tree("let something = \"a\" + \"b\";");
             assert_eq!(validate_fresh(tree), ok_with_binding("something", Type::String));
         }
 
         #[test]
         fn it_returns_ok_for_declared_type() {
-            let tree = make_tree("let x: int = 2 + 3");
+            let tree = make_tree("let x: int = 2 + 3;");
             assert_eq!(validate_fresh(tree), ok_with_binding("x", Type::Int));
         }
 
         #[test]
         fn it_returns_type_error_for_conflicting_types() {
-            let tree = make_tree("let x: int = \"string\"");
+            let tree = make_tree("let x: int = \"string\";");
             let error = error::declared_type("x", Type::Int, Type::String);
             assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
 
         #[test]
         fn it_propagates_error_in_expression() {
-            let tree = make_tree("let y: string = undefined");
+            let tree = make_tree("let y: string = undefined;");
             let error = error::undefined_id("undefined");
             assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
@@ -671,7 +671,7 @@ mod test_validate {
         fn it_returns_err_for_duplicate_id() {
             let mut program = Program::init();
             program.type_context.insert("b".to_string(), Type::Bool);
-            let tree = make_tree("let b = true");
+            let tree = make_tree("let b = true;");
             let error = error::already_defined("b");
             assert_eq!(validate(&program, &tree), Err(vec![error])); 
         }

@@ -1,7 +1,7 @@
 extern crate custom_error;
 use custom_error::custom_error;
 
-use crate::models::{Term, Type};
+use crate::models::{Term, Token, Type};
 
 custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
@@ -22,6 +22,12 @@ impl IntepreterError {
     pub fn not_a_function(term: &Term) -> Self {
         Self::TypeError {
             message: format!("Tried to call '{term:?}', but it is not a function")
+        }
+    }
+
+    pub fn end_of_statement(token: Token) -> Self {
+        Self::SyntaxError {
+            message: format!("Expected newline or semicolon, got '{:?}'", token)
         }
     }
 

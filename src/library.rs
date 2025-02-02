@@ -80,21 +80,21 @@ mod test_library {
     #[test]
     fn test_reverse() {
         assert_eq!(
-            run_cmd(r#"reverse("abcde")"#),
+            run_cmd(r#"reverse("abcde");"#),
             Literal::String("edcba".into())
         );
     }
 
     #[test]
     fn test_len() {
-        assert_eq!(run_cmd(r#"len("")"#), Literal::Int(0));
-        assert_eq!(run_cmd(r#"len("1234567")"#), Literal::Int(7));
+        assert_eq!(run_cmd(r#"len("");"#), Literal::Int(0));
+        assert_eq!(run_cmd(r#"len("1234567");"#), Literal::Int(7));
     }
 
     #[test]
     fn test_uppercase() {
         assert_eq!(
-            run_cmd(r#"uppercase("Turbina")"#),
+            run_cmd(r#"uppercase("Turbina");"#),
             Literal::String("TURBINA".into())
         );
     }
@@ -102,7 +102,7 @@ mod test_library {
     #[test]
     fn test_lowercase() {
         assert_eq!(
-            run_cmd(r#"lowercase("John DOE")"#),
+            run_cmd(r#"lowercase("John DOE");"#),
             Literal::String("john doe".into())
         );
     }

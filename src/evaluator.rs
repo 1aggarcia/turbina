@@ -182,9 +182,9 @@ mod test_evalutate {
     }
 
     #[rstest]
-    #[case("!false", Literal::Bool(true))]
-    #[case("!true", Literal::Bool(false))]
-    #[case("-15", Literal::Int(-15))]
+    #[case("!false;", Literal::Bool(true))]
+    #[case("!true;", Literal::Bool(false))]
+    #[case("-15;", Literal::Int(-15))]
     fn it_negates_literals(#[case] input: &str, #[case] expected: Literal) {
         let tree = make_tree(input);
         assert_eq!(evaluate_fresh(tree), expected);
@@ -196,13 +196,13 @@ mod test_evalutate {
         program.bindings.insert("is_lang_good".to_string(), Literal::Bool(true));
         program.bindings.insert("some_int".to_string(), Literal::Int(-5));
 
-        let input = make_tree("is_lang_good");
+        let input = make_tree("is_lang_good;");
         assert_eq!(evaluate(&mut program, &input), Literal::Bool(true));
     }
 
     #[rstest]
-    #[case("let t = true", Literal::Bool(true))]
-    #[case("let t: null = null", Literal::Null)]
+    #[case("let t = true;", Literal::Bool(true))]
+    #[case("let t: null = null;", Literal::Null)]
     fn it_binds_literal_value_to_symbol(
         #[case] input: &str,
         #[case] value: Literal,
@@ -216,17 +216,17 @@ mod test_evalutate {
 
     #[test]
     fn it_returns_value_of_var_after_binding() {
-        let input = make_tree("let t = 12345 - 98765");
+        let input = make_tree("let t = 12345 - 98765;");
         let expected = Literal::Int(12345 - 98765);
         assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[rstest]
-    #[case("3 - 5", 3 - 5)]
-    #[case("3 + 5", 3 + 5)]
-    #[case("3 * 5", 3 * 5)]
-    #[case("3 / 5", 3 / 5)]
-    #[case("3 % 5", 3 % 5)]
+    #[case("3 - 5;", 3 - 5)]
+    #[case("3 + 5;", 3 + 5)]
+    #[case("3 * 5;", 3 * 5)]
+    #[case("3 / 5;", 3 / 5)]
+    #[case("3 % 5;", 3 % 5)]
     fn it_evaluates_binary_math_operators(
         #[case] input: &str, #[case] expected_val: i32
     ) {
@@ -236,10 +236,10 @@ mod test_evalutate {
     }
 
     #[rstest]
-    #[case("3 * 2 - 5", 1)]
-    #[case("3 * (2 - 5)", -9)]
-    #[case("(25 % (18 / 3)) - (10 + 4)", -13)]
-    #[case("(25 % 18 / 3) - (10 + 4)", -12)]
+    #[case("3 * 2 - 5;", 1)]
+    #[case("3 * (2 - 5);", -9)]
+    #[case("(25 % (18 / 3)) - (10 + 4);", -13)]
+    #[case("(25 % 18 / 3) - (10 + 4);", -12)]
     // TODO: thorough PEMDAS test
     fn it_evaluates_complex_expressions(
         #[case] input: &str, #[case] expected_val: i32
@@ -251,22 +251,22 @@ mod test_evalutate {
 
     #[rstest]
     // ints
-    #[case("3 == 5", 3 == 5)]
-    #[case("12 == 12", 12 == 12)]
-    #[case("0 != 0", 0 != 0)]
-    #[case("2 != 1", 2 != 1)]
+    #[case("3 == 5;", 3 == 5)]
+    #[case("12 == 12;", 12 == 12)]
+    #[case("0 != 0;", 0 != 0)]
+    #[case("2 != 1;", 2 != 1)]
 
     // strings
-    #[case("\"a\" == \"a\"", true)]
-    #[case("\"a\" != \"a\"", false)]
-    #[case("\"abc\" == \"efg\"", false)]
-    #[case("\"efg\" != \"abc\"", true)]
+    #[case("\"a\" == \"a\";", true)]
+    #[case("\"a\" != \"a\";", false)]
+    #[case("\"abc\" == \"efg\";", false)]
+    #[case("\"efg\" != \"abc\";", true)]
 
     // bools
-    #[case("true == true", true)]
-    #[case("true != true", false)]
-    #[case("false == true", false)]
-    #[case("true != false ", true)]
+    #[case("true == true;", true)]
+    #[case("true != true;", false)]
+    #[case("false == true;", false)]
+    #[case("true != false;", true)]
     fn it_evaluates_binary_bool_operators(
         #[case] input: &str, #[case] expected_val: bool
     ) {
@@ -277,14 +277,14 @@ mod test_evalutate {
 
     #[test]
     fn it_evaluates_string_concatenation() {
-        let input = make_tree("\"abc\" + \"xyz\"");
+        let input = make_tree("\"abc\" + \"xyz\";");
         let expected = Literal::String("abcxyz".to_string());
         assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[rstest]
-    #[case("if (2 == 3) 1 else 2", 2)]
-    #[case("if (2 != 3) 3 else 4", 3)]
+    #[case("if (2 == 3) 1 else 2;", 2)]
+    #[case("if (2 != 3) 3 else 4;", 3)]
     fn it_evaluates_conditional_expression(#[case] input: &str, #[case] expected: i32) {
         let input = make_tree(input);
         assert_eq!(evaluate_fresh(input), Literal::Int(expected));
@@ -292,15 +292,15 @@ mod test_evalutate {
 
     #[test]
     fn it_calls_native_library_function() {
-        let input = make_tree(r#"reverse("12345")"#);
+        let input = make_tree(r#"reverse("12345");"#);
         let expected = Literal::String("54321".into());
         assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[test]
     fn it_calls_user_defined_function() {
-        let definition = make_tree("let square = (x: int) -> x * x");
-        let invocation = make_tree("square(5)");
+        let definition = make_tree("let square = (x: int) -> x * x;");
+        let invocation = make_tree("square(5);");
         let mut program = Program::init();
 
         evaluate(&mut program, &definition);
@@ -309,11 +309,11 @@ mod test_evalutate {
 
     #[test]
     fn it_calls_function_with_params_overriding_global_scope() {
-        let define_x = make_tree(r#"let x = "global string value""#);
-        let define_square = make_tree("let square = (x: int) -> x * x");
+        let define_x = make_tree(r#"let x = "global string value";"#);
+        let define_square = make_tree("let square = (x: int) -> x * x;");
         // the function call should use the int argument for x and not the
         // global string
-        let square_three = make_tree("square(3)");
+        let square_three = make_tree("square(3);");
         let mut program = Program::init();
 
         evaluate(&mut program, &define_x);
@@ -326,12 +326,12 @@ mod test_evalutate {
     fn it_saves_scope_for_curried_function() {
         let mut program = Program::init();
 
-        let define_sum = "let sum = (a:int)->(b:int)->(c:int)->a+b+c";
+        let define_sum = "let sum = (a:int)->(b:int)->(c:int)->a+b+c;";
         evaluate(&mut program, &make_tree(define_sum));
-        evaluate(&mut program, &make_tree("let addThree = sum(3)"));
-        evaluate(&mut program, &make_tree("let addTen = addThree(7)"));
+        evaluate(&mut program, &make_tree("let addThree = sum(3);"));
+        evaluate(&mut program, &make_tree("let addTen = addThree(7);"));
 
-        assert_eq!(evaluate(&mut program, &make_tree("addTen(2015)")), Literal::Int(2025));
+        assert_eq!(evaluate(&mut program, &make_tree("addTen(2015);")), Literal::Int(2025));
     }
 
     // evaluate an AST on a new program
