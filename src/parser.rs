@@ -7,10 +7,8 @@ use crate::streams::TokenStream;
 
 type ParseResult<T> = Result<T, IntepreterError>;
 
-/// Convert a sequence of tokens into an abstract syntax tree using recursive decent.
-/// 
-/// The tokens should represent exactly one statement and therefore one syntax
-/// tree. Otherwise, an error is returned.
+/// Consumes the next statement from the token stream and returns a syntax tree
+/// representing the statement using recursive descent parsing.
 /// 
 /// A syntax error is returned for any syntactical errors in the token sequence.
 /// 
@@ -18,7 +16,10 @@ type ParseResult<T> = Result<T, IntepreterError>;
 /// <statement> ::=  (<let> | <expr>) [";" | Newline]
 /// ```
 pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSyntaxTree> {
-    let statement = match token_stream.peek()? {
+    let Ok(first) = token_stream.peek() else {
+        return Err(IntepreterError::EndOfFile);
+    };
+    let statement = match first {
         Token::Let => AbstractSyntaxTree::Let(parse_let(token_stream)?),
         _ => AbstractSyntaxTree::Expr(parse_expr(token_stream)?),
     };
@@ -264,48 +265,20 @@ fn match_next(stream: &mut TokenStream, expected: Token) -> ParseResult<()> {
 
 #[cfg(test)]
 pub mod test_utils {
-    use crate::lexer::tokenize;
+    use crate::streams::StringStream;
 
     use super::*;
 
     /// Bypass errors and convert a string statement into a syntax tree
     pub fn make_tree(statement: &str) -> AbstractSyntaxTree {
-        parse_tokens(tokenize(statement).unwrap()).unwrap()
+        let input_stream = StringStream::new(statement);
+        let mut token_stream = TokenStream::new(Box::new(input_stream));
+        parse_statement(&mut token_stream).unwrap()
     }
 
     pub fn parse_tokens(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
-        let mut stream = TokenStream::new(tokens);
-        parse_statement(&mut stream)
-    }
-}
-
-#[cfg(test)]
-mod test_token_stream {
-    use super::*;
-    use crate::models::test_utils::id_token;
-
-    #[test]
-    fn test_has_next_is_false_for_empty_stream() {
-        let mut stream = TokenStream::new(vec![]);
-        assert_eq!(stream.has_next(), false);
-        assert_eq!(stream.pop(), Err(error::unexpected_end_of_input()));
-    }
-
-    #[test]
-    fn test_has_next_is_true_for_non_empty_stream() {
-        let mut stream = TokenStream::new(vec![id_token("data")]);
-        assert_eq!(stream.has_next(), true);
-        assert_eq!(stream.pop(), Ok(id_token("data")));
-    }
-
-    #[test]
-    fn test_peek_doesnt_consume_data() {
-        let mut stream = TokenStream::new(vec![id_token("data")]);
-        assert_eq!(stream.peek(), Ok(id_token("data")));
-        assert_eq!(stream.has_next(), true);
-        assert_eq!(stream.pop(), Ok(id_token("data")));
-        assert_eq!(stream.has_next(), false);
-        assert_eq!(stream.peek(), Err(error::unexpected_end_of_input()));
+        let mut tokens = TokenStream::from_tokens(tokens);
+        parse_statement(&mut tokens)
     }
 }
 
@@ -319,8 +292,8 @@ mod test_parse {
     use rstest::rstest;
 
     #[test]
-    fn it_returns_error_for_empty_list()  {
-        assert_eq!(parse_tokens(vec![]), Err(error::unexpected_end_of_input()));
+    fn it_returns_end_of_file_error_for_empty_stream() {
+        assert_eq!(parse_tokens(vec![]), Err(IntepreterError::EndOfFile));
     }
 
     #[rstest]
@@ -622,7 +595,7 @@ mod test_parse {
 
     #[rstest]
     #[case(force_tokenize("let"), error::unexpected_end_of_input())]
-    #[case(force_tokenize("let x"),error::unexpected_end_of_input())]
+    #[case(force_tokenize("let x"), error::unexpected_end_of_input())]
     #[case(force_tokenize("3 +"), error::unexpected_end_of_input())]
     fn it_returns_error_for_incomplete_statements(
         #[case] tokens: Vec<Token>,

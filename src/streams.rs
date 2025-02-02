@@ -1,7 +1,8 @@
 use std::io::{stdin, stdout, BufReader, Write, BufRead};
 use std::fs::File;
 
-use crate::errors::{error, IntepreterError};
+use crate::errors::{IntepreterError, error};
+use crate::lexer::tokenize;
 use crate::models::Token;
 
 /// Abstraction over source code input
@@ -23,7 +24,7 @@ impl InputStream for FileStream {
         while buf.trim().is_empty() || buf.starts_with("//") {
             buf.clear();
             if self.reader.read_line(&mut buf)? == 0 {
-                return Err(IntepreterError::EndOfFile);
+                return Err(error::unexpected_end_of_input());
             }
         }
         Ok(buf.to_string())
@@ -41,27 +42,58 @@ impl InputStream for StdinStream {
             print!("> ");
             stdout().flush()?;
             if stdin().read_line(&mut buf)? == 0 {
-                return Err(IntepreterError::EndOfFile);
+                return Err(error::unexpected_end_of_input());
             }
         }
         Ok(buf.to_string())
     }
 }
 
+/// Input stream made out of a plain string
+pub struct StringStream {
+    lines: Vec<String>,
+    line_num: usize,
+}
+
+impl StringStream {
+    pub fn new(string: &str) -> Self {
+        StringStream {
+            lines: string.split("\n").map(|s| s.to_string()).collect(),
+            line_num: 0,
+        }
+    }
+}
+
+impl InputStream for StringStream {
+    fn next_line(&mut self) -> Result<String, IntepreterError> {
+        if self.line_num >= self.lines.len() {
+            return Err(error::unexpected_end_of_input());
+        }
+        let line = self.lines.get(self.line_num).unwrap().to_string();
+        self.line_num += 1;
+        Ok(line)
+    }
+}
+
 /// Abstract Data Type used internally by the parser to facilitate tracking
 /// token position and end-of-stream errors
 pub struct TokenStream {
+    input_stream: Box<dyn InputStream>,
     tokens: Vec<Token>,
     position: usize,
 }
 
 impl TokenStream {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, position: 0 }
+    pub fn new(input_stream: Box<dyn InputStream>) -> Self {
+        Self { input_stream, tokens: vec![], position: 0 }
     }
 
-    pub fn has_next(&self) -> bool {
-        self.position < self.tokens.len()
+    pub fn from_tokens(tokens: Vec<Token>) -> Self {
+        Self {
+            input_stream: Box::new(StringStream::new("")),
+            tokens,
+            position: 0,
+        }
     }
 
     /// Advances to the next token and returns the current one
@@ -72,15 +104,45 @@ impl TokenStream {
     }
 
     /// Returns the token currently being pointed to
-    pub fn peek(&self) -> Result<Token, IntepreterError> {
+    pub fn peek(&mut self) -> Result<Token, IntepreterError> {
         self.lookahead(0)
     }
 
     /// Returns the token at the current position plus `offset`
-    pub fn lookahead(&self, offset: usize) -> Result<Token, IntepreterError> {
-        match self.tokens.get(self.position + offset) {
-            Some(token) => Ok(token.clone()),
-            None => Err(error::unexpected_end_of_input()),
+    pub fn lookahead(&mut self, offset: usize) -> Result<Token, IntepreterError> {
+        if let Some(token) = self.tokens.get(self.position + offset) {
+            return Ok(token.clone());
         }
+        // replenish buffer, then try again
+        let next_line = self.input_stream.next_line()?;
+        self.tokens = tokenize(&next_line).map_err(|e| e[0].clone())?;
+        self.position = 0;
+        self.lookahead(offset)
+    }
+}
+
+#[cfg(test)]
+mod test_token_stream {
+    use super::*;
+    use crate::models::test_utils::id_token;
+
+    #[test]
+    fn test_has_next_is_false_for_empty_stream() {
+        let mut stream = TokenStream::from_tokens(vec![]);
+        assert_eq!(stream.pop(), Err(error::unexpected_end_of_input()));
+    }
+
+    #[test]
+    fn test_has_next_is_true_for_non_empty_stream() {
+        let mut stream = TokenStream::from_tokens(vec![id_token("data")]);
+        assert_eq!(stream.pop(), Ok(id_token("data")));
+    }
+
+    #[test]
+    fn test_peek_doesnt_consume_data() {
+        let mut stream = TokenStream::from_tokens(vec![id_token("data")]);
+        assert_eq!(stream.peek(), Ok(id_token("data")));
+        assert_eq!(stream.pop(), Ok(id_token("data")));
+        assert_eq!(stream.peek(), Err(error::unexpected_end_of_input()));
     }
 }
