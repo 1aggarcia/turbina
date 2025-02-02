@@ -17,10 +17,15 @@ use crate::{errors::IntepreterError, models::{
 /// 
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
 pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
-    let line_without_comments = line.split("//").next().unwrap_or("");
+    // removing comments will remove a trailing newline,
+    // so we have to check for it first
+    let newline_regex = Regex::new("[\r\n]+$").unwrap();
+    let ends_with_newline = newline_regex.is_match(line);
+
+    let line_without_comments = line.trim().split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
-        | (?P<newline>[\r\n]+)
+        | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;(),\[\]]|->)
         | (?P<binary_op>==|!=|[+*\-/%])
         | (?P<unary_op>[=!])
@@ -65,6 +70,10 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
             }
         };
         tokens.push(token);
+    }
+
+    if ends_with_newline {
+        tokens.push(Token::Newline);
     }
 
     if errors.is_empty() {
@@ -144,6 +153,7 @@ mod tests {
     #[case::legacy_mac_newline("\r", Token::Newline)]
     #[case::multiple_newlines("\n\n\n\n", Token::Newline)]
     #[case::mixed_newlines("\r\n\r\n\r\r\n\n", Token::Newline)]
+    #[case::newlines_with_whitespace("\n    \n  \n", Token::Newline)]
     fn one_token(#[case] line: &str, #[case] expected: Token) {
         assert_eq!(tokenize(line), Ok(vec![expected]));
     }
@@ -219,6 +229,17 @@ mod tests {
         op_token(BinaryOp::Plus),
         int_token(1),
         formatter_token(")"),
+    ])]
+
+    #[case::comment_and_newline(
+        "5 // this comment should not produce tokens\n",
+        &[int_token(5), Token::Newline]
+    )]
+    #[case::tokens_surrounding_newlines("x \n \r\n \r \n 9 \n", &[
+        id_token("x"),
+        Token::Newline,
+        int_token(9),
+        Token::Newline,
     ])]
     fn many_tokens(#[case] line: &str, #[case] expected: &[Token]) {
         assert_eq!(tokenize(line), Ok(expected.to_vec()));
