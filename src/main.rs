@@ -11,11 +11,15 @@ mod evaluator;
 mod library;
 
 use errors::IntepreterError;
-use models::{Literal, Program};
+use models::{AbstractSyntaxTree, Literal, Program, Type};
 use lexer::tokenize;
 use parser::parse;
 use validator::validate;
 use evaluator::evaluate;
+
+/// Executable unit of code.
+/// The type is only needed when a function is printed.
+type Statement = (AbstractSyntaxTree, Type);
 
 /// Abstraction over source code input
 enum InputStream {
@@ -47,43 +51,89 @@ impl InputStream {
 }
 
 fn main() {
-    let arg = env::args().nth(1);
-    let mut input_stream = match arg {
-        Some(filename) => {
-            let file = File::open(filename).expect("Bad filepath");
-            let reader = BufReader::new(file);
-            InputStream::File(reader)
-        },
-        None => InputStream::Stdin,
+    // TODO: end-to-end tests reading and checking stdout results
+    let Some(filename) = env::args().nth(1) else {
+        run_repl();
+        return;
     };
+    match File::open(filename) {
+        Ok(file) => run_from_file(file),
+        Err(err) => eprintln!("{err}")
+    }
+}
 
-    println!("Starting interpreter");
+fn run_from_file(file: File) {
+    let reader = BufReader::new(file);
+    let mut file_stream = InputStream::File(reader);
+
     let mut program = Program::init();
+
+    let mut statements = Vec::new();
+    let mut errors = Vec::new();
+
+    // type check the file
     loop {
-        // TODO: type-check complete file before evaluating
-        match process_next_line(&mut program, &mut input_stream) {
+        match validate_next_line(&mut program, &mut file_stream) {
+            Ok(result) => statements.push(result),
+            Err(statement_errors) => {
+                if statement_errors.contains(&IntepreterError::EndOfFile) {
+                    break;
+                }
+                errors.extend(statement_errors);
+            }
+        };
+    }
+
+    if !errors.is_empty() {
+        errors.iter().for_each(|err| eprintln!("{err}"));
+        return;
+    }
+
+    // evaluate validated statements
+    for statement in statements {
+        match evaluate_statement(&mut program, &statement) {
+            Ok(result) => println!("{result}"),
+            Err(err) => {
+                eprintln!("{err}");
+                break;
+            },
+        };
+    }
+}
+
+/// Command line interface for using Turbina.
+/// REPL = Read-eval-print loop
+fn run_repl() {
+    let mut stdin = InputStream::Stdin;
+    let mut program = Program::init();
+
+    println!("Welcome to Turbina");
+
+    loop {
+        let eval_result = validate_next_line(&mut program, &mut stdin)
+            .and_then(|statement|
+                evaluate_statement(&mut program, &statement)
+                    .map_err(|e| vec![e]));
+
+        match eval_result {
             Ok(result) => println!("{result}"),
             Err(errors) => {
                 if errors.contains(&IntepreterError::EndOfFile) {
                     break;
                 }
                 errors.iter().for_each(|e| eprintln!("{e}"));
-                // the REPL can keep executing, but source files cannot
-                if let InputStream::File(_) = input_stream {
-                    break;
-                }
-            }
+                continue;
+            },
         };
     }
 }
 
-/// Read the next line from the input stream and evaluate it on the program
-/// Returns the value produced by evaluating the line
-fn process_next_line(
+/// Read the next line from the input stream and validate it.
+/// Returns a validated statement that is safe to execute.
+fn validate_next_line(
     program: &mut Program,
     input_stream: &mut InputStream
-) -> Result<String, Vec<IntepreterError>> {
-    // TODO: end-to-end tests to show working bindings across multiple evaluations
+) -> Result<Statement, Vec<IntepreterError>> {
     let next_line = input_stream.next_line()?;
     let tokens = tokenize(&next_line)?;
     let syntax_tree = parse(tokens)?;
@@ -92,10 +142,18 @@ fn process_next_line(
     if let Some(name) = &tree_type.name_to_bind {
         program.type_context.insert(name.clone(), tree_type.datatype.clone());
     }
+    Ok((syntax_tree, tree_type.datatype))
+}
 
+/// Evaluates a statment on the given program.
+/// May return a runtime error.
+fn evaluate_statement(
+    program: &mut Program,
+    (syntax_tree, tree_type): &Statement,
+) -> Result<String, IntepreterError> {
     let output = match evaluate(program, &syntax_tree) {
-        // Function types look nicer to print than anything inside the function
-        Literal::Func(_) => tree_type.datatype.to_string(),
+        // Function types look nicer to print than any form of the literal struct
+        Literal::Func(_) => tree_type.to_string(),
         literal => literal.to_string(),
     };
     Ok(output)
