@@ -75,7 +75,7 @@ fn lib_exit(args: Vec<Literal>, _: &Scope) -> Literal{
 
 #[cfg(test)]
 mod test_library {
-    use crate::{evaluator::evaluate, lexer::tokenize, models::{Literal, Program}, parser::parse, validator::validate};
+    use crate::{evaluator::evaluate, models::{Literal, Program}, parser::test_utils::make_tree, validator::validate};
 
     #[test]
     fn test_reverse() {
@@ -109,8 +109,7 @@ mod test_library {
 
     fn run_cmd(input: &str) -> Literal{
         let mut program = Program::init();
-        let tokens = tokenize(input).unwrap();
-        let syntax_tree = parse(tokens).unwrap();
+        let syntax_tree = make_tree(input);
         validate(&program, &syntax_tree).unwrap();
         evaluate(&mut program, &syntax_tree)
     }

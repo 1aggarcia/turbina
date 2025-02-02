@@ -17,12 +17,10 @@ type ParseResult<T> = Result<T, IntepreterError>;
 /// ```
 /// <statement> ::=  (<let> | <expr>) [";" | Newline]
 /// ```
-pub fn parse(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
-    let mut token_stream = TokenStream::new(tokens);
-
+pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSyntaxTree> {
     let statement = match token_stream.peek()? {
-        Token::Let => AbstractSyntaxTree::Let(parse_let(&mut token_stream)?),
-        _ => AbstractSyntaxTree::Expr(parse_expr(&mut token_stream)?),
+        Token::Let => AbstractSyntaxTree::Let(parse_let(token_stream)?),
+        _ => AbstractSyntaxTree::Expr(parse_expr(token_stream)?),
     };
 
     let statement_end = token_stream.pop()?;
@@ -265,6 +263,23 @@ fn match_next(stream: &mut TokenStream, expected: Token) -> ParseResult<()> {
 }
 
 #[cfg(test)]
+pub mod test_utils {
+    use crate::lexer::tokenize;
+
+    use super::*;
+
+    /// Bypass errors and convert a string statement into a syntax tree
+    pub fn make_tree(statement: &str) -> AbstractSyntaxTree {
+        parse_tokens(tokenize(statement).unwrap()).unwrap()
+    }
+
+    pub fn parse_tokens(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
+        let mut stream = TokenStream::new(tokens);
+        parse_statement(&mut stream)
+    }
+}
+
+#[cfg(test)]
 mod test_token_stream {
     use super::*;
     use crate::models::test_utils::id_token;
@@ -300,11 +315,12 @@ mod test_parse {
     use crate::lexer::tokenize;
     use crate::models::test_utils::*;
     use crate::models::*;
+    use crate::parser::test_utils::parse_tokens;
     use rstest::rstest;
 
     #[test]
     fn it_returns_error_for_empty_list()  {
-        assert_eq!(parse(vec![]), Err(error::unexpected_end_of_input()));
+        assert_eq!(parse_tokens(vec![]), Err(error::unexpected_end_of_input()));
     }
 
     #[rstest]
@@ -316,7 +332,7 @@ mod test_parse {
         #[case] node: AbstractSyntaxTree
     ) {
         let input = vec![token.clone(), Token::Newline];
-        assert_eq!(parse(input), Ok(node));
+        assert_eq!(parse_tokens(input), Ok(node));
     }
 
     #[rstest]
@@ -325,7 +341,7 @@ mod test_parse {
     #[case(unary_op_token(UnaryOp::Equals))]
     fn it_returns_error_for_one_operator(#[case] op: Token) {
         let error = error::unexpected_token("identifier or expression", op.clone());
-        assert_eq!(parse(vec![op, Token::Newline]), Err(error));
+        assert_eq!(parse_tokens(vec![op, Token::Newline]), Err(error));
     }
 
     #[rstest]
@@ -345,7 +361,7 @@ mod test_parse {
         let expected = AbstractSyntaxTree::Expr(
             bin_expr(left, vec![(operator, right)])
         );
-        assert_eq!(parse(input), Ok(expected));
+        assert_eq!(parse_tokens(input), Ok(expected));
     }
 
     #[rstest]
@@ -358,7 +374,7 @@ mod test_parse {
         let inner_term = int_term(negative_num * -1);
         let term = Term::negative_int(inner_term);
         let expected = term_tree(term);
-        assert_eq!(parse(input), Ok(expected));
+        assert_eq!(parse_tokens(input), Ok(expected));
     }
 
     #[test]
@@ -371,14 +387,14 @@ mod test_parse {
         let negative_nine = Term::negative_int(nine_as_term);
         let expected_tree = term_tree(negative_nine);
 
-        assert_eq!(parse(input), Ok(expected_tree)); 
+        assert_eq!(parse_tokens(input), Ok(expected_tree)); 
     }
 
     #[test]
     fn it_parses_negated_boolean() {
         let term = Term::negated_bool(Term::Id("someVariable".into()));
         let expected = term_tree(term);
-        assert_eq!(parse(force_tokenize("!someVariable;")), Ok(expected));
+        assert_eq!(parse_tokens(force_tokenize("!someVariable;")), Ok(expected));
     }
 
     #[test]
@@ -389,7 +405,7 @@ mod test_parse {
             )
         );
         let expected = term_tree(term);
-        assert_eq!(parse(force_tokenize("!!!x;")), Ok(expected));
+        assert_eq!(parse_tokens(force_tokenize("!!!x;")), Ok(expected));
     }
 
     #[test]
@@ -398,14 +414,14 @@ mod test_parse {
             "identifier or expression",
             Token::BinaryOp(BinaryOp::Minus)
         );
-        assert_eq!(parse(force_tokenize("---9;")), Err(error));
+        assert_eq!(parse_tokens(force_tokenize("---9;")), Err(error));
     }
 
     #[test]
     fn it_returns_error_for_multiple_ints() {
         let input = force_tokenize("3 2;");
         let error = IntepreterError::end_of_statement(int_token(2));
-        assert_eq!(parse(input), Err(error));
+        assert_eq!(parse_tokens(input), Err(error));
     }
 
     #[test]
@@ -417,7 +433,7 @@ mod test_parse {
             vec![(BinaryOp::Plus, str_term("b"))]
         );
         let expected = AbstractSyntaxTree::Expr(expr);
-        assert_eq!(parse(input), Ok(expected)); 
+        assert_eq!(parse_tokens(input), Ok(expected)); 
     }
 
     #[test]
@@ -429,7 +445,7 @@ mod test_parse {
             value: term_expr(int_term(4)),
         };
         let expected = AbstractSyntaxTree::Let(let_node);
-        assert_eq!(parse(input), Ok(expected));
+        assert_eq!(parse_tokens(input), Ok(expected));
     }
 
     #[test]
@@ -445,7 +461,7 @@ mod test_parse {
             vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))]
         );
         let expected = AbstractSyntaxTree::Expr(expr);
-        assert_eq!(parse(input), Ok(expected));
+        assert_eq!(parse_tokens(input), Ok(expected));
     }
 
     #[test]
@@ -459,7 +475,7 @@ mod test_parse {
         });
         let expected = Ok(AbstractSyntaxTree::Expr(expr));
 
-        assert_eq!(parse(input), expected);
+        assert_eq!(parse_tokens(input), expected);
     }
 
     #[rstest]
@@ -484,7 +500,7 @@ mod test_parse {
         let tree = force_tokenize(input);
         let expr = term_expr(Term::FuncCall(call));
         let expected = Ok(AbstractSyntaxTree::Expr(expr));
-        assert_eq!(parse(tree), expected);
+        assert_eq!(parse_tokens(tree), expected);
     }
 
     #[test]
@@ -505,7 +521,7 @@ mod test_parse {
         };
         let expected = AbstractSyntaxTree::Expr(Expr::Binary(expr));
 
-        assert_eq!(parse(input), Ok(expected));
+        assert_eq!(parse_tokens(input), Ok(expected));
     }
 
     #[rstest]
@@ -534,21 +550,21 @@ mod test_parse {
         };
         let expr = term_expr(Term::Literal(Literal::Func(function)));
         let expected = AbstractSyntaxTree::Expr(expr);
-        assert_eq!(parse(tokens), Ok(expected));
+        assert_eq!(parse_tokens(tokens), Ok(expected));
     }
 
     #[test]
     fn it_returns_error_for_non_id_param() {
         let input = force_tokenize("(x: int, 3: int) => x;");
         let err = error::unexpected_token("identifier", int_token(3));
-        assert_eq!(parse(input), Err(err));
+        assert_eq!(parse_tokens(input), Err(err));
     }
 
     #[test]
     fn it_returns_error_for_bad_var_id() {
         let input = force_tokenize("let 3 = 3;");
         let error = error::unexpected_token("identifier", int_token(3));
-        assert_eq!(parse(input), Err(error));
+        assert_eq!(parse_tokens(input), Err(error));
     }
 
     #[test]
@@ -557,7 +573,7 @@ mod test_parse {
         let error = IntepreterError::end_of_statement(
             Token::UnaryOp(UnaryOp::Equals)
         );
-        assert_eq!(parse(input), Err(error)); 
+        assert_eq!(parse_tokens(input), Err(error)); 
     }
 
     #[test]
@@ -572,7 +588,7 @@ mod test_parse {
             ),
         };
         let expected = AbstractSyntaxTree::Let(let_node);
-        assert_eq!(parse(input), Ok(expected));
+        assert_eq!(parse_tokens(input), Ok(expected));
     }
 
     #[test]
@@ -587,21 +603,21 @@ mod test_parse {
             ),
         };
         let expected = AbstractSyntaxTree::Let(let_node);
-        assert_eq!(parse(input), Ok(expected));
+        assert_eq!(parse_tokens(input), Ok(expected));
     }
 
     #[test]
     fn it_returns_error_for_invalid_let_type() {
         let input = force_tokenize("let x: y = z;");
         let error = error::not_a_type(Token::Id("y".to_string()));
-        assert_eq!(parse(input), Err(error)); 
+        assert_eq!(parse_tokens(input), Err(error)); 
     }
 
     #[test]
     fn it_returns_error_for_unexpected_let() {
         let input = force_tokenize("let x = let y = 2;");
         let error = error::unexpected_token("identifier or expression", Token::Let);
-        assert_eq!(parse(input), Err(error));
+        assert_eq!(parse_tokens(input), Err(error));
     }
 
     #[rstest]
@@ -612,20 +628,20 @@ mod test_parse {
         #[case] tokens: Vec<Token>,
         #[case] error: IntepreterError
     ) {
-        assert_eq!(parse(tokens), Err(error));
+        assert_eq!(parse_tokens(tokens), Err(error));
     }
 
     #[test]
     fn it_returns_error_for_statement_without_newline_or_semicolon() {
         let input = force_tokenize("2 + 2");
         let expected = error::unexpected_end_of_input();
-        assert_eq!(parse(input), Err(expected));
+        assert_eq!(parse_tokens(input), Err(expected));
     }
 
     #[test]
     fn it_returns_same_tree_for_statement_ending_in_newlines_and_semicolon() {
-        let newline_statement = parse(force_tokenize("2 + 2\n\n\n"));
-        let semicolon_statement = parse(force_tokenize("2 + 2;"));
+        let newline_statement = parse_tokens(force_tokenize("2 + 2\n\n\n"));
+        let semicolon_statement = parse_tokens(force_tokenize("2 + 2;"));
 
         assert!(matches!(newline_statement, Ok(_)));
         assert_eq!(newline_statement, semicolon_statement);
@@ -634,8 +650,8 @@ mod test_parse {
     #[test]
     fn it_ignores_tokens_after_semicolon() {
         let multiple_statements =
-            parse(force_tokenize("2 + 2; 5 + 5; let = badsyntax ->"));
-        let one_statement = parse(force_tokenize("2+2\n"));
+        parse_tokens(force_tokenize("2 + 2; 5 + 5; let = badsyntax ->"));
+        let one_statement = parse_tokens(force_tokenize("2+2\n"));
     
         assert!(matches!(multiple_statements, Ok(_)));
         assert_eq!(multiple_statements, one_statement);

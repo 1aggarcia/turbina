@@ -14,8 +14,8 @@ mod streams;
 use errors::IntepreterError;
 use models::{AbstractSyntaxTree, Literal, Program, Type};
 use lexer::tokenize;
-use parser::parse;
-use streams::{FileStream, InputStream, StdinStream};
+use parser::parse_statement;
+use streams::{FileStream, InputStream, StdinStream, TokenStream};
 use validator::validate;
 use evaluator::evaluate;
 
@@ -44,7 +44,7 @@ fn run_from_file(file: File) {
 
     // type check the file
     loop {
-        match validate_next_line(&mut program, &mut file_stream) {
+        match validate_next_statement(&mut program, &mut file_stream) {
             Ok(result) => statements.push(result),
             Err(statement_errors) => {
                 if statement_errors.contains(&IntepreterError::EndOfFile) {
@@ -81,7 +81,7 @@ fn run_repl() {
     println!("Welcome to Turbina");
 
     loop {
-        let eval_result = validate_next_line(&mut program, &mut stdin)
+        let eval_result = validate_next_statement(&mut program, &mut stdin)
             .and_then(|statement|
                 evaluate_statement(&mut program, &statement)
                     .map_err(|e| vec![e]));
@@ -101,13 +101,13 @@ fn run_repl() {
 
 /// Read the next line from the input stream and validate it.
 /// Returns a validated statement that is safe to execute.
-fn validate_next_line(
+fn validate_next_statement(
     program: &mut Program,
     input_stream: &mut impl InputStream
 ) -> Result<Statement, Vec<IntepreterError>> {
     let next_line = input_stream.next_line()?;
-    let tokens = tokenize(&next_line)?;
-    let syntax_tree = parse(tokens)?;
+    let mut token_stream = TokenStream::new(tokenize(&next_line)?);
+    let syntax_tree = parse_statement(&mut token_stream)?;
 
     let tree_type = validate(program, &syntax_tree)?;
     if let Some(name) = &tree_type.name_to_bind {

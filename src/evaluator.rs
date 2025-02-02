@@ -167,7 +167,7 @@ fn literal_to_string(literal: Literal) -> Option<String> {
 
 #[cfg(test)]
 mod test_evalutate {
-    use crate::{lexer::tokenize, models::test_utils::term_tree, parser::parse};
+    use crate::{models::test_utils::term_tree, parser::test_utils::make_tree};
 
     use super::*;
     use rstest::rstest;
@@ -337,9 +337,5 @@ mod test_evalutate {
     // evaluate an AST on a new program
     fn evaluate_fresh(tree: AbstractSyntaxTree) -> Literal{
         return evaluate(&mut Program::init(), &tree);
-    }
-
-    fn make_tree(statement: &str) -> AbstractSyntaxTree {
-        return parse(tokenize(statement).unwrap()).unwrap();
     }
 }

@@ -345,8 +345,9 @@ fn validate_let(context: &TypeContext, node: &LetNode) -> SubResult {
 #[cfg(test)]
 mod test_validate {
     use rstest::rstest;
-    use test_utils::term_tree;
-    use crate::{lexer::*, models::*, parser::*, validator::*};
+    use crate::models::test_utils::term_tree;
+    use crate::parser::test_utils::make_tree;
+    use crate::{models::*, validator::*};
 
     mod term {
         use super::*;
@@ -559,6 +560,8 @@ mod test_validate {
     }
 
     mod function {
+        use crate::parser::test_utils::make_tree;
+
         use super::*;
 
         #[rstest]
@@ -624,6 +627,8 @@ mod test_validate {
     }
 
     mod let_node {
+        use crate::parser::test_utils::make_tree;
+
         use super::*;
 
         #[test]
@@ -675,10 +680,6 @@ mod test_validate {
             let error = error::already_defined("b");
             assert_eq!(validate(&program, &tree), Err(vec![error])); 
         }
-    }
-
-    fn make_tree(statement: &str) -> AbstractSyntaxTree {
-        return parse(tokenize(statement).unwrap()).unwrap();
     }
 
     fn validate_fresh(input: AbstractSyntaxTree) -> ValidationResult {
