@@ -1,7 +1,8 @@
 use std::io::{stdin, stdout, BufReader, Write, BufRead};
 use std::fs::File;
 
-use crate::errors::IntepreterError;
+use crate::errors::{error, IntepreterError};
+use crate::models::Token;
 
 /// Abstraction over source code input
 pub trait InputStream {
@@ -44,5 +45,42 @@ impl InputStream for StdinStream {
             }
         }
         Ok(buf.to_string())
+    }
+}
+
+/// Abstract Data Type used internally by the parser to facilitate tracking
+/// token position and end-of-stream errors
+pub struct TokenStream {
+    tokens: Vec<Token>,
+    position: usize,
+}
+
+impl TokenStream {
+    pub fn new(tokens: Vec<Token>) -> Self {
+        Self { tokens, position: 0 }
+    }
+
+    pub fn has_next(&self) -> bool {
+        self.position < self.tokens.len()
+    }
+
+    /// Advances to the next token and returns the current one
+    pub fn pop(&mut self) -> Result<Token, IntepreterError> {
+        let token = self.peek()?;
+        self.position += 1;
+        return Ok(token);
+    }
+
+    /// Returns the token currently being pointed to
+    pub fn peek(&self) -> Result<Token, IntepreterError> {
+        self.lookahead(0)
+    }
+
+    /// Returns the token at the current position plus `offset`
+    pub fn lookahead(&self, offset: usize) -> Result<Token, IntepreterError> {
+        match self.tokens.get(self.position + offset) {
+            Some(token) => Ok(token.clone()),
+            None => Err(error::unexpected_end_of_input()),
+        }
     }
 }

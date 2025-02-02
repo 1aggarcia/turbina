@@ -3,45 +3,9 @@ use crate::models::{
 };
 
 use crate::errors::{IntepreterError, error};
+use crate::streams::TokenStream;
 
 type ParseResult<T> = Result<T, IntepreterError>;
-
-/// Abstract Data Type used internally by the parser to facilitate tracking
-/// token position and end-of-stream errors
-struct TokenStream {
-    tokens: Vec<Token>,
-    position: usize,
-}
-
-impl TokenStream {
-    fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, position: 0 }
-    }
-
-    fn has_next(&self) -> bool {
-        self.position < self.tokens.len()
-    }
-
-    /// Advances to the next token and returns the current one
-    fn pop(&mut self) -> Result<Token, IntepreterError> {
-        let token = self.peek()?;
-        self.position += 1;
-        return Ok(token);
-    }
-
-    /// Returns the token currently being pointed to
-    fn peek(&self) -> Result<Token, IntepreterError> {
-        self.lookahead(0)
-    }
-
-    /// Returns the token at the current position plus `offset`
-    fn lookahead(&self, offset: usize) -> Result<Token, IntepreterError> {
-        match self.tokens.get(self.position + offset) {
-            Some(token) => Ok(token.clone()),
-            None => Err(error::unexpected_end_of_input()),
-        }
-    }
-}
 
 /// Convert a sequence of tokens into an abstract syntax tree using recursive decent.
 /// 
