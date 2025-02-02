@@ -92,6 +92,7 @@ pub enum Token {
     UnaryOp(UnaryOp),
     Id(String),
     Formatter(String),
+    Newline,
 
     // keywords
     Let,

@@ -20,6 +20,7 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
     let line_without_comments = line.split("//").next().unwrap_or("");
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
+        | (?P<newline>[\r\n]+)
         | (?P<fmt>[:;(),\[\]]|->)
         | (?P<binary_op>==|!=|[+*\-/%])
         | (?P<unary_op>[=!])
@@ -38,6 +39,8 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
             if let Some(m) = x.name("int") {
                 let int_value = m.as_str().parse::<i32>().unwrap();
                 Token::Literal(Literal::Int(int_value))
+            } else if let Some(_) = x.name("newline") {
+                Token::Newline
             } else if let Some(m) = x.name("binary_op") {
                 let op = string_to_binary_op(m.as_str()).unwrap();
                 Token::BinaryOp(op)
@@ -135,6 +138,12 @@ mod tests {
     #[case::symbol("let", Token::Let)]
     #[case::symbol_with_underscore(
         "multi_word_var_name", Token::Id("multi_word_var_name".into()))]
+
+    #[case::linux_newline("\n", Token::Newline)]
+    #[case::windows_newline("\r\n", Token::Newline)]
+    #[case::legacy_mac_newline("\r", Token::Newline)]
+    #[case::multiple_newlines("\n\n\n\n", Token::Newline)]
+    #[case::mixed_newlines("\r\n\r\n\r\r\n\n", Token::Newline)]
     fn one_token(#[case] line: &str, #[case] expected: Token) {
         assert_eq!(tokenize(line), Ok(vec![expected]));
     }
