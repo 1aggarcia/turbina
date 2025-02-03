@@ -137,7 +137,7 @@ mod test_wasm {
 
     #[test]
     fn test_run_turbina_program() {
-        let source_code = "let x = 5\n";
+        let source_code = "let x = 5; // comment \n";
         let expected = vec!["5".to_string()];
 
         assert_eq!(run_turbina_program(source_code), expected)

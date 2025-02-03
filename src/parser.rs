@@ -16,6 +16,8 @@ type ParseResult<T> = Result<T, IntepreterError>;
 /// <statement> ::=  (<let> | <expr>) [";" | Newline]
 /// ```
 pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSyntaxTree> {
+    parse_newlines(token_stream);
+
     let Ok(first) = token_stream.peek() else {
         return Err(IntepreterError::EndOfFile);
     };
@@ -202,22 +204,31 @@ fn complete_term_with_arg_list(
 
 /// Create an AST for the "let" keyword given the remaining tokens
 /// ```
-/// <let> = Let Id [<type_declaration>] Equals <expression>
+/// <let> = Let Id [<type_declaration>] Equals <expression> | Let Id <function>
 /// ```
 fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
     match_next(tokens, Token::Let)?;
     let id = parse_id(tokens)?;
 
-    // look for optional declared type (e.g. ": int")
-    let is_token_colon = token_matches_formatter(&tokens.peek()?, ":");
-    let datatype = if is_token_colon {
+    let includes_type_declaration =
+        token_matches_formatter(&tokens.peek()?, ":");
+
+    let is_shorthand_function = token_matches_formatter(&tokens.peek()?, "(");
+
+    let datatype = if includes_type_declaration {
         Some(parse_type_declaration(tokens)?)
     } else {
         None
     };
 
-    match_next(tokens, Token::UnaryOp(UnaryOp::Equals))?;
-    let expr = parse_expr(tokens)?;
+    let expr = if is_shorthand_function {
+        let function = parse_function(tokens)?;
+        let function_term = Term::Literal(Literal::Func(function));
+        Expr::Binary(BinaryExpr { first: function_term, rest: vec![] })
+    } else {
+        match_next(tokens, Token::UnaryOp(UnaryOp::Equals))?;
+        parse_expr(tokens)?
+    };
 
     return Ok(LetNode { id, datatype, value: expr });
 }
@@ -241,6 +252,15 @@ fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
         Token::Type(t) => Ok(t.to_owned()),
         Token::Null => Ok(Type::Null),
         _ => return Err(error::not_a_type(type_token)) 
+    }
+}
+
+/// Skip over any newlines at the front of the stream.
+/// Will never error.
+fn parse_newlines(tokens: &mut TokenStream) {
+    while let Ok(Token::Newline) = tokens.peek() {
+        // safe to unwrap since the peeked value is Ok
+        let _ = tokens.pop();
     }
 }
 
@@ -524,6 +544,15 @@ mod test_parse {
         let expr = term_expr(Term::Literal(Literal::Func(function)));
         let expected = AbstractSyntaxTree::Expr(expr);
         assert_eq!(parse_tokens(tokens), Ok(expected));
+    }
+
+    #[test]
+    fn it_parses_shorthand_function_definition() {
+        let shorthand = force_tokenize("let not(b: bool) -> !b;");
+        let normal = parse_tokens(force_tokenize("let not = (b: bool) -> !b;"));
+
+        assert!(matches!(normal, Ok(_)));
+        assert_eq!(parse_tokens(shorthand), normal);
     }
 
     #[test]
