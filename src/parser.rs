@@ -89,8 +89,14 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
     match_next(tokens, Token::Formatter("(".into()))?;
     let condition = Box::new(parse_expr(tokens)?);
     match_next(tokens, Token::Formatter(")".into()))?;
+
+    skip_newlines(tokens);
     let if_true = Box::new(parse_expr(tokens)?);
+
+    skip_newlines(tokens);
     match_next(tokens, Token::Else)?;
+
+    skip_newlines(tokens);
     let if_false = Box::new(parse_expr(tokens)?);
 
     return Ok(CondExpr { cond: condition, if_true, if_false });
@@ -120,7 +126,9 @@ fn parse_function(tokens: &mut TokenStream) -> ParseResult<Func> {
     } else {
         None
     };
+
     match_next(tokens, Token::Formatter("->".into()))?;
+    skip_newlines(tokens);
     let body_expr = parse_expr(tokens)?;
 
     Ok(Func { params, return_type, body: FuncBody::Expr(Box::new(body_expr)) })
@@ -547,15 +555,6 @@ mod test_parse {
     }
 
     #[test]
-    fn it_parses_shorthand_function_definition() {
-        let shorthand = force_tokenize("let not(b: bool) -> !b;");
-        let normal = parse_tokens(force_tokenize("let not = (b: bool) -> !b;"));
-
-        assert!(matches!(normal, Ok(_)));
-        assert_eq!(parse_tokens(shorthand), normal);
-    }
-
-    #[test]
     fn it_returns_error_for_non_id_param() {
         let input = force_tokenize("(x: int, 3: int) => x;");
         let err = error::unexpected_token("identifier", int_token(3));
@@ -657,6 +656,31 @@ mod test_parse {
     
         assert!(matches!(multiple_statements, Ok(_)));
         assert_eq!(multiple_statements, one_statement);
+    }
+
+    #[rstest]
+    #[case::shorthand_function("let not(b: bool) -> !b;", "let not = (b: bool) -> !b;")]
+    #[case::if_else_on_seperate_lines("if (true) 1 else 0;", "
+        if (true)
+            1
+        else
+            0;
+    ")]
+    #[case::function_on_seperate_lines(
+        r#"let toString(x: int) -> if (x == 0) "0" else if (x == 1) "1" else "unknown";"#,
+        r#"
+        let toString(x: int) ->
+            if (x == 0) "0"
+            else if (x == 1) "1"
+            else "unknown";
+        "#
+    )]
+    fn it_parses_equivalent_statements(#[case] vers1: &str, #[case] vers2: &str) {
+        let res1 = parse_tokens(force_tokenize(vers1));
+        let res2 = parse_tokens(force_tokenize(vers2));
+
+        assert!(matches!(res1, Ok(_)));
+        assert_eq!(res1, res2)
     }
 
     fn force_tokenize(line: &str) -> Vec<Token> {
