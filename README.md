@@ -40,25 +40,33 @@ type consumer = (int, string) -> null;  // two args, returns null
 // inferred return type
 let concat = (a: string, b: string) -> a + b
 
+// the "=" can be elimnated for function bindings
+let concat2(a: string, b: string) -> a + b
+
 // declared return type
-let factorial = (x: int): int {
+let factorial(x: int): int {
     if (x == 0) {
-        return 1
+        return 1;
     }
-    return x * factorial(x - 1)
+    return x * factorial(x - 1);
 }
 
 // alternatively
-let other_fac = (x: int) -> if (x == 0) 1 else x * factorial(x - 1)
+let factorial2(x: int) ->
+    if (x == 0) 1
+    else x * factorial2(x - 1);
 ```
 
 **Higher-order functions**
 ```rust
-// function as an argument
-let printOutput = (input: int, func: (int) -> int) {
-    print(func(input))
+// function as an argument (also showcases anonymous functions)
+let squares = map([1, 2, 3, 4], (x: int) -> x * x);
+
+// define the function like this
+let map(nums: int[], func: (int) -> int) {
+    ...
 }
 
 // function as a return value
-let add = (x: int) -> (y: int) -> x + y;
+let add(x: int) -> (y: int) -> x + y;
 ```
