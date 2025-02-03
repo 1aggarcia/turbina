@@ -55,6 +55,15 @@ let factorial(x: int): int {
 let factorial2(x: int) ->
     if (x == 0) 1
     else x * factorial2(x - 1);
+
+// else if
+let isEven(n: int) ->
+    if (n == 0) true
+    else if (n == 1) false
+    else if (n == 2) true
+    else if (n == 3) false
+    else if (n == 4) true
+    ...
 ```
 
 **Higher-order functions**

@@ -25,6 +25,10 @@ struct TypeContext<'a> {
     /// bindings created as function parameters
     parameter_types: &'a HashMap<String, Type>,
 
+    /// The name being bound in a statement, if any. This allows recursive
+    /// functions to reference themselves in their own definition.
+    name_to_bind: Option<String>,
+
     parent: Option<&'a TypeContext<'a>>
 }
 
@@ -63,18 +67,22 @@ impl TypeContext<'_> {
 pub fn validate(
     program: &Program, tree: &AbstractSyntaxTree
 ) -> ValidationResult {
-    let global_context = TypeContext {
+    let mut global_context = TypeContext {
         variable_types: &program.type_context,
         parameter_types: &HashMap::new(),
+        name_to_bind: None,
         parent: None,
     };
 
     match tree {
-        AbstractSyntaxTree::Let(node) => validate_let(&global_context, node)
-            .map(|datatype| TreeType {
-                datatype,
-                name_to_bind: Some(node.id.clone())
-            }),
+        AbstractSyntaxTree::Let(node) => {
+            global_context.name_to_bind = Some(node.id.clone());
+            validate_let(&global_context, node)
+                .map(|datatype| TreeType {
+                    datatype,
+                    name_to_bind: Some(node.id.clone())
+                })
+        },
         AbstractSyntaxTree::Expr(node) => validate_expr(&global_context, node)
             .map(|datatype| TreeType { datatype, name_to_bind: None })
     }
@@ -220,56 +228,69 @@ fn validate_literal(context: &TypeContext, literal: &Literal) -> SubResult {
 /// bindings introduced by the input parameters
 fn validate_function(context: &TypeContext, function: &Func) -> SubResult {
     let mut param_types = HashMap::<String, Type>::new();
+
     // must also be stored as a list since maps don't have order
     let mut param_type_list = Vec::<Type>::new();
-    let mut errors = Vec::<IntepreterError>::new();
+    let mut param_errors = Vec::<IntepreterError>::new();
 
     for (id, datatype) in function.params.clone() {
         if context.contains_parameter(&id) {
-            errors.push(IntepreterError::ReassignError { id });
+            param_errors.push(IntepreterError::ReassignError { id });
             continue;
         }
         param_types.insert(id.clone(), datatype.clone());
         param_type_list.push(datatype);
     }
 
-    if !errors.is_empty() {
-        return Err(errors);
+    if !param_errors.is_empty() {
+        return Err(param_errors);
     }
 
-    let local_context = TypeContext {
+    let mut func_context = TypeContext {
         variable_types: &mut HashMap::new(),
         parameter_types: &param_types,
-        parent: Some(context),
+        name_to_bind: None,
+        parent: Some(&context),
     };
 
-    let body_type = match &function.body {
-        FuncBody::Expr(expr) => Some(validate_expr(&local_context, &expr)?),
-        FuncBody::Native(_) => None,
-    };
+    if let Some(declared_return_type) = &function.return_type {
+        let func_type = Type::Func {
+            input: param_type_list,
+            output: Box::new(declared_return_type.clone())
+        };
+        let FuncBody::Expr(func_body) = &function.body else {
+            return Ok(func_type);
+        };
 
-    let return_type: Type = match (&function.return_type, body_type) {
-        (Some(return_t), None) => return_t.clone(),
-        (Some(return_t), Some(body_t)) => {
-            if *return_t != body_t {
-                let err = IntepreterError::bad_return_type(return_t, &body_t);
-                return Err(err.into());
-            }
-            return_t.clone()
+        // add recursive function to type context so it can be used in the body
+        let mut variable_types = HashMap::new();
+        if let Some(recursive_func_name) = &context.name_to_bind {
+            variable_types.insert(
+                recursive_func_name.clone(),
+                func_type.clone()
+            );
+            func_context.variable_types = &variable_types;
         }
-        (None, Some(body_t)) => body_t,
-        (None, None) => {
+
+        let body_type = validate_expr(&func_context, &func_body)?;
+        if body_type != *declared_return_type {
+            return Err(IntepreterError
+                ::bad_return_type(declared_return_type, &body_type).into());
+        }
+        Ok(func_type)
+    } else {
+        let FuncBody::Expr(func_body) = &function.body else {
             // this should never happen
             let message = "Function type is undecidable".to_string();
             return Err(IntepreterError::TypeError { message }.into());
-        }
-    };
+        };
 
-    let function_type = Type::Func {
-        input: param_type_list,
-        output: Box::new(return_type),
-    };
-    Ok(function_type)
+        let func_type = Type::Func {
+            input: param_type_list,
+            output: Box::new(validate_expr(&func_context, &func_body)?)
+        };
+        Ok(func_type)
+    }
 }
 
 /// Check that the id exists in the program's type enviornment
@@ -620,10 +641,25 @@ mod test_validate {
                 IntepreterError::ReassignError { id: "x".into() }
             ]
         )]
+        #[case::recursive_function_without_return_type(
+            "let f(x: int) -> f(x - 1);",
+            &[IntepreterError::UndefinedError { id: "f".into() }]
+        )]
         fn it_returns_error(#[case] input: &str, #[case] errors: &[IntepreterError]) {
             let tree = make_tree(input);
             assert_eq!(validate_fresh(tree), Err(errors.to_vec()));
         }
+
+        #[test]
+        fn it_returns_ok_for_recursive_function() {
+            let input = make_tree("let f(x: int): int -> f(x - 1);");
+            let func_type = Type::Func {
+                input: vec![Type::Int],
+                output: Box::new(Type::Int)
+            };
+            assert_eq!(validate_fresh(input), ok_with_binding("f", func_type));
+        }
+
     }
 
     mod let_node {

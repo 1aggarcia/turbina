@@ -16,7 +16,7 @@ type ParseResult<T> = Result<T, IntepreterError>;
 /// <statement> ::=  (<let> | <expr>) [";" | Newline]
 /// ```
 pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSyntaxTree> {
-    parse_newlines(token_stream);
+    skip_newlines(token_stream);
 
     let Ok(first) = token_stream.peek() else {
         return Err(IntepreterError::EndOfFile);
@@ -127,7 +127,7 @@ fn parse_function(tokens: &mut TokenStream) -> ParseResult<Func> {
 }
 
 /// ```
-/// <term> = "!" <term> | ["-"] <base-term>
+/// <term> ::= "!" <term> | ["-"] <base_term>
 /// ```
 fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     let first = tokens.peek()?;
@@ -146,7 +146,7 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 }
 
 /// ```
-/// <base-term> = Literal | (Id | "(" <expr> ")") {<arg-list>} | Null
+/// <base_term> ::= Literal | (Id | "(" <expr> ")") {<arg_list>} | Null
 /// ```
 fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     let first = tokens.pop()?;
@@ -204,7 +204,7 @@ fn complete_term_with_arg_list(
 
 /// Create an AST for the "let" keyword given the remaining tokens
 /// ```
-/// <let> = Let Id [<type_declaration>] Equals <expression> | Let Id <function>
+/// <let> ::= Let Id [<type_declaration>] Equals <expr> | Let Id <function>
 /// ```
 fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
     match_next(tokens, Token::Let)?;
@@ -257,7 +257,7 @@ fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
 
 /// Skip over any newlines at the front of the stream.
 /// Will never error.
-fn parse_newlines(tokens: &mut TokenStream) {
+fn skip_newlines(tokens: &mut TokenStream) {
     while let Ok(Token::Newline) = tokens.peek() {
         // safe to unwrap since the peeked value is Ok
         let _ = tokens.pop();
