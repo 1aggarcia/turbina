@@ -56,9 +56,13 @@ pub struct StringStream {
 }
 
 impl StringStream {
-    pub fn new(string: &str) -> Self {
+    pub fn new(source_code: &str) -> Self {
         StringStream {
-            lines: string.split("\n").map(|s| s.to_string()).collect(),
+            lines: source_code.lines()
+                .map(|s| s.to_owned() + "\n")
+                .filter(|s| !s.trim().is_empty())
+                .filter(|s| !s.starts_with("//"))
+                .collect(),
             line_num: 0,
         }
     }
@@ -144,5 +148,33 @@ mod test_token_stream {
         assert_eq!(stream.peek(), Ok(id_token("data")));
         assert_eq!(stream.pop(), Ok(id_token("data")));
         assert_eq!(stream.peek(), Err(error::unexpected_end_of_input()));
+    }
+}
+
+#[cfg(test)]
+mod test_string_stream {
+    use super::*;
+
+    #[test]
+    fn it_preserves_newlines_at_the_end_of_each_line() {
+        let mut stream = StringStream::new("1\n2\n3");
+        assert_eq!(stream.next_line(), Ok("1\n".into()));
+        assert_eq!(stream.next_line(), Ok("2\n".into()));
+        assert_eq!(stream.next_line(), Ok("3\n".into()));
+    }
+
+    #[test]
+    fn it_skips_blank_lines() {
+        let mut stream = StringStream::new("1\n\n\n\n2\n\n\n3");
+        assert_eq!(stream.next_line(), Ok("1\n".into()));
+        assert_eq!(stream.next_line(), Ok("2\n".into()));
+        assert_eq!(stream.next_line(), Ok("3\n".into()));
+        assert_eq!(stream.next_line(), Err(error::unexpected_end_of_input()));
+    }
+
+    #[test]
+    fn it_skips_comments() {
+        let mut stream = StringStream::new("// a comment\n3");
+        assert_eq!(stream.next_line(), Ok("3\n".into()));
     }
 }
