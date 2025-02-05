@@ -1,5 +1,6 @@
 import loadWasm from "turbina";
 import { useEffect, useState } from 'react'
+import { CodePlayground } from "./CodePlayground";
 
 function App() {
     const [isLoaded, setIsLoaded] = useState(false);
@@ -17,7 +18,7 @@ function App() {
     if (!isLoaded) {
         return <p>Loading Web Assembly...</p>
     }
-    return <p>Web Assembly loaded successfully</p>
+    return <CodePlayground />
 }
 
 export default App;
