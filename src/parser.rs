@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Func, FuncBody, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
 };
 
 use crate::errors::{IntepreterError, error};
@@ -61,8 +61,7 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
 
     if next_is_function {
         let function = parse_function(tokens)?;
-        let func_term = Term::Literal(Literal::Func(function));
-        let expr = Expr::Binary(BinaryExpr { first: func_term, rest: vec![] });
+        let expr = Expr::Function(function);
         return Ok(expr);
     }
 
@@ -107,7 +106,7 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
 /// 
 /// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
 /// ```
-fn parse_function(tokens: &mut TokenStream) -> ParseResult<Func> {
+fn parse_function(tokens: &mut TokenStream) -> ParseResult<Function> {
     let mut params = Vec::<(String, Type)>::new();
 
     match_next(tokens, Token::Formatter("(".into()))?;
@@ -131,7 +130,7 @@ fn parse_function(tokens: &mut TokenStream) -> ParseResult<Func> {
     skip_newlines(tokens);
     let body_expr = parse_expr(tokens)?;
 
-    Ok(Func { params, return_type, body: FuncBody::Expr(Box::new(body_expr)) })
+    Ok(Function { params, return_type, body: FuncBody::Expr(Box::new(body_expr)) })
 }
 
 /// ```
@@ -231,8 +230,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
 
     let expr = if is_shorthand_function {
         let function = parse_function(tokens)?;
-        let function_term = Term::Literal(Literal::Func(function));
-        Expr::Binary(BinaryExpr { first: function_term, rest: vec![] })
+        Expr::Function(function)
     } else {
         match_next(tokens, Token::UnaryOp(UnaryOp::Equals))?;
         parse_expr(tokens)?
@@ -544,12 +542,12 @@ mod test_parse {
         #[case] body_term: Term,
     ) {
         let tokens = force_tokenize(input);
-        let function = Func {
+        let function = Function {
             params,
             return_type,
-            body: FuncBody::Expr(Box::new(term_expr(body_term)))
+            body: FuncBody::Expr(Box::new(term_expr(body_term))),
         };
-        let expr = term_expr(Term::Literal(Literal::Func(function)));
+        let expr = Expr::Function(function);
         let expected = AbstractSyntaxTree::Expr(expr);
         assert_eq!(parse_tokens(tokens), Ok(expected));
     }

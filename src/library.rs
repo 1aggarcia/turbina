@@ -1,21 +1,21 @@
 // The standard library avaliable anywhere in Turbina
 
-use crate::models::{Func, FuncBody, Literal, Scope, Type};
+use crate::models::{Function, FuncBody, Literal, Scope, Type};
 
 use once_cell::sync::Lazy;
 
-pub static LIBRARY: Lazy<Vec<(&str, Func)>> = Lazy::new(|| {vec![
-    ("reverse", Func {
+pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
+    ("reverse", Function {
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(lib_reverse),
     }),
-    ("exit", Func {
+    ("exit", Function {
         params: vec![("code".into(), Type::Int)],
         return_type: Some(Type::Null),
         body: FuncBody::Native(lib_exit),
     }),
-    ("len", Func {
+    ("len", Function {
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::Int),
         body: FuncBody::Native(|args, _| {
@@ -25,7 +25,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Func)>> = Lazy::new(|| {vec![
             Literal::Int(text.len().try_into().expect("Integer overflow"))
         }),
     }),
-    ("uppercase", Func {
+    ("uppercase", Function {
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
@@ -35,7 +35,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Func)>> = Lazy::new(|| {vec![
             Literal::String(text.to_uppercase())
         }),
     }),
-    ("lowercase", Func {
+    ("lowercase", Function {
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
@@ -45,13 +45,13 @@ pub static LIBRARY: Lazy<Vec<(&str, Func)>> = Lazy::new(|| {vec![
             Literal::String(text.to_lowercase())
         }),
     }),
-    ("printScope", Func {
+    ("printScope", Function {
         params: vec![],
         return_type: Some(Type::Null),
         body: FuncBody::Native(|_, scope| {
             println!("{}", scope);
             Literal::Null
-        })
+        }),
     })
 ]});
 

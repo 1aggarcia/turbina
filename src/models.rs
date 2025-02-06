@@ -22,7 +22,11 @@ impl Program {
                 eprintln!("WARNING: Cannot resolve return type for library function {}", name);
                 continue;
             };
-            bindings.insert(name.to_owned(), Literal::Func(func.clone()));
+            bindings.insert(name.to_owned(), Literal::Closure(Closure {
+                function: func.clone(),
+                parent_scope: HashMap::new()
+            }));
+
             type_context.insert(name.to_owned(), Type::Func {
                 input: func.params.iter().map(|(_, t)| t.clone()).collect(),
                 output: Box::new(return_type.clone())
@@ -52,6 +56,11 @@ impl Scope<'_> {
             None => self.parent
                 .and_then(|parent_scope| parent_scope.lookup(id)),
         }
+    }
+
+    /// Is this scope temporary, i.e. not the global scope?
+    pub fn is_local_scope(&self) -> bool {
+        self.parent.is_some()
     }
 }
 
@@ -109,7 +118,7 @@ pub enum Literal {
     Int(i32),
     String(String),
     Bool(bool),
-    Func(Func),
+    Closure(Closure),
     Null,
 }
 
@@ -119,17 +128,18 @@ impl std::fmt::Display for Literal {
             Self::Int(i) => write!(f, "{i}"),
             Self::String(s) => write!(f, "\"{s}\""),
             Self::Bool(s) => write!(f, "{s}"),
-            Self::Func(_) => write!(f, "<function>"),
+            Self::Closure(_) => write!(f, "<function>"),
             Self::Null => write!(f, "null"),
         }
     }
 }
 
+/// A function with a copy of the scope it was created in
+
 #[derive(PartialEq, Debug, Clone)]
-pub struct Func {
-   pub params: Vec<(String, Type)>,
-   pub return_type: Option<Type>,
-   pub body: FuncBody,
+pub struct Closure {
+   pub function: Function,
+   pub parent_scope: HashMap<String, Literal>,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -252,6 +262,7 @@ impl Term {
 pub enum Expr {
     Binary(BinaryExpr),
     Cond(CondExpr),
+    Function(Function),
 }
 
 /// For variable length expressions on binary operators
@@ -267,6 +278,13 @@ pub struct CondExpr {
     pub cond: Box<Expr>,
     pub if_true: Box<Expr>,
     pub if_false: Box<Expr>,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct Function {
+   pub params: Vec<(String, Type)>,
+   pub return_type: Option<Type>,
+   pub body: FuncBody,
 }
 
 #[derive(Debug, PartialEq)]

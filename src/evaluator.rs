@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, FuncBody, FuncCall, LetNode, Literal, Program, Scope, Term};
+use crate::models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Program, Scope, Term};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// 
@@ -34,6 +34,7 @@ fn eval_expr(scope: &mut Scope, expr: &Expr) -> Literal {
     match expr {
         Expr::Binary(b) => eval_binary_expr(scope, b),
         Expr::Cond(c) => eval_cond_expr(scope, c),
+        Expr::Function(f) => eval_function(scope, f),
     }
 }
 
@@ -58,12 +59,26 @@ fn eval_cond_expr(scope: &mut Scope, expr: &CondExpr) -> Literal {
     }
 }
 
+/// Returns a closure with the passed in function and parent scope saved to it
+/// (if it is not the global sopce)
+fn eval_function(scope: &mut Scope, function: &Function) -> Literal {
+    let parent_scope = if scope.is_local_scope() {
+        scope.bindings.clone()
+    } else {
+        HashMap::new()
+    };
+
+    let closure = Closure { function: function.clone(), parent_scope };
+    Literal::Closure(closure)
+}
+
 /// Invoke a function with the passed in arguments
 fn eval_func_call(scope: &mut Scope, call: &FuncCall) -> Literal {
-    let function = match eval_term(scope, &call.func) {
-        Literal::Func(f) => f,
-        _ => panic!("bad type"),
+    let Literal::Closure(closure) = eval_term(scope, &call.func) else {
+        panic!("bad type: {:?}", call.func);
     };
+    let Closure { function, parent_scope } = closure;
+
     let args: Vec<Literal> = call.args.iter()
         .map(|a| eval_expr(scope, a)).collect();
 
@@ -73,11 +88,11 @@ fn eval_func_call(scope: &mut Scope, call: &FuncCall) -> Literal {
     };
 
     // create local scope with arguments bound to parameters
-    let mut function_bindings = HashMap::new();
-
+    let mut function_bindings = parent_scope;
     for ((param_name, _), arg) in function.params.iter().zip(args.iter()) {
         function_bindings.insert(param_name.clone(), arg.clone());
     }
+
     let mut function_scope = Scope {
         bindings: &mut function_bindings,
         parent: Some(scope),

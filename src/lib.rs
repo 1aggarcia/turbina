@@ -124,8 +124,8 @@ fn evaluate_statement(
     (syntax_tree, tree_type): &Statement,
 ) -> Result<String, IntepreterError> {
     let output = match evaluate(program, &syntax_tree) {
-        // Function types look nicer to print than any form of the literal struct
-        Literal::Func(_) => tree_type.to_string(),
+        // Function types look nicer to print than any form of the struct
+        Literal::Closure(_) => tree_type.to_string(),
         literal => literal.to_string(),
     };
     Ok(output)

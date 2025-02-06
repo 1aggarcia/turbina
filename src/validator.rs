@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::errors::{IntepreterError, error};
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Func, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type
 };
 
 type ValidationResult = Result<TreeType, Vec<IntepreterError>>;
@@ -92,6 +92,7 @@ fn validate_expr(context: &TypeContext, expr: &Expr) -> SubResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(context, b),
         Expr::Cond(c) => validate_cond_expr(context, c),
+        Expr::Function(f) => validate_function(context, f),
     }
 }
 
@@ -202,7 +203,7 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
 /// For literals, check that the type matches any unary operators.
 fn validate_term(context: &TypeContext, term: &Term) -> SubResult {
     match term {
-        Term::Literal(lit) => validate_literal(context, lit),
+        Term::Literal(lit) => get_literal_type(lit),
         Term::Id(id) => validate_id(context, &id),
         Term::Not(term) => validate_negated_bool(context, term),
         Term::Minus(term) => validated_negated_int(context, term),
@@ -211,22 +212,22 @@ fn validate_term(context: &TypeContext, term: &Term) -> SubResult {
     }
 }
 
-/// For primitive values, just return its type
-/// For functions, check that the function body has the correct types
-fn validate_literal(context: &TypeContext, literal: &Literal) -> SubResult {
+/// Should not be called with closures, closures are only created at runtime.
+fn get_literal_type(literal: &Literal) -> SubResult {
     let datatype = match literal {
         Literal::Bool(_) => Type::Bool,
         Literal::Int(_) => Type::Int,
         Literal::String(_) => Type::String,
-        Literal::Func(function) => validate_function(context, function)?,
         Literal::Null => Type::Null,
+        Literal::Closure(closure) =>
+            panic!("Closure created before evaluation: {:?}", closure),
     };
     Ok(datatype)
 }
 
 /// Check that the return type can be resolved with global bindings and new
 /// bindings introduced by the input parameters
-fn validate_function(context: &TypeContext, function: &Func) -> SubResult {
+fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
     let mut param_types = HashMap::<String, Type>::new();
 
     // must also be stored as a list since maps don't have order
