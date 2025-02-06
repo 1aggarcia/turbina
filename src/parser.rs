@@ -12,7 +12,7 @@ type ParseResult<T> = Result<T, IntepreterError>;
 /// 
 /// A syntax error is returned for any syntactical errors in the token sequence.
 /// 
-/// ```
+/// ```text
 /// <statement> ::=  (<let> | <expr>) [";" | Newline]
 /// ```
 pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSyntaxTree> {
@@ -35,7 +35,7 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSy
     return Ok(statement);
 }
 
-/// ```
+/// ```test
 /// <expr> ::= <cond_expr> | <function> | <term> {BinaryOp <term>}
 /// ```
 fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
@@ -80,7 +80,7 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
     Ok(Expr::Binary(BinaryExpr { first, rest }))
 }
 
-/// ```
+/// ```text
 /// <cond_expr> ::= If "(" <expr> ")" <expr> Else <expr>
 /// ```
 fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
@@ -101,7 +101,7 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
     return Ok(CondExpr { cond: condition, if_true, if_false });
 }
 
-/// ```
+/// ```text
 /// <function> ::= "(" <param_list> ")" [<type_declaration>] "->" <expr>
 /// 
 /// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
@@ -133,7 +133,7 @@ fn parse_function(tokens: &mut TokenStream) -> ParseResult<Function> {
     Ok(Function { params, return_type, body: FuncBody::Expr(Box::new(body_expr)) })
 }
 
-/// ```
+/// ```text
 /// <term> ::= "!" <term> | ["-"] <base_term>
 /// ```
 fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
@@ -152,7 +152,7 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     parse_base_term(tokens)
 }
 
-/// ```
+/// ```text
 /// <base_term> ::= Literal | (Id | "(" <expr> ")") {<arg_list>} | Null
 /// ```
 fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
@@ -180,7 +180,7 @@ fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 /// callable term. If a function call cannot be constructed, the callable term is returned.
 /// 
 /// The `<arg_list>` below is preceeded by the callable term.
-/// ```
+/// ```text
 /// <arg_list> ::= "(" [<expr> {"," <expr>}] ")"
 /// ```
 fn complete_term_with_arg_list(
@@ -210,7 +210,7 @@ fn complete_term_with_arg_list(
 }
 
 /// Create an AST for the "let" keyword given the remaining tokens
-/// ```
+/// ```text
 /// <let> ::= Let Id [<type_declaration>] Equals <expr> | Let Id <function>
 /// ```
 fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
@@ -248,7 +248,7 @@ fn parse_id(tokens: &mut TokenStream) -> ParseResult<String> {
     }
 }
 
-/// ```
+/// ```text
 /// <type_declaration> :: = ":" Type | ":" Null
 /// ```
 fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
