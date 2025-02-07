@@ -90,17 +90,6 @@ pub mod error {
         return TypeError { message };
     }
 
-    // TODO: merge with UnexpectedType
-    pub fn declared_type(id: &str, declared: Type, expression: Type) -> IntepreterError {
-        let message = format!(
-            "Declared type {:?} for '{}' does not match expression type {:?}",
-            declared,
-            id,
-            expression
-        );
-        return TypeError { message };
-    }
-
     pub fn undefined_id(id: &str) -> IntepreterError {
         UndefinedError { id: id.into() }
     }

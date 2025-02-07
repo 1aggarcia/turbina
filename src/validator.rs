@@ -185,7 +185,7 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
     let mut errors = vec![];
     for (arg, param_type) in call.args.iter().zip(param_types.iter()) {
         let arg_type = validate_expr(context, arg)?;
-        if arg_type == *param_type {
+        if arg_type.is_assignable_to(param_type) {
             continue;
         }
         errors.push(IntepreterError::UnexpectedType {
@@ -274,7 +274,7 @@ fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
         }
 
         let body_type = validate_expr(&func_context, &func_body)?;
-        if body_type != *declared_return_type {
+        if !body_type.is_assignable_to(&declared_return_type) {
             return Err(IntepreterError
                 ::bad_return_type(declared_return_type, &body_type).into());
         }
@@ -356,8 +356,11 @@ fn validate_let(context: &TypeContext, node: &LetNode) -> SubResult {
         None => return Ok(expr_type),
     };
 
-    if expr_type != declared_type {
-        let err = error::declared_type(&node.id, declared_type, expr_type);
+    if !expr_type.is_assignable_to(&declared_type) {
+        let err = IntepreterError::UnexpectedType {
+            got: expr_type,
+            expected: declared_type
+        };
         return Err(vec![err]);
     }
     // declared takes precedence if present
@@ -590,6 +593,7 @@ mod test_validate {
         #[case::native_func("reverse;", &[Type::String], Type::String)]
         #[case::explicit_return_type("(): bool -> true;", &[], Type::Bool)]
         #[case::param_used_in_body("(x: int) -> x * x;", &[Type::Int], Type::Int)]
+        #[case::returns_unknown("(): unknown -> 2025", &[], Type::Unknown)]
         #[case::curried_function(
             // this function returns another function
             "(x: int) -> (y: int) -> x + y;",
@@ -663,43 +667,53 @@ mod test_validate {
 
     }
 
-    mod let_node {
+    mod bindings {
         use crate::parser::test_utils::make_tree;
 
         use super::*;
 
-        #[test]
-        fn it_returns_correct_binding_for_let_statement() {
-            let tree = make_tree("let x: int = 3;");
-            let expected =
-                TreeType {datatype: Type::Int, name_to_bind: Some("x".into())};
+        #[rstest]
+        #[case::literal_with_declared_type("let x: int = 3;", "x", Type::Int)]
+        #[case::math_expr("let something = 5 + 2;", "something", Type::Int)]
+        #[case::string_expr(
+            "let something = \"a\" + \"b\";", "something", Type::String)]
 
-            assert_eq!(validate_fresh(tree), Ok(expected));
-        }
-
-        #[test]
-        fn it_infers_correct_type_for_math_expr() {
-            let tree = make_tree("let something = 5 + 2;");
-            assert_eq!(validate_fresh(tree), ok_with_binding("something", Type::Int));
-        }
-
-        #[test]
-        fn it_infers_correct_type_for_string_expr() {
-            let tree = make_tree("let something = \"a\" + \"b\";");
-            assert_eq!(validate_fresh(tree), ok_with_binding("something", Type::String));
-        }
-
-        #[test]
-        fn it_returns_ok_for_declared_type() {
-            let tree = make_tree("let x: int = 2 + 3;");
-            assert_eq!(validate_fresh(tree), ok_with_binding("x", Type::Int));
+        #[case::int_as_unknown(
+            "let x: unknown = 5", "x", Type::Unknown)]
+        #[case::string_as_unknown(
+            "let y: unknown = \"\"", "y", Type::Unknown)]
+        #[case::function_as_unknown(
+            "let f: unknown = () -> 3", "f", Type::Unknown)]
+        fn it_returns_correct_type(
+            #[case] input: &str,
+            #[case] symbol: &str,
+            #[case] datatype: Type,
+        ) {
+            let tree = make_tree(input);
+            assert_eq!(validate_fresh(tree), ok_with_binding(symbol, datatype));
         }
 
         #[test]
         fn it_returns_type_error_for_conflicting_types() {
             let tree = make_tree("let x: int = \"string\";");
-            let error = error::declared_type("x", Type::Int, Type::String);
+            let error = IntepreterError::UnexpectedType {
+                got: Type::String,
+                expected: Type::Int
+            };
             assert_eq!(validate_fresh(tree), Err(vec![error]));
+        }
+
+        #[test]
+        fn it_returns_error_for_assigning_unknown_to_int() {
+            let mut program = Program::init();
+            program.type_context.insert("a".to_string(), Type::Unknown);
+
+            let tree = make_tree("let b: int = a;");
+            let error = IntepreterError::UnexpectedType {
+                got: Type::Unknown,
+                expected: Type::Int
+            };
+            assert_eq!(validate(&program, &tree), Err(vec![error]));
         }
 
         #[test]
@@ -715,7 +729,7 @@ mod test_validate {
             program.type_context.insert("b".to_string(), Type::Bool);
             let tree = make_tree("let b = true;");
             let error = error::already_defined("b");
-            assert_eq!(validate(&program, &tree), Err(vec![error])); 
+            assert_eq!(validate(&program, &tree), Err(vec![error]));
         }
     }
 

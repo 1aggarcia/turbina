@@ -115,6 +115,7 @@ fn symbol_to_token(symbol: &str) -> Token {
         "string" => Token::Type(Type::String),
         "int" => Token::Type(Type::Int),
         "bool" => Token::Type(Type::Bool),
+        "unknown" => Token::Type(Type::Unknown),
         "null" => Token::Null,
         _ => Token::Id(symbol.to_string()),
     }
@@ -138,6 +139,8 @@ mod tests {
     #[rstest]
     #[case::bool("true", bool_token(true))]
     #[case::bool("false", bool_token(false))]
+
+    #[case::null("unknown", Token::Type(Type::Unknown))]
     #[case::null("null", Token::Null)]
 
     #[case::empty_string("\"\"", string_token(""))]

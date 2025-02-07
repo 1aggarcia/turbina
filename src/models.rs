@@ -135,7 +135,6 @@ impl std::fmt::Display for Literal {
 }
 
 /// A function with a copy of the scope it was created in
-
 #[derive(PartialEq, Debug, Clone)]
 pub struct Closure {
    pub function: Function,
@@ -153,6 +152,7 @@ pub enum Type {
     Int,
     String,
     Bool,
+    Unknown,
     Func { input: Vec<Type>, output: Box<Type> },
     Null,
 }
@@ -163,6 +163,7 @@ impl fmt::Display for Type {
             Type::Int => write!(f, "int"),
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
+            Type::Unknown => write!(f, "unknown"),
             Type::Null => write!(f, "null"),
             Type::Func { input, output } => {
                 // don't show parentheses for functions with one argument
@@ -176,6 +177,16 @@ impl fmt::Display for Type {
 
                 write!(f, "({}) -> {}", args, output)
             }
+        }
+    }
+}
+
+impl Type {
+    /// Returns true if and only if this type is a valid member of the supertype
+    pub fn is_assignable_to(&self, supertype: &Type) -> bool {
+        match supertype {
+            Type::Unknown => true,
+            _ => supertype == self,
         }
     }
 }
