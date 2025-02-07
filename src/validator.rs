@@ -119,13 +119,7 @@ fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
             None => continue,
         }; 
 
-        // TODO string? = string
-        if result_type != new_type {
-            let err = error::binary_op_types(*op, &result_type, &new_type);
-            errors.push(err);
-            continue;
-        }
-        match binary_op_return_type(*op, result_type) {
+        match binary_op_return_type(result_type, *op, new_type) {
             Ok(t) => result = Some(t),
             Err(e) => errors.extend(e),
         }
@@ -320,23 +314,30 @@ fn validated_negated_int(context: &TypeContext, inner_term: &Term) -> SubResult 
 }
 
 
-/// Get the return type of a binary operator if `input_type` is valid,
-/// otherwise return a validation error
-fn binary_op_return_type(operator: BinaryOp, input_type: Type) -> SubResult {
-    let type_error = error::binary_op_types(operator, &input_type, &input_type);
+/// Get the return type of a binary operator if the left and right operand
+/// types are valid, otherwise return a validation error
+fn binary_op_return_type(left: Type, operator: BinaryOp, right: Type) -> SubResult {
+    let type_error = error::binary_op_types(operator, &left, &right);
     match operator {
         // equality operators
-        BinaryOp::NotEq | BinaryOp::Equals => Ok(Type::Bool),
+        BinaryOp::NotEq | BinaryOp::Equals => {
+            if left.is_assignable_to(&right) || right.is_assignable_to(&left) {
+                Ok(Type::Bool)
+            } else {
+                Err(type_error.into())
+            }
+        },
 
         // math operators
-        BinaryOp::Plus => match input_type {
-            Type::String | Type::Int => Ok(input_type),
+        BinaryOp::Plus => match (&left, right) {
+            (Type::String, Type::String)
+            | (Type::Int, Type::Int) => Ok(left),
             _ => Err(vec![type_error])
         },
         BinaryOp::Minus
         | BinaryOp::Percent
         | BinaryOp::Slash
-        | BinaryOp::Star => if input_type == Type::Int {
+        | BinaryOp::Star => if left == Type::Int {
             Ok(Type::Int)
         } else {
             Err(vec![type_error])
@@ -441,18 +442,18 @@ mod test_validate {
         #[rstest]
         // right arg undefined
         #[case("a + 3;", vec![error::undefined_id("a")])]
-        
+
         // left arg undefined
         #[case("1 + c;", vec![error::undefined_id("c")])]
-        
+
         // both args undefined
         #[case("x + y - z;", ["x", "y", "z"].map(error::undefined_id).to_vec())]
         fn it_returns_error_for_child_error(
-            #[case] input: &str, #[case] error: Vec<IntepreterError>
+            #[case] input: &str, #[case] errors: Vec<IntepreterError>
         ) {
             // symbol does not exist
             let tree = make_tree(input);
-            assert_eq!(validate_fresh(tree), Err(error));
+            assert_eq!(validate_fresh(tree), Err(errors));
         }
 
         #[test]
@@ -480,6 +481,46 @@ mod test_validate {
         fn it_returns_ok_for_boolean_operator_on_same_type(#[case] tree: AbstractSyntaxTree) {
             let expected = ok_without_binding(Type::Bool);
             assert_eq!(validate_fresh(tree), expected);
+        }
+
+        #[rstest]
+        #[case(Type::Unknown, Type::Int)]
+        #[case(Type::String, Type::String.to_nullable())]
+        #[case(Type::Null, Type::String.to_nullable())]
+        fn it_returns_ok_for_equality_of_comparable_types(
+            #[case] type_a: Type, #[case] type_b: Type
+        ) {
+            let mut program = Program::init();
+            program.type_context.insert("a".into(), type_a);
+            program.type_context.insert("b".into(), type_b);
+
+            let expected = ok_without_binding(Type::Bool);
+
+            // should be transitive
+            assert_eq!(validate(&program, &make_tree("a == b")), expected);
+            assert_eq!(validate(&program, &make_tree("a != b")), expected);
+            assert_eq!(validate(&program, &make_tree("b == a")), expected);
+            assert_eq!(validate(&program, &make_tree("b != a")), expected);
+        }
+
+        #[rstest]
+        #[case(Type::Int, Type::String)]
+        #[case(Type::Int.to_nullable(), Type::String.to_nullable())]
+        fn it_returns_error_for_equality_of_disjoint_types(
+            #[case] type_a: Type, #[case] type_b: Type
+        ) {
+            let mut program = Program::init();
+            program.type_context.insert("a".into(), type_a.clone());
+            program.type_context.insert("b".into(), type_b.clone());
+
+            let expected_eq = Err(
+                vec![error::binary_op_types(BinaryOp::Equals, &type_a, &type_b)]
+            );
+            let expected_not_eq = Err(
+                vec![error::binary_op_types(BinaryOp::NotEq, &type_a, &type_b)]
+            );
+            assert_eq!(validate(&program, &make_tree("a == b")), expected_eq);
+            assert_eq!(validate(&program, &make_tree("a != b")), expected_not_eq);
         }
     }
 
