@@ -149,12 +149,18 @@ pub enum FuncBody {
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Type {
+    // primitives
     Int,
     String,
     Bool,
-    Unknown,
-    Func { input: Vec<Type>, output: Box<Type> },
     Null,
+
+    // compound types
+    Nullable(Box<Type>),
+    Func { input: Vec<Type>, output: Box<Type> },
+
+    // type that includes all values
+    Unknown,
 }
 
 impl fmt::Display for Type {
@@ -176,16 +182,30 @@ impl fmt::Display for Type {
                     .join(", ");
 
                 write!(f, "({}) -> {}", args, output)
-            }
+            },
+            Type::Nullable(datatype) => write!(f, "{}?", datatype),
         }
     }
 }
 
 impl Type {
+    /// Wrap a type in the nullable type.
+    pub fn to_nullable(self) -> Self {
+        if let Type::Nullable(_) = self {
+            return self;
+        }
+        if Type::Null == self {
+            return self;
+        }
+        Type::Nullable(Box::new(self))
+    }
+
     /// Returns true if and only if this type is a valid member of the supertype
     pub fn is_assignable_to(&self, supertype: &Type) -> bool {
         match supertype {
             Type::Unknown => true,
+            Type::Nullable(inner_type) =>
+                [&Type::Null, &**inner_type].contains(&self),
             _ => supertype == self,
         }
     }
@@ -222,6 +242,7 @@ impl fmt::Debug for BinaryOp {
 pub enum UnaryOp {
     Equals,
     Not,
+    Nullable,
 }
 
 impl fmt::Debug for UnaryOp {
@@ -229,6 +250,7 @@ impl fmt::Debug for UnaryOp {
         let string = match self {
             Self::Equals => "=",
             Self::Not => "!",
+            Self::Nullable => "?",
         };
         write!(f, "{string}")?;
         Ok(())

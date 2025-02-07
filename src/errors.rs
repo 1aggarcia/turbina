@@ -9,6 +9,7 @@ custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     MismatchedTypes { type1: Type, type2: Type } = "Mismatched Types: got {type1} and {type2}",
     InvalidType { datatype: Type } = "Expression of type '{datatype}' not allowed in this position",
     UnexpectedType { got: Type, expected: Type } = "Expression of type '{got}' cannot be assigned to '{expected}'",
+    InvalidNullable { inner_type: Type } = "Type '{inner_type}' cannot be made nullable",
     IOError { message: String } = "IO Error: {message}",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",

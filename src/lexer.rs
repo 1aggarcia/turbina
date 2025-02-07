@@ -28,7 +28,7 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
         | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;(),\[\]]|->)
         | (?P<binary_op>==|!=|[+*\-/%])
-        | (?P<unary_op>[=!])
+        | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
         | \d+[a-zA-Z]+ # capture illegal tokens so that remaining numbers are legal
@@ -101,6 +101,7 @@ fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
     let op = match string {
         "=" => UnaryOp::Equals,
         "!" => UnaryOp::Not,
+        "?" => UnaryOp::Nullable,
         _ => return None,
     };
     return Some(op)
@@ -244,6 +245,10 @@ mod tests {
         int_token(9),
         Token::Newline,
     ])]
+    #[case::nullable_type("int?", &[
+        Token::Type(Type::Int),
+        Token::UnaryOp(UnaryOp::Nullable)])
+    ]
     fn many_tokens(#[case] line: &str, #[case] expected: &[Token]) {
         assert_eq!(tokenize(line), Ok(expected.to_vec()));
     }
@@ -280,6 +285,7 @@ mod tests {
     #[rstest]
     #[case("=", UnaryOp::Equals)]
     #[case("!", UnaryOp::Not)]
+    #[case("?", UnaryOp::Nullable)]
     fn unary_operators(#[case] token: &str, #[case] op: UnaryOp) {
         assert_eq!(tokenize(token), Ok(vec![unary_op_token(op)]));
     }

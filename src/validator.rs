@@ -119,6 +119,7 @@ fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
             None => continue,
         }; 
 
+        // TODO string? = string
         if result_type != new_type {
             let err = error::binary_op_types(*op, &result_type, &new_type);
             errors.push(err);
@@ -684,6 +685,11 @@ mod test_validate {
             "let y: unknown = \"\"", "y", Type::Unknown)]
         #[case::function_as_unknown(
             "let f: unknown = () -> 3", "f", Type::Unknown)]
+
+        #[case::int_as_nullable_type(
+            "let n: int? = 3;", "n", Type::Int.to_nullable())]
+        #[case::null_as_nullable_type(
+                "let n: int? = null;", "n", Type::Int.to_nullable())]
         fn it_returns_correct_type(
             #[case] input: &str,
             #[case] symbol: &str,

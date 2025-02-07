@@ -249,15 +249,24 @@ fn parse_id(tokens: &mut TokenStream) -> ParseResult<String> {
 }
 
 /// ```text
-/// <type_declaration> :: = ":" Type | ":" Null
+/// <type_declaration> :: = ":" Type ["?"] | ":" Null
 /// ```
 fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
     match_next(tokens, Token::Formatter(":".into()))?;
     let type_token = tokens.pop()?;
-    match type_token {
-        Token::Type(t) => Ok(t.to_owned()),
-        Token::Null => Ok(Type::Null),
-        _ => return Err(error::not_a_type(type_token)) 
+    if let Token::Null = type_token {
+        return Ok(Type::Null);
+    }
+
+    let Token::Type(datatype) = type_token else {
+        return Err(error::not_a_type(type_token));
+    };
+
+    if let Ok(Token::UnaryOp(UnaryOp::Nullable)) = tokens.peek() {
+        tokens.pop()?;
+        Ok(datatype.to_nullable())
+    } else {
+        Ok(datatype.clone())
     }
 }
 
@@ -592,9 +601,9 @@ mod test_parse {
 
     #[test]
     fn it_parses_var_binding_with_declared_type() {
-        let input = force_tokenize("let two_strings: string = \"a\" + \"b\";");
+        let input = force_tokenize("let twoStrings: string = \"a\" + \"b\";");
         let let_node = LetNode {
-            id: "two_strings".to_string(),
+            id: "twoStrings".to_string(),
             datatype: Some(Type::String),
             value: bin_expr(
             str_term("a"),
@@ -603,6 +612,39 @@ mod test_parse {
         };
         let expected = AbstractSyntaxTree::Let(let_node);
         assert_eq!(parse_tokens(input), Ok(expected));
+    }
+
+    // TODO: move other var binding tests here
+    #[rstest]
+    #[case::nullable_type("let nullableData: string? = null;", LetNode {
+        id: "nullableData".into(),
+        datatype: Some(Type::String.to_nullable()),
+        value: bin_expr(Term::Literal(Literal::Null), vec![]),
+    })]
+    fn it_parses_var_binding(#[case] input: &str, #[case] expected: LetNode) {
+        let input: Vec<Token> = force_tokenize(input);
+        let syntax_tree = AbstractSyntaxTree::Let(expected);
+        assert_eq!(parse_tokens(input), Ok(syntax_tree));
+    }
+
+    #[test]
+    fn it_returns_error_for_nullable_null() {
+        let input = force_tokenize("let nullableData: null? = null;");
+        let expected = error::unexpected_token(
+            &format!("{:?}", Token::UnaryOp(UnaryOp::Equals)),
+            Token::UnaryOp(UnaryOp::Nullable)
+        );
+        assert_eq!(parse_tokens(input), Err(expected));
+    }
+
+    #[test]
+    fn it_returns_error_for_multiple_nullable_operators() {
+        let input = force_tokenize("let nullable: int????? = 2;");
+        let expected = error::unexpected_token(
+            &format!("{:?}", Token::UnaryOp(UnaryOp::Equals)),
+            Token::UnaryOp(UnaryOp::Nullable)
+        );
+        assert_eq!(parse_tokens(input), Err(expected));
     }
 
     #[test]
