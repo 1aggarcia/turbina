@@ -16,3 +16,6 @@ rand = "0.9.0"
 regex = "1.11.1"
 rstest = "0.24.0"
 wasm-bindgen = "0.2.100"
+
+# for rand create to work with WASM
+getrandom = { version = "0.3", features = ["wasm_js"] }
