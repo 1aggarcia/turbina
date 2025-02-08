@@ -1,8 +1,10 @@
+use std::io::Write;
+
 use errors::IntepreterError;
 use evaluator::evaluate;
 use models::{AbstractSyntaxTree, Literal, Program, Type};
 use parser::parse_statement;
-use streams::{InputStream, StdinStream, StringStream, TokenStream};
+use streams::{InputStream, OutputStreams, StdinStream, StringStream, TokenStream};
 use validator::validate;
 use wasm_bindgen::prelude::*;
 
@@ -26,13 +28,14 @@ type Statement = (AbstractSyntaxTree, Type);
 #[wasm_bindgen]
 pub fn run_turbina_program(source_code: &str) -> Vec<String> {
     let input_stream = Box::new(StringStream::new(source_code));
-    run_as_file(input_stream)
+    // TODO: create custom streams for JS
+    run_as_file(input_stream, OutputStreams::std_streams())
 }
 
-pub fn run_as_file(input_stream: Box<dyn InputStream>) -> Vec<String> {
+pub fn run_as_file(input_stream: Box<dyn InputStream>, out_streams: OutputStreams) -> Vec<String> {
     let mut token_stream = TokenStream::new(input_stream);
 
-    let mut program = Program::init();
+    let mut program = Program::init(out_streams);
     let mut statements = vec![];
     let mut errors = vec![];
 
@@ -50,7 +53,8 @@ pub fn run_as_file(input_stream: Box<dyn InputStream>) -> Vec<String> {
     }
 
     if !errors.is_empty() {
-        errors.iter().for_each(|err| eprintln!("{err}"));
+        errors.iter()
+            .for_each(|err| writeln!(program.output.stderr, "{err}").unwrap());
         return errors.iter().map(|e| e.to_string()).collect();
     }
 
@@ -60,12 +64,11 @@ pub fn run_as_file(input_stream: Box<dyn InputStream>) -> Vec<String> {
     for statement in statements {
         match evaluate_statement(&mut program, &statement) {
             Ok(result) => {
-                // TODO: replace with a generic writer so that it can be output to JS
-                println!("{result}");
+                writeln!(program.output.stdout, "{result}").unwrap();
                 results.push(result);
             },
             Err(err) => {
-                eprintln!("{err}");
+                writeln!(program.output.stderr, "{err}").unwrap();
                 break;
             },
         };
@@ -78,7 +81,7 @@ pub fn run_as_file(input_stream: Box<dyn InputStream>) -> Vec<String> {
 /// REPL = Read-eval-print loop
 pub fn run_repl() {
     let mut token_stream = TokenStream::new(Box::new(StdinStream {}));
-    let mut program = Program::init();
+    let mut program = Program::init_with_std_streams();
 
     println!("Welcome to Turbina");
 

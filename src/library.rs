@@ -4,8 +4,7 @@ use std::io::{stdout, Write};
 use rand::Rng;
 use once_cell::sync::Lazy;
 
-use crate::models::{Function, FuncBody, Literal, Scope, Type};
-
+use crate::models::{EvalContext, FuncBody, Function, Literal, Type};
 
 pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     ("reverse", Function {
@@ -51,8 +50,8 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     ("printScope", Function {
         params: vec![],
         return_type: Some(Type::Null),
-        body: FuncBody::Native(|_, scope| {
-            writeln!(stdout(), "{}", scope).unwrap();
+        body: FuncBody::Native(|_, context| {
+            writeln!(stdout(), "{}", context.scope).unwrap();
             Literal::Null
         }),
     }),
@@ -63,20 +62,19 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             Literal::String(lib_to_string(args))
         }),
     }),
-    // TODO: use out stream from program struct instead of using stdout
     ("print", Function {
         params: vec![("data".into(), Type::Unknown)],
         return_type: Some(Type::Null),
-        body: FuncBody::Native(|args, _| {
-            write!(stdout(), "{}", lib_to_string(args)).unwrap();
+        body: FuncBody::Native(|args, context| {
+            write!(context.output.stdout, "{}", lib_to_string(args)).unwrap();
             Literal::Null
         }),
     }),
     ("println", Function {
         params: vec![("data".into(), Type::Unknown)],
         return_type: Some(Type::Null),
-        body: FuncBody::Native(|args, _| {
-            writeln!(stdout(), "{}", lib_to_string(args)).unwrap();
+        body: FuncBody::Native(|args, context| {
+            writeln!(context.output.stdout, "{}", lib_to_string(args)).unwrap();
             Literal::Null
         }),
     }),
@@ -98,7 +96,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
 
 // TODO: create macro for repeated arg unwrapping
 
-fn lib_reverse(args: Vec<Literal>, _: &Scope) -> Literal {
+fn lib_reverse(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     if let [Literal::String(text)] = args.as_slice() {
         Literal::String(text.chars().rev().collect())
     } else {
@@ -106,7 +104,7 @@ fn lib_reverse(args: Vec<Literal>, _: &Scope) -> Literal {
     }
 }
 
-fn lib_exit(args: Vec<Literal>, _: &Scope) -> Literal {
+fn lib_exit(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     if let [Literal::Int(code)] = args.as_slice() {
         std::process::exit(*code);
     } else {
@@ -187,7 +185,7 @@ mod test_library {
     }
 
     fn run_cmd(input: &str) -> Literal{
-        let mut program = Program::init();
+        let mut program = Program::init_with_std_streams();
         let syntax_tree = make_tree(input);
         validate(&program, &syntax_tree).unwrap();
         evaluate(&mut program, &syntax_tree)

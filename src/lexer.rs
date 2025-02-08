@@ -13,7 +13,7 @@ use crate::{errors::IntepreterError, models::{
 /// - boolean literals: "true", "false"
 /// - keywords/symbols: a-zA-Z
 /// - operators: +, -, &&, ||, <, =, ==
-/// - formatters: (parenthesis, brackets, semicolon, comma)
+/// - formatters: (parentheses, brackets, semicolon, comma)
 /// 
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
 pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {

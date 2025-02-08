@@ -398,7 +398,7 @@ mod test_validate {
         #[test]
         fn it_returns_ok_for_valid_symbol() {
             let tree = make_tree("x;");
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("x".to_string(), Type::Int);
 
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
@@ -412,7 +412,7 @@ mod test_validate {
             #[case] casted_type: Type
         ) {
             let tree = make_tree("x!;");
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("x".to_string(), symbol_type);
 
             assert_eq!(validate(&program, &tree), ok_without_binding(casted_type));
@@ -511,7 +511,7 @@ mod test_validate {
         fn it_returns_ok_for_equality_of_comparable_types(
             #[case] type_a: Type, #[case] type_b: Type
         ) {
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("a".into(), type_a);
             program.type_context.insert("b".into(), type_b);
 
@@ -530,7 +530,7 @@ mod test_validate {
         fn it_returns_error_for_equality_of_disjoint_types(
             #[case] type_a: Type, #[case] type_b: Type
         ) {
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("a".into(), type_a.clone());
             program.type_context.insert("b".into(), type_b.clone());
 
@@ -593,7 +593,7 @@ mod test_validate {
         fn it_returns_error_for_non_function_id() {
             let tree = make_tree("five();");
             
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("five".into(), Type::Int);
             
             let err = IntepreterError::not_a_function(&Term::Id("five".into()));
@@ -641,7 +641,7 @@ mod test_validate {
         fn make_program_with_func(name: &str, params: Vec<Type>) -> Program {
             let func_type = Type::Func { input: params, output: Box::new(Type::Int) };
 
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert(name.to_string(), func_type);
             program
         }
@@ -680,7 +680,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_ok_for_reused_variable_name_as_parameter() {
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("x".into(), Type::Bool);
 
             let input = make_tree("(x: null) -> x;");
@@ -763,7 +763,7 @@ mod test_validate {
 
         #[test]
         fn it_allows_casted_nullable_value_to_be_assigned_as_not_null() {
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("nullString".into(), Type::String.to_nullable());
     
             let input = make_tree("let validString: string = nullString!;");
@@ -783,7 +783,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_error_for_assigning_unknown_to_int() {
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("a".to_string(), Type::Unknown);
 
             let tree = make_tree("let b: int = a;");
@@ -803,7 +803,7 @@ mod test_validate {
 
         #[test]
         fn it_returns_err_for_duplicate_id() {
-            let mut program = Program::init();
+            let mut program = Program::init_with_std_streams();
             program.type_context.insert("b".to_string(), Type::Bool);
             let tree = make_tree("let b = true;");
             let error = error::already_defined("b");
@@ -812,7 +812,7 @@ mod test_validate {
     }
 
     fn validate_fresh(input: AbstractSyntaxTree) -> ValidationResult {
-        validate(&Program::init(), &input)
+        validate(&Program::init_with_std_streams(), &input)
     }
 
     fn ok_without_binding(datatype: Type) -> ValidationResult {

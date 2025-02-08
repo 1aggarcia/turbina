@@ -1,18 +1,19 @@
 use core::fmt;
 use std::collections::HashMap;
 
-use crate::library::LIBRARY;
+use crate::{library::LIBRARY, streams::OutputStreams};
 
 /// State of the running program
 #[derive(Debug)]
 pub struct Program {
     pub bindings: HashMap<String, Literal>,
     pub type_context: HashMap<String, Type>,
+    pub output: OutputStreams,
 }
 
 impl Program {
     /// Initialize a `Program` with library functions imported into the enviorment
-    pub fn init() -> Program {
+    pub fn init(output: OutputStreams) -> Program {
         let mut bindings = HashMap::<String, Literal>::new();
         let mut type_context = HashMap::<String, Type>::new();
 
@@ -33,8 +34,18 @@ impl Program {
             });
         }
 
-        Self { bindings, type_context }
+        Self { bindings, type_context, output }
     }
+
+    pub fn init_with_std_streams() -> Self {
+        Self::init(OutputStreams::std_streams())
+    }
+}
+
+/// A reference to the programs' output streams and current evaluation scope
+pub struct EvalContext<'a> {
+    pub output: &'a mut OutputStreams,
+    pub scope: Scope<'a>,
 }
 
 /// Linked-list like structure to model all bindings that a can be accessed
@@ -144,7 +155,7 @@ pub struct Closure {
 #[derive(PartialEq, Debug, Clone)]
 pub enum FuncBody {
     Expr(Box<Expr>),
-    Native(fn(Vec<Literal>, &Scope) -> Literal)
+    Native(fn(Vec<Literal>, &mut EvalContext) -> Literal)
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -184,7 +195,7 @@ impl fmt::Display for Type {
                 write!(f, "({}) -> {}", args, output)
             },
             Type::Nullable(datatype) => {
-                // nullable functions are ambiguous without parenthesis
+                // nullable functions are ambiguous without parentheses
                 if matches!(**datatype, Type::Func {..}) {
                     write!(f, "({})?", datatype)
                 } else {
@@ -402,7 +413,7 @@ mod test_type {
     use super::*;
 
     #[test]
-    fn test_display_adds_parenthesis_for_nullable_function() {
+    fn test_display_adds_parentheses_for_nullable_function() {
         let nullable_func = Type::Func {
             input: vec![],
             output: Box::new(Type::Int)

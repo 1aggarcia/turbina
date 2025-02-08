@@ -1,9 +1,29 @@
-use std::io::{stdin, stdout, BufReader, Write, BufRead};
+use std::fmt::Debug;
+use std::io::{stderr, stdin, stdout, BufRead, BufReader, Write};
 use std::fs::File;
 
 use crate::errors::{IntepreterError, error};
 use crate::lexer::tokenize;
 use crate::models::Token;
+
+/// Where the virtual machine should write to
+pub struct OutputStreams {
+    pub stdout: Box<dyn Write>,
+    pub stderr: Box<dyn Write>,
+}
+
+impl OutputStreams {
+    /// Create a new struct using stdout and stderr
+    pub fn std_streams() -> Self {
+        Self { stdout: Box::new(stdout()), stderr: Box::new(stderr()) }
+    }
+}
+
+impl Debug for OutputStreams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "OutputStreams")
+    }
+}
 
 /// Abstraction over source code input
 pub trait InputStream {
@@ -70,12 +90,11 @@ impl StringStream {
 
 impl InputStream for StringStream {
     fn next_line(&mut self) -> Result<String, IntepreterError> {
-        if self.line_num >= self.lines.len() {
-            return Err(error::unexpected_end_of_input());
-        }
-        let line = self.lines.get(self.line_num).unwrap().to_string();
+        let line = self.lines.get(self.line_num)
+            .ok_or(error::unexpected_end_of_input())?;
+
         self.line_num += 1;
-        Ok(line)
+        Ok(line.to_string())
     }
 }
 
