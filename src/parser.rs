@@ -153,7 +153,7 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 }
 
 /// ```text
-/// <base_term> ::= Literal | (Id | "(" <expr> ")") {<arg_list>} | Null
+/// <base_term> ::= Literal | Null | (Id | "(" <expr> ")") ["!"] {<arg_list> ["!"]}
 /// ```
 fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     let first = tokens.pop()?;
@@ -173,13 +173,20 @@ fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
     } else {
         return Err(error::unexpected_token("identifier or expression", first));
     };
-    complete_term_with_arg_list(callable, tokens)
+
+    if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+        tokens.pop()?;
+        complete_term_with_arg_list(callable.as_not_null(), tokens)
+    } else {
+        complete_term_with_arg_list(callable, tokens)
+    }
 }
 
 /// Try to construct a function call term with the function supplied as a
 /// callable term. If a function call cannot be constructed, the callable term is returned.
 /// 
-/// The `<arg_list>` below is preceeded by the callable term.
+/// The `<arg_list>` below is preceeded by the callable term and may be
+/// succeeded by the not-null assertion operator "!".
 /// ```text
 /// <arg_list> ::= "(" [<expr> {"," <expr>}] ")"
 /// ```
@@ -206,7 +213,14 @@ fn complete_term_with_arg_list(
     match_next(tokens, Token::Formatter(")".into()))?;
 
     let func_call = FuncCall { func: Box::new(callable), args };
-    complete_term_with_arg_list(Term::FuncCall(func_call), tokens)
+    let callable = if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+        tokens.pop()?;
+        Term::FuncCall(func_call).as_not_null()
+    } else {
+        Term::FuncCall(func_call)
+    };
+
+    complete_term_with_arg_list(callable, tokens)
 }
 
 /// Create an AST for the "let" keyword given the remaining tokens
@@ -262,7 +276,7 @@ fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
         return Err(error::not_a_type(type_token));
     };
 
-    if let Ok(Token::UnaryOp(UnaryOp::Nullable)) = tokens.peek() {
+    if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Nullable)) {
         tokens.pop()?;
         Ok(datatype.to_nullable())
     } else {
@@ -284,6 +298,12 @@ fn token_matches_formatter(token: &Token, formatter: &str) -> bool {
         Token::Formatter(ref f) if f == formatter => true,
         _ => false,
     }
+}
+
+/// Test if the next token in the stream matches the given token without
+/// consuming it. If the stream is empty, this returns false
+fn next_token_matches(stream: &mut TokenStream, token: Token) -> bool {
+    stream.peek() == Ok(token)
 }
 
 /// Take the next token from the stream and compare it to the expected token.
@@ -392,6 +412,40 @@ mod test_parse {
             );
             let expected = term_tree(term);
             assert_eq!(parse_tokens(force_tokenize("!!!x;")), Ok(expected));
+        }
+
+        #[rstest]
+        #[case::id("x!;", Term::Id("x".into()))]
+        #[case::expression(
+            "(x)!;",
+            Term::Expr(
+                Box::new(
+                    term_expr(Term::Id("x".into()))
+                )
+            )
+        )]
+        #[case::function_call(
+            "f!()!;",
+            Term::FuncCall(FuncCall {
+                func: Box::new(Term::Id("f".into()).as_not_null()),
+                args: vec![]
+            })
+        )]
+        fn it_parses_not_null_assertion(
+            #[case] input: &str, #[case] not_null: Term
+        ) {
+            let tokens = force_tokenize(input);
+            let expected = term_tree(not_null.as_not_null());
+
+            assert_eq!(parse_tokens(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_not_null_literal() {
+            let tokens = force_tokenize("null!;");
+            let expected =
+                IntepreterError::end_of_statement(Token::UnaryOp(UnaryOp::Not));
+            assert_eq!(parse_tokens(tokens), Err(expected));
         }
 
         #[test]

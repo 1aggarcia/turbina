@@ -33,6 +33,19 @@ let e: bool[] = [true, false];
 type predicate = (int) -> bool;  // int arg, returns bool
 type producer = () -> string;  // no arg, returns string
 type consumer = (int, string) -> null;  // two args, returns null
+
+/// nullable types
+let nullableString: string? = "some string";
+let anotherNullableString: string? = null;
+
+// string? might be null, so it's not allowed to be assigned to string
+let notNullString: string = nullableString;     // ERROR
+
+// However, you can assert it as not-null with the "!" operator.
+let notNullString: string = nullableString!;    // OK
+
+// nullable functions types are wrapped in parentheses to avoid ambiguity
+type nullableFunction = ((int) -> int)?
 ```
 
 **Functions**

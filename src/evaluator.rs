@@ -118,6 +118,7 @@ fn eval_term(scope: &mut Scope, term: &Term) -> Literal {
         Term::Not(t) | Term::Minus(t) => eval_negated(scope, t),
         Term::Expr(expr) => eval_expr(scope, expr),
         Term::FuncCall(call) => eval_func_call(scope, call),
+        Term::NotNull(term) => eval_term(scope, term),
     }
 }
 
@@ -234,6 +235,15 @@ mod test_evalutate {
         let input = make_tree("let t = 12345 - 98765;");
         let expected = Literal::Int(12345 - 98765);
         assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_binds_casted_nullable_value() {
+        let mut program = Program::init();
+        program.bindings.insert("nullString".into(), Literal::Null);
+
+        let input = make_tree("let validString: string = nullString!;");
+        assert_eq!(evaluate(&mut program, &input), Literal::Null);
     }
 
     #[rstest]

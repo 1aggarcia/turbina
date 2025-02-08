@@ -192,10 +192,10 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
     if errors.is_empty() { Ok(*output_type) } else { Err(errors) }
 }
 
-/// For symbols (ID tokens), check that they exist and their type matches any
-/// unary operators applied (! and -).
-/// 
 /// For literals, check that the type matches any unary operators.
+/// 
+/// For non-literals, check that they exist and their type matches any
+/// unary operators applied (! and -).
 fn validate_term(context: &TypeContext, term: &Term) -> SubResult {
     match term {
         Term::Literal(lit) => get_literal_type(lit),
@@ -204,6 +204,13 @@ fn validate_term(context: &TypeContext, term: &Term) -> SubResult {
         Term::Minus(term) => validated_negated_int(context, term),
         Term::Expr(expr) => validate_expr(context, expr),
         Term::FuncCall(call) => validate_func_call(context, call),
+        Term::NotNull(term) => {
+            let datatype = validate_term(context, term)?;
+            if let Type::Nullable(inner_type) = datatype {
+                return Ok(*inner_type);
+            }
+            Ok(datatype)
+        }
     }
 }
 
@@ -395,6 +402,20 @@ mod test_validate {
             program.type_context.insert("x".to_string(), Type::Int);
 
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
+        }
+
+        #[rstest]
+        #[case(Type::String, Type::String)]
+        #[case(Type::Int.to_nullable(), Type::Int)]
+        fn it_performs_non_null_assertion(
+            #[case] symbol_type: Type,
+            #[case] casted_type: Type
+        ) {
+            let tree = make_tree("x!;");
+            let mut program = Program::init();
+            program.type_context.insert("x".to_string(), symbol_type);
+
+            assert_eq!(validate(&program, &tree), ok_without_binding(casted_type));
         }
 
         #[test]
@@ -738,6 +759,16 @@ mod test_validate {
         ) {
             let tree = make_tree(input);
             assert_eq!(validate_fresh(tree), ok_with_binding(symbol, datatype));
+        }
+
+        #[test]
+        fn it_allows_casted_nullable_value_to_be_assigned_as_not_null() {
+            let mut program = Program::init();
+            program.type_context.insert("nullString".into(), Type::String.to_nullable());
+    
+            let input = make_tree("let validString: string = nullString!;");
+            let expected = ok_with_binding("validString", Type::String);
+            assert_eq!(validate(&mut program, &input), expected);
         }
 
         #[test]

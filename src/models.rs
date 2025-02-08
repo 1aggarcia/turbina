@@ -183,7 +183,14 @@ impl fmt::Display for Type {
 
                 write!(f, "({}) -> {}", args, output)
             },
-            Type::Nullable(datatype) => write!(f, "{}?", datatype),
+            Type::Nullable(datatype) => {
+                // nullable functions are ambiguous without parenthesis
+                if matches!(**datatype, Type::Func {..}) {
+                    write!(f, "({})?", datatype)
+                } else {
+                    write!(f, "{}?", datatype)
+                }
+            },
         }
     }
 }
@@ -271,6 +278,7 @@ pub enum Term {
     Expr(Box<Expr>),
     Not(Box<Term>),  // negate boolean terms
     Minus(Box<Term>),  // negate int terms
+    NotNull(Box<Term>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -288,6 +296,11 @@ impl Term {
 
     pub fn negated_bool(term: Term) -> Self {
         Self::Not(Box::new(term))
+    }
+
+    /// Returns the term wrapped as `NotNull`
+    pub fn as_not_null(self) -> Self {
+        Self::NotNull(Box::new(self))
     }
 }
 
@@ -381,5 +394,29 @@ pub mod test_utils {
 
     pub fn bin_expr(first: Term, rest: Vec<(BinaryOp, Term)>) -> Expr {
         Expr::Binary(BinaryExpr { first, rest })
+    }
+}
+
+#[cfg(test)]
+mod test_type {
+    use super::*;
+
+    #[test]
+    fn test_display_adds_parenthesis_for_nullable_function() {
+        let nullable_func = Type::Func {
+            input: vec![],
+            output: Box::new(Type::Int)
+        }.to_nullable();
+
+        assert_eq!(format!("{}", nullable_func), "(() -> int)?");
+    }
+
+    #[test]
+    fn test_display_function_with_nullable_return_type() {
+        let func = Type::Func {
+            input: vec![],
+            output: Box::new(Type::Int.to_nullable())
+        };
+        assert_eq!(format!("{}", func), "() -> int?");
     }
 }
