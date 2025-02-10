@@ -1,6 +1,7 @@
 import { Editor } from "@monaco-editor/react";
 import { CSSProperties, useState } from "react";
 import { run_turbina_program } from "turbina";
+import { Header } from "./Header";
 
 const SAMPLE_PROGRAM =
 `// define a binding like this
@@ -39,16 +40,18 @@ factorial(10);
 const CODE_FONT_SIZE = 13;
 
 const containerStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
     fontSize: CODE_FONT_SIZE,
-    height: "100vh",
+    height: "100%",
     width: "100%",
 };
 
 const outputDivStyle: CSSProperties = {
+    fontSize: CODE_FONT_SIZE,
     flexGrow: 1,
     textAlign: "left",
     padding: "1rem",
-    border: "1px solid rgb(192, 192, 192)",
 };
 
 /** Should not be mounted until the web assembly has been initialized */
@@ -84,12 +87,17 @@ export function CodePlayground() {
 
     return (
         <div style={containerStyle}>
-            <div>
-                <button onClick={onExecuteClick}>Execute</button>
-                <button onClick={onClearClick}>Clear</button>
-            </div>
+            <Header>
+                <button className="round-left" onClick={onExecuteClick}>
+                    Execute
+                </button>
+                <button className="round-right" onClick={onClearClick}>
+                    Clear Output
+                </button>
+            </Header>
 
-            <div style={{ display: "flex", height: "100%" }}>
+            <div style={{ display: "flex", flexGrow: 1 }}>
+                <div className="content-box" style={{ width: "60%", paddingBlock: "10px" }}>
                 <Editor
                     value={sourceCode}
                     /* Rust syntax highlighting works decently and doesn't give
@@ -102,10 +110,10 @@ export function CodePlayground() {
                         contextmenu: false,
                         scrollBeyondLastLine: false,
                     }}
-                    width={"60%"}
                 />
-                <div style={{ width: "8px", backgroundColor: "#eaeaea" }} />
-                <div style={{...outputDivStyle, color: outputColor}}>
+                </div>
+                <div style={{ width: "8px", backgroundColor: "#f1f1f1" }} />
+                <div className="content-box" style={{...outputDivStyle, color: outputColor}}>
                     {output.results.map((r) => (
                         <p><code>{r}</code></p>
                     ))}

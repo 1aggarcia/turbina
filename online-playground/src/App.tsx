@@ -1,3 +1,5 @@
+import "../assets/style.css";
+
 import loadWasm from "turbina";
 import { useEffect, useState } from 'react'
 import { CodePlayground } from "./CodePlayground";
