@@ -1,6 +1,6 @@
 // The standard library avaliable anywhere in Turbina
 
-use std::io::{stdout, Write};
+use std::io::Write;
 use rand::Rng;
 use once_cell::sync::Lazy;
 
@@ -51,7 +51,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         params: vec![],
         return_type: Some(Type::Null),
         body: FuncBody::Native(|_, context| {
-            writeln!(stdout(), "{}", context.scope).unwrap();
+            writeln!(context.output.stdout, "{}", context.scope).unwrap();
             Literal::Null
         }),
     }),
