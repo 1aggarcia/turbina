@@ -35,7 +35,7 @@ let factorial(n: int): int ->
 factorial(0);
 factorial(5);
 factorial(10);
-`
+`;
 
 const CODE_FONT_SIZE = 13;
 
@@ -47,7 +47,7 @@ const containerStyle: CSSProperties = {
     width: "100%",
 };
 
-const outputDivStyle: CSSProperties = {
+const consoleDivStyle: CSSProperties = {
     fontSize: CODE_FONT_SIZE,
     flexGrow: 1,
     textAlign: "left",
@@ -57,32 +57,27 @@ const outputDivStyle: CSSProperties = {
 /** Should not be mounted until the web assembly has been initialized */
 export function CodePlayground() {
     const [sourceCode, setSourceCode] = useState(SAMPLE_PROGRAM);
-    const [output, setOutput] = useState({
-        results: [] as string[],
-        isError: false,
-    });
+    const [consoleOutput, setConsoleOutput] = useState("");
 
-    const outputColor = output.isError ? "red" : "black";
+    function writeToConsole(data: string) {
+        // state change must be queued with a callback since the WASM runtime
+        // doesn't wait for React updates
+        setConsoleOutput(output => output + data);
+    }
 
     function onExecuteClick() {
-        let output;
         try {
-            output = {
-                results: run_turbina_program(sourceCode),
-                isError: false,
-            };
+            run_turbina_program(
+                sourceCode, writeToConsole, writeToConsole);
+            writeToConsole("\n");
         } catch (error) {
-            output = {
-                results: [`${error}`],
-                isError: true,
-            };
+            writeToConsole(`${error}\n`);
             console.error(error);
         }
-        setOutput(output);
     }
 
     function onClearClick() {
-        setOutput({ results: [], isError: false });
+        setConsoleOutput("");
     }
 
     return (
@@ -113,10 +108,8 @@ export function CodePlayground() {
                 />
                 </div>
                 <div style={{ width: "8px", backgroundColor: "#f1f1f1" }} />
-                <div className="content-box" style={{...outputDivStyle, color: outputColor}}>
-                    {output.results.map((r) => (
-                        <p><code>{r}</code></p>
-                    ))}
+                <div className="content-box" style={consoleDivStyle}>
+                    <pre style={{ margin: 0 }}>{consoleOutput}</pre>
                 </div>
             </div>
         </div>

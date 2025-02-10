@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{Error, Write};
 
 use errors::IntepreterError;
 use evaluator::evaluate;
@@ -21,18 +21,51 @@ pub mod streams;
 /// The type is only needed when a function is printed.
 type Statement = (AbstractSyntaxTree, Type);
 
-/// Public JavaScript function to access Turbina through Web Assembly.
-/// 
-/// Starts a program session, runs the source code on it, and returns the
-/// output produced after running the program.
-#[wasm_bindgen]
-pub fn run_turbina_program(source_code: &str) -> Vec<String> {
-    let input_stream = Box::new(StringStream::new(source_code));
-    // TODO: create custom streams for JS
-    run_as_file(input_stream, OutputStreams::std_streams())
+/// Writer that passes data to the JavaScript runtime
+struct JavaScriptWriter { write_callback: js_sys::Function }
+
+impl Write for JavaScriptWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let string_data = String::from_utf8(buf.to_vec())
+            .map_err(|e| Error::other(e))?;
+
+        let js_string = JsValue::from_str(&string_data);
+        self.write_callback.call1(&JsValue::NULL, &js_string)
+            .map_err(|_| std::io::Error::other("Failed to call JS write callback"))?;
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
-pub fn run_as_file(input_stream: Box<dyn InputStream>, out_streams: OutputStreams) -> Vec<String> {
+/// Function visible in JavaScript to use Turbina through Web Assembly.
+/// 
+/// Accepts two callback functions that consume all string data that is written
+/// to either stdout or stderr. They are called every time a write is made.
+/// 
+/// ```typescript
+/// on_stdout_write: (data: string) => void
+/// on_stderr_write: (data: string) => void
+/// ```
+#[wasm_bindgen]
+pub fn run_turbina_program(
+    source_code: &str,
+    on_stdout_write: js_sys::Function,
+    on_stderr_write: js_sys::Function,
+) {
+    let input_stream = Box::new(StringStream::new(source_code));
+
+    run_as_file(input_stream, OutputStreams {
+        stdout: Box::new(JavaScriptWriter { write_callback: on_stdout_write }),
+        stderr: Box::new(JavaScriptWriter { write_callback: on_stderr_write }),
+    });
+}
+
+// TODO: use Result type to propogate IO errors up
+pub fn run_as_file(input_stream: Box<dyn InputStream>, out_streams: OutputStreams) {
     let mut token_stream = TokenStream::new(input_stream);
 
     let mut program = Program::init(out_streams);
@@ -55,26 +88,19 @@ pub fn run_as_file(input_stream: Box<dyn InputStream>, out_streams: OutputStream
     if !errors.is_empty() {
         errors.iter()
             .for_each(|err| writeln!(program.output.stderr, "{err}").unwrap());
-        return errors.iter().map(|e| e.to_string()).collect();
+        return;
     }
-
-    let mut results = vec![];
 
     // evaluate validated statements
     for statement in statements {
         match evaluate_statement(&mut program, &statement) {
-            Ok(result) => {
-                writeln!(program.output.stdout, "{result}").unwrap();
-                results.push(result);
-            },
+            Ok(result) => writeln!(program.output.stdout, "{result}").unwrap(),
             Err(err) => {
                 writeln!(program.output.stderr, "{err}").unwrap();
                 break;
             },
         };
     }
-
-    results
 }
 
 /// Command line interface for using Turbina.
@@ -134,15 +160,16 @@ fn evaluate_statement(
     Ok(output)
 }
 
-#[cfg(test)]
-mod test_wasm {
-    use super::*;
+// Currently not possible to test without mocking JS functions
+// #[cfg(test)]
+// mod test_wasm {
+//     use super::*;
 
-    #[test]
-    fn test_run_turbina_program() {
-        let source_code = "let x = 5\nx";
-        let expected = vec!["5".to_string(), "5".to_string()];
+//     #[test]
+//     fn test_run_turbina_program() {
+//         let source_code = "let x = 5\nx";
+//         let expected = vec!["5".to_string(), "5".to_string()];
 
-        assert_eq!(run_turbina_program(source_code), expected)
-    }
-}
+//         assert_eq!(run_turbina_program(source_code), expected)
+//     }
+// }
