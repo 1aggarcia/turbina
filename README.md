@@ -1,8 +1,8 @@
 # Turbina
 
-Turbina is an interpreted, statically typed, functional programming language whose interpreter is written in [Rust](https://www.rust-lang.org/). It takes inspiration from OCaml and TypeScript.
+Turbina is an interpreted, statically typed, functional programming language whose interpreter is written in [Rust](https://www.rust-lang.org/). It takes inspiration from OCaml, Rust and TypeScript. [Try Turbina online here](https://turbinalang.web.app/).
 
-Turbina supports execution via both command-line interface and source code files
+Turbina supports execution via both command-line interface and source code files.
 
 - To execute a source file run `cargo run <filepath>` from the root directory.
 - To run the REPL (read-eval-print loop), run `cargo run` without a filepath.
