@@ -665,6 +665,11 @@ mod test_validate {
             // return type
             Type::Func { input: vec![Type::Int], output: Box::new(Type::Int) }
         )]
+        #[case::higher_order_func(
+            "(f: (string -> int), x: string) -> f(x) + 3",
+            &[Type::func(&[Type::String], Type::Int), Type::String],
+            Type::Int,
+        )]
         fn it_returns_correct_function_type(
             #[case] input: &str,
             #[case] parameter_types: &[Type],

@@ -262,11 +262,92 @@ fn parse_id(tokens: &mut TokenStream) -> ParseResult<String> {
     }
 }
 
+/// Type declaractions cannot include function types without parentheses
+/// since return types and function bodies are ambiguous 
+///
+/// e.g. `(): (bool -> bool) -> (x: bool) -> true` is a function that returns a
+/// function returning bool, but without parentheses it is unclear. (Even with
+/// parentheses I find it confusing, I suggest just using inferred return types).
 /// ```text
-/// <type_declaration> :: = ":" Type ["?"] | ":" Null
+/// <type_declaration> :: = ":" <base_type>
 /// ```
 fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
     match_next(tokens, Token::Formatter(":".into()))?;
+    parse_base_type(tokens)
+}
+
+/// ```text
+/// <type> ::= <base_type> | <function_type>
+/// ```
+///
+/// Note the `arg_types` non-terminal cannot be a list of one type, since that
+/// conflicts with a variant of `base_type` 
+/// ```text
+/// <function_type> ::= arg_types "->" <type>
+/// <arg_types> ::= <base_type> | "(" ") | "(" <type> "," <type> {"," <type>} ")"
+/// ```
+fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
+    /// Decide between leaving a base type alone or parsing it as a function
+    fn complete_type(
+        base_type: Type, tokens: &mut TokenStream
+    ) -> ParseResult<Type> {
+        if next_token_matches(tokens, Token::Formatter("->".into())) {
+            complete_function_type(vec![base_type], tokens)
+        } else {
+            Ok(base_type)
+        }
+    }
+
+    fn complete_function_type(
+        arg_types: Vec<Type>,
+        tokens: &mut TokenStream
+    ) -> ParseResult<Type> {
+        match_next(tokens, Token::Formatter("->".into()))?;
+        let return_type = parse_type(tokens)?;
+
+        let func_type = Type::Func {
+            input: arg_types,
+            output: Box::new(return_type)
+        };
+        Ok(func_type)
+    }
+
+    // start of parsing
+    if !token_matches_formatter(&tokens.peek()?, "(") {
+        let base_type = parse_base_type(tokens)?;
+        return complete_type(base_type, tokens);
+    }
+
+    tokens.pop()?;  // consume "("
+    let mut types_in_parens = vec![];
+    while !token_matches_formatter(&tokens.peek()?, ")") {
+        if !types_in_parens.is_empty() {
+            match_next(tokens, Token::Formatter(",".into()))?;
+        }
+        types_in_parens.push(parse_type(tokens)?);
+    }
+    tokens.pop()?;  // consume ")"
+
+    if types_in_parens.len() == 1 {
+        let base_type = complete_base_type(types_in_parens[0].clone(), tokens)?;
+        // one type in parentheses is allowed to not be a function
+        return complete_type(base_type, tokens);
+    }
+    complete_function_type(types_in_parens, tokens)
+
+}
+
+/// ```text
+/// <base_type> ::= Type ["?"] | "(" <type> ")" ["?"]
+/// ```
+fn parse_base_type(tokens: &mut TokenStream) -> ParseResult<Type> {
+    if token_matches_formatter(&tokens.peek()?, "(") {
+        tokens.pop()?;
+        let datatype = parse_type(tokens)?;
+        match_next(tokens, Token::Formatter(")".into()))?;
+        return complete_base_type(datatype, tokens);
+    }
+
     let type_token = tokens.pop()?;
     if let Token::Null = type_token {
         return Ok(Type::Null);
@@ -275,12 +356,16 @@ fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
     let Token::Type(datatype) = type_token else {
         return Err(error::not_a_type(type_token));
     };
+    complete_base_type(datatype, tokens)
+}
 
+/// Given a base type, make it nullable if and only if the next token is "?"
+fn complete_base_type(base_type: Type, tokens: &mut TokenStream) -> ParseResult<Type> {
     if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Nullable)) {
         tokens.pop()?;
-        Ok(datatype.to_nullable())
+        Ok(base_type.to_nullable())
     } else {
-        Ok(datatype.clone())
+        Ok(base_type.clone())
     }
 }
 
@@ -665,9 +750,46 @@ mod test_parse {
             value: bin_expr(Term::Literal(Literal::Null), vec![]),
         })]
         fn it_parses_var_binding(#[case] input: &str, #[case] expected: LetNode) {
-            let input: Vec<Token> = force_tokenize(input);
+            let input = force_tokenize(input);
             let syntax_tree = AbstractSyntaxTree::Let(expected);
             assert_eq!(parse_tokens(input), Ok(syntax_tree));
+        }
+
+        #[rstest]
+        #[case::simple("(int -> bool)", Type::func(&[Type::Int], Type::Bool))]
+        #[case::no_args("(() -> bool)", Type::func(&[], Type::Bool))]
+        #[case::nullable(
+            "(int -> bool)?",
+            Type::func(&[Type::Int], Type::Bool).to_nullable()
+        )]
+        #[case::many_args(
+            "((int, string) -> bool)",
+            Type::func(&[Type::Int, Type::String], Type::Bool))
+        ]
+        #[case::func_retruning_func(
+            "(int -> bool -> string)",
+            Type::func(&[Type::Int], Type::func(&[Type::Bool], Type::String))
+        )]
+        #[case::func_retruning_func_in_parens(
+            "(int -> (bool -> string))",
+            Type::func(&[Type::Int], Type::func(&[Type::Bool], Type::String))
+        )]
+        #[case::func_with_func_input(
+            "((int -> int) -> unknown)",
+            Type::func(&[Type::func(&[Type::Int], Type::Int)], Type::Unknown)
+        )]
+        fn it_parses_correct_function_type(
+            #[case] type_string: &str,
+            #[case] function_type: Type
+        ) {
+            let tokens = force_tokenize(&format!("let f: {} = null;", type_string));
+            let syntax_tree = AbstractSyntaxTree::Let(LetNode {
+                id: "f".into(),
+                datatype: Some(function_type),
+                value: bin_expr(Term::Literal(Literal::Null), vec![]),
+            });
+
+            assert_eq!(parse_tokens(tokens), Ok(syntax_tree));
         }
 
         #[test]

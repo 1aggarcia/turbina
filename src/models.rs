@@ -207,6 +207,10 @@ impl fmt::Display for Type {
 }
 
 impl Type {
+    pub fn func(input: &[Type], output: Type) -> Self {
+        Self::Func { input: input.to_vec(), output: Box::new(output) }
+    }
+
     /// Wrap a type in the nullable type.
     pub fn to_nullable(self) -> Self {
         if let Type::Nullable(_) = self {

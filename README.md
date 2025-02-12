@@ -85,7 +85,7 @@ let isEven(n: int) ->
 let squares = map([1, 2, 3, 4], (x: int) -> x * x);
 
 // define the function like this
-let map(nums: int[], func: (int) -> int) {
+let map(nums: int[], func: ((int) -> int)) {
     ...
 }
 

@@ -352,7 +352,6 @@ mod test_evalutate {
         assert_eq!(evaluate(&mut program, &square_three), Literal::Int(9));
     }
 
-    // TODO: fix by adding closures to function literals
     #[test]
     fn it_saves_scope_for_curried_function() {
         let mut program = Program::init_with_std_streams();
@@ -363,6 +362,20 @@ mod test_evalutate {
         evaluate(&mut program, &make_tree("let addTen = addThree(7);"));
 
         assert_eq!(evaluate(&mut program, &make_tree("addTen(2015);")), Literal::Int(2025));
+    }
+
+    #[test]
+    fn it_calls_function_with_function_argument() {
+        let mut program = Program::init_with_std_streams();
+
+        evaluate(&mut program, &make_tree(
+            "let compose(f: (int -> int), g: (int -> int)) -> (x: int) -> f(g(x));"));
+        evaluate(&mut program, &make_tree(
+            "let addThree = compose((x: int) -> x + 1, (x: int) -> x + 2);"));
+        assert_eq!(
+            evaluate(&mut program,
+            &make_tree("addThree(5);")), Literal::Int(8)
+        );
     }
 
     // evaluate an AST on a new program
