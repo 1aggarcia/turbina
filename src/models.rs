@@ -228,6 +228,22 @@ impl Type {
             Type::Unknown => true,
             Type::Nullable(inner_type) =>
                 [&Type::Null, &**inner_type].contains(&self),
+            Type::Func { input: super_ins, output: super_out } => {
+                let Type::Func { input: sub_ins, output: sub_out } = self else {
+                    return false;
+                };
+                if !sub_out.is_assignable_to(&super_out) {
+                    return false;
+                }
+                if super_ins.len() != sub_ins.len() {
+                    return false;
+                }
+                // all inputs that the supertype accepts must be accepted by the subtype
+                super_ins
+                    .iter()
+                    .zip(sub_ins.iter())
+                    .all(|(super_in, sub_in)| super_in.is_assignable_to(sub_in))
+            },
             _ => supertype == self,
         }
     }

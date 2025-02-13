@@ -757,6 +757,11 @@ mod test_validate {
             "let n: int? = 3;", "n", Type::Int.to_nullable())]
         #[case::null_as_nullable_type(
                 "let n: int? = null;", "n", Type::Int.to_nullable())]
+        #[case::func_with_explicit_type(
+            "let f: (int -> unknown) = (x: unknown): int -> 0;",
+            "f",
+            Type::func(&[Type::Int], Type::Unknown)
+        )]
         fn it_returns_correct_type(
             #[case] input: &str,
             #[case] symbol: &str,
@@ -776,12 +781,22 @@ mod test_validate {
             assert_eq!(validate(&mut program, &input), expected);
         }
 
-        #[test]
-        fn it_returns_type_error_for_conflicting_types() {
-            let tree = make_tree("let x: int = \"string\";");
+        #[rstest]
+        #[case("let x: int = \"string\";", Type::Int, Type::String)]
+        #[case(
+            "let f: (unknown -> int) = (x: int): unknown -> null;",
+            Type::func(&[Type::Unknown], Type::Int),
+            Type::func(&[Type::Int], Type::Unknown),
+        )]
+        fn it_returns_type_error_for_conflicting_types(
+            #[case] input: &str,
+            #[case] declared: Type,
+            #[case] actual: Type,
+        ) {
+            let tree = make_tree(input);
             let error = IntepreterError::UnexpectedType {
-                got: Type::String,
-                expected: Type::Int
+                got: actual,
+                expected: declared,
             };
             assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
