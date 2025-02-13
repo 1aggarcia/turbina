@@ -111,8 +111,17 @@ pub enum Token {
     BinaryOp(BinaryOp),
     UnaryOp(UnaryOp),
     Id(String),
-    Formatter(String),
+
+    // formatters
     Newline,
+    Colon,
+    Semicolon,
+    OpenParens,
+    CloseParens,
+    Comma,
+    OpenSquareBracket,
+    CloseSquareBracket,
+    Arrow,
 
     // keywords
     Let,
@@ -397,10 +406,6 @@ pub mod test_utils {
 
     pub fn id_token(data: &str) -> Token {
         Token::Id(data.to_string())
-    }
-
-    pub fn formatter_token(data: &str) -> Token {
-        Token::Formatter(data.to_string())
     }
 
     pub fn type_token(datatype: Type) -> Token {

@@ -3,6 +3,8 @@ use custom_error::custom_error;
 
 use crate::models::{Term, Token, Type};
 
+pub type Result<T> = std::result::Result<T, Vec<IntepreterError>>;
+
 custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
     TypeError { message: String } = "Type Error: {message}",

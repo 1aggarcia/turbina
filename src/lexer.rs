@@ -1,8 +1,9 @@
 use regex::Regex;
 
-use crate::{errors::IntepreterError, models::{
+use crate::errors::{IntepreterError, Result};
+use crate::models::{
     BinaryOp, Literal, Token, Type, UnaryOp
-}};
+};
 
 /// Parse source code text into a list of tokens according to the language's
 /// grammar. All whitespace is eliminated, unless is is part of a string.
@@ -16,7 +17,7 @@ use crate::{errors::IntepreterError, models::{
 /// - formatters: (parentheses, brackets, semicolon, comma)
 /// 
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
-pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
+pub fn tokenize(line: &str) -> Result<Vec<Token>> {
     // removing comments will remove a trailing newline,
     // so we have to check for it first
     let newline_regex = Regex::new("[\r\n]+$").unwrap();
@@ -53,7 +54,7 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, Vec<IntepreterError>> {
                 let op = string_to_unary_op(m.as_str()).unwrap();
                 Token::UnaryOp(op)
             } else if let Some(m) = x.name("fmt") {
-                Token::Formatter(m.as_str().to_string())
+                formatter_to_token(m.as_str())?
             } else if let Some(m) = x.name("bool") {
                 let bool_value = m.as_str() == "true";
                 Token::Literal(Literal::Bool(bool_value))
@@ -107,6 +108,23 @@ fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
     return Some(op)
 }
 
+fn formatter_to_token(text: &str) -> Result<Token> {
+    let token = match text {
+        ":" => Token::Colon,
+        ";" => Token::Semicolon,
+        "(" => Token::OpenParens,
+        ")" => Token::CloseParens,
+        "," => Token::Comma,
+        "[" => Token::OpenSquareBracket,
+        "]" => Token::CloseSquareBracket,
+        "->" => Token::Arrow,
+        _ => return Err(
+            IntepreterError::UnrecognizedToken { payload: text.into() }.into()
+        )
+    };
+    Ok(token)
+}
+
 /// Returns keyword token if the string is a keyword, ID token otherwise
 fn symbol_to_token(symbol: &str) -> Token {
     match symbol {
@@ -158,6 +176,14 @@ mod tests {
     #[case::multiple_newlines("\n\n\n\n", Token::Newline)]
     #[case::mixed_newlines("\r\n\r\n\r\r\n\n", Token::Newline)]
     #[case::newlines_with_whitespace("\n    \n  \n", Token::Newline)]
+
+    #[case("(", Token::OpenParens)]
+    #[case(")", Token::CloseParens)]
+    #[case(";", Token::Semicolon)]
+    #[case(",", Token::Comma)]
+    #[case("[", Token::OpenSquareBracket)]
+    #[case("]", Token::CloseSquareBracket)]
+    #[case("->", Token::Arrow)]
     fn one_token(#[case] line: &str, #[case] expected: Token) {
         assert_eq!(tokenize(line), Ok(vec![expected]));
     }
@@ -205,17 +231,17 @@ mod tests {
         id_token("x"),
         unary_op_token(UnaryOp::Equals),
         int_token(5),
-        formatter_token(";")
+        Token::Semicolon,
     ])]
 
     #[case::declared_type("let x: int = 5;", &[
         Token::Let,
         id_token("x"),
-        formatter_token(":"),
+        Token::Colon,
         type_token(Type::Int),
         unary_op_token(UnaryOp::Equals),
         int_token(5),
-        formatter_token(";")
+        Token::Semicolon,
     ])]
 
     #[case::symbols("fn customSymbol data if else", &[
@@ -228,11 +254,11 @@ mod tests {
 
     #[case::function_call("print(x + 1)", &[
         id_token("print"),
-        formatter_token("("),
+        Token::OpenParens, 
         id_token("x"),
         op_token(BinaryOp::Plus),
         int_token(1),
-        formatter_token(")"),
+        Token::CloseParens,
     ])]
 
     #[case::comment_and_newline(
@@ -288,18 +314,6 @@ mod tests {
     #[case("?", UnaryOp::Nullable)]
     fn unary_operators(#[case] token: &str, #[case] op: UnaryOp) {
         assert_eq!(tokenize(token), Ok(vec![unary_op_token(op)]));
-    }
-
-    #[rstest]
-    #[case("(")]
-    #[case(")")]
-    #[case(";")]
-    #[case(",")]
-    #[case("[")]
-    #[case("]")]
-    #[case("->")]
-    fn formatters(#[case] token: &str) {
-        assert_eq!(tokenize(token), Ok(vec![formatter_token(token)]));
     }
 
     #[test]

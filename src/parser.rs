@@ -28,8 +28,7 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSy
 
     let statement_end = token_stream.pop()?;
     match statement_end {
-        Token::Formatter(ref f) if f == ";" => {},
-        Token::Newline => {},
+        Token::Semicolon | Token::Newline => {},
         _ => return Err(IntepreterError::end_of_statement(statement_end)),
     }
     return Ok(statement);
@@ -53,10 +52,10 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
     }
 
     let next_is_function =
-        token_matches_formatter(&tokens.lookahead(0)?, "(")
+        tokens.lookahead(0)? == Token::OpenParens
         && (
-            token_matches_formatter(&tokens.lookahead(1)?, ")")
-            || token_matches_formatter(&tokens.lookahead(2)?, ":")
+            tokens.lookahead(1)? == Token::CloseParens
+            || tokens.lookahead(2)? == Token::Colon
         );
 
     if next_is_function {
@@ -85,9 +84,9 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
 /// ```
 fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
     match_next(tokens, Token::If)?;
-    match_next(tokens, Token::Formatter("(".into()))?;
+    match_next(tokens, Token::OpenParens)?;
     let condition = Box::new(parse_expr(tokens)?);
-    match_next(tokens, Token::Formatter(")".into()))?;
+    match_next(tokens, Token::CloseParens)?;
 
     skip_newlines(tokens);
     let if_true = Box::new(parse_expr(tokens)?);
@@ -109,24 +108,24 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
 fn parse_function(tokens: &mut TokenStream) -> ParseResult<Function> {
     let mut params = Vec::<(String, Type)>::new();
 
-    match_next(tokens, Token::Formatter("(".into()))?;
-    while !token_matches_formatter(&tokens.peek()?, ")") {
+    match_next(tokens, Token::OpenParens)?;
+    while tokens.peek()? != Token::CloseParens {
         // skip comma for first parameter
         if !params.is_empty() {
-            match_next(tokens, Token::Formatter(",".into()))?;
+            match_next(tokens, Token::Comma)?;
         }
         let id = parse_id(tokens)?; 
         let datatype = parse_type_declaration(tokens)?;
         params.push((id, datatype));
     }
-    match_next(tokens, Token::Formatter(")".into()))?;
-    let return_type = if token_matches_formatter(&tokens.peek()?, ":") {
+    match_next(tokens, Token::CloseParens)?;
+    let return_type = if tokens.peek()? == Token::Colon {
         Some(parse_type_declaration(tokens)?)
     } else {
         None
     };
 
-    match_next(tokens, Token::Formatter("->".into()))?;
+    match_next(tokens, Token::Arrow)?;
     skip_newlines(tokens);
     let body_expr = parse_expr(tokens)?;
 
@@ -166,9 +165,9 @@ fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 
     let callable = if let Token::Id(id) = first {
         Term::Id(id)
-    } else if token_matches_formatter(&first, "(") {
+    } else if first == Token::OpenParens {
         let expr = parse_expr(tokens)?;
-        match_next(tokens, Token::Formatter(")".into()))?;
+        match_next(tokens, Token::CloseParens)?;
         Term::Expr(Box::new(expr))
     } else {
         return Err(error::unexpected_token("identifier or expression", first));
@@ -196,21 +195,20 @@ fn complete_term_with_arg_list(
 ) -> ParseResult<Term> {
     // we might be at the end of the stream, but that's allowed since
     // callable is a valid term
-    match tokens.peek() {
-        Ok(Token::Formatter(ref f)) if f == "(" => {},
-        _ => return Ok(callable),
+    if !next_token_matches(tokens, Token::OpenParens) {
+        return Ok(callable);
     }
     tokens.pop()?;
     let mut args = Vec::<Expr>::new();
 
-    if !token_matches_formatter(&tokens.peek()?, ")") {
+    if tokens.peek()? != Token::CloseParens {
         args.push(parse_expr(tokens)?);
-        while token_matches_formatter(&tokens.peek()?, ",") {
+        while tokens.peek()? == Token::Comma {
             tokens.pop()?;
             args.push(parse_expr(tokens)?);
         }
     } 
-    match_next(tokens, Token::Formatter(")".into()))?;
+    match_next(tokens, Token::CloseParens)?;
 
     let func_call = FuncCall { func: Box::new(callable), args };
     let callable = if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
@@ -231,10 +229,8 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
     match_next(tokens, Token::Let)?;
     let id = parse_id(tokens)?;
 
-    let includes_type_declaration =
-        token_matches_formatter(&tokens.peek()?, ":");
-
-    let is_shorthand_function = token_matches_formatter(&tokens.peek()?, "(");
+    let includes_type_declaration = tokens.peek()? == Token::Colon;
+    let is_shorthand_function = tokens.peek()? == Token::OpenParens;
 
     let datatype = if includes_type_declaration {
         Some(parse_type_declaration(tokens)?)
@@ -272,7 +268,7 @@ fn parse_id(tokens: &mut TokenStream) -> ParseResult<String> {
 /// <type_declaration> :: = ":" <base_type>
 /// ```
 fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
-    match_next(tokens, Token::Formatter(":".into()))?;
+    match_next(tokens, Token::Colon)?;
     parse_base_type(tokens)
 }
 
@@ -291,7 +287,7 @@ fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
     fn complete_type(
         base_type: Type, tokens: &mut TokenStream
     ) -> ParseResult<Type> {
-        if next_token_matches(tokens, Token::Formatter("->".into())) {
+        if next_token_matches(tokens, Token::Arrow) {
             complete_function_type(vec![base_type], tokens)
         } else {
             Ok(base_type)
@@ -302,7 +298,7 @@ fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
         arg_types: Vec<Type>,
         tokens: &mut TokenStream
     ) -> ParseResult<Type> {
-        match_next(tokens, Token::Formatter("->".into()))?;
+        match_next(tokens, Token::Arrow)?;
         let return_type = parse_type(tokens)?;
 
         let func_type = Type::Func {
@@ -313,16 +309,16 @@ fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
     }
 
     // start of parsing
-    if !token_matches_formatter(&tokens.peek()?, "(") {
+    if tokens.peek()? != Token::OpenParens {
         let base_type = parse_base_type(tokens)?;
         return complete_type(base_type, tokens);
     }
 
     tokens.pop()?;  // consume "("
     let mut types_in_parens = vec![];
-    while !token_matches_formatter(&tokens.peek()?, ")") {
+    while tokens.peek()? != Token::CloseParens {
         if !types_in_parens.is_empty() {
-            match_next(tokens, Token::Formatter(",".into()))?;
+            match_next(tokens, Token::Comma)?;
         }
         types_in_parens.push(parse_type(tokens)?);
     }
@@ -341,10 +337,10 @@ fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
 /// <base_type> ::= Type ["?"] | "(" <type> ")" ["?"]
 /// ```
 fn parse_base_type(tokens: &mut TokenStream) -> ParseResult<Type> {
-    if token_matches_formatter(&tokens.peek()?, "(") {
+    if tokens.peek()? == Token::OpenParens {
         tokens.pop()?;
         let datatype = parse_type(tokens)?;
-        match_next(tokens, Token::Formatter(")".into()))?;
+        match_next(tokens, Token::CloseParens)?;
         return complete_base_type(datatype, tokens);
     }
 
@@ -375,13 +371,6 @@ fn skip_newlines(tokens: &mut TokenStream) {
     while let Ok(Token::Newline) = tokens.peek() {
         // safe to unwrap since the peeked value is Ok
         let _ = tokens.pop();
-    }
-}
-
-fn token_matches_formatter(token: &Token, formatter: &str) -> bool {
-    match token {
-        Token::Formatter(ref f) if f == formatter => true,
-        _ => false,
     }
 }
 
