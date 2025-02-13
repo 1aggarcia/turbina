@@ -41,6 +41,12 @@ impl Write for JavaScriptWriter {
     }
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn error(s: &str);
+}
+
 /// Function visible in JavaScript to use Turbina through Web Assembly.
 /// 
 /// Accepts two callback functions that consume all string data that is written
@@ -58,14 +64,23 @@ pub fn run_turbina_program(
 ) {
     let input_stream = Box::new(StringStream::new(source_code));
 
-    run_as_file(input_stream, OutputStreams {
+    let result = run_as_file(input_stream, OutputStreams {
         stdout: Box::new(JavaScriptWriter { write_callback: on_stdout_write }),
         stderr: Box::new(JavaScriptWriter { write_callback: on_stderr_write }),
     });
+
+    if let Err(e) = result {
+        // call `console.error`in JavaScript runtime
+        error(&e.to_string());
+    }
 }
 
-// TODO: use Result type to propogate IO errors up
-pub fn run_as_file(input_stream: Box<dyn InputStream>, out_streams: OutputStreams) {
+/// Execute from the input stream as a file, writing to the given output streams.
+/// Returns `Ok(())` unless there is an error writing to the streams
+pub fn run_as_file(
+    input_stream: Box<dyn InputStream>,
+    out_streams: OutputStreams
+) -> std::io::Result<()> {
     let mut token_stream = TokenStream::new(input_stream);
 
     let mut program = Program::init(out_streams);
@@ -86,21 +101,23 @@ pub fn run_as_file(input_stream: Box<dyn InputStream>, out_streams: OutputStream
     }
 
     if !errors.is_empty() {
-        errors.iter()
-            .for_each(|err| writeln!(program.output.stderr, "{err}").unwrap());
-        return;
+        for err in errors {
+            writeln!(program.output.stderr, "{err}")?;
+        }
+        return Ok(());
     }
 
     // evaluate validated statements
     for statement in statements {
         match evaluate_statement(&mut program, &statement) {
-            Ok(result) => writeln!(program.output.stdout, "{result}").unwrap(),
+            Ok(result) => writeln!(program.output.stdout, "{result}")?,
             Err(err) => {
-                writeln!(program.output.stderr, "{err}").unwrap();
+                writeln!(program.output.stderr, "{err}")?;
                 break;
             },
         };
     }
+    Ok(())
 }
 
 /// Command line interface for using Turbina.
@@ -152,7 +169,7 @@ fn evaluate_statement(
     program: &mut Program,
     (syntax_tree, tree_type): &Statement,
 ) -> Result<String, IntepreterError> {
-    let output = match evaluate(program, &syntax_tree) {
+    let output = match evaluate(program, &syntax_tree)? {
         // Function types look nicer to print than any form of the struct
         Literal::Closure(_) => tree_type.to_string(),
         literal => literal.to_string(),

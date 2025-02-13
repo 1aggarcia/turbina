@@ -15,8 +15,11 @@ fn main() {
         Ok(file) => {
             let reader = BufReader::new(file);
             let file_stream = Box::new(FileStream { reader });
-            run_as_file(file_stream, OutputStreams::std_streams());
+            let result = run_as_file(file_stream, OutputStreams::std_streams());
+            if let Err(err) = result {
+                eprintln!("{err}");
+            }
         },
-        Err(err) => eprintln!("{err}")
+        Err(err) => eprintln!("{err}"),
     }
 }

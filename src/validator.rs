@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use crate::errors::{IntepreterError, error};
+use crate::errors::{error, IntepreterError, MultiResult};
 use crate::models::{
     AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type
 };
 
-type ValidationResult = Result<TreeType, Vec<IntepreterError>>;
-type SubResult = Result<Type, Vec<IntepreterError>>;
+type ValidationResult = MultiResult<TreeType>;
+type SubResult = MultiResult<Type>;
 
 #[derive(PartialEq, Debug)]
 pub struct TreeType {

@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use crate::models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CondExpr, EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Program, Scope, Term};
+use crate::{errors::Result, models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CondExpr, EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Program, Scope, Term}};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// 
 /// Syntax errors will cause a panic and should be checked with the
 /// `validate` function first.
-pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
-    // TODO: use Result type for runtime errors
+pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Result<Literal> {
     let mut global_context = EvalContext {
         output: &mut program.output,
         scope: Scope {
@@ -16,10 +15,11 @@ pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
         }
     };
 
-    match tree {
+    // TODO: integrate result type into helpers below for runtime errors
+    Ok(match tree {
         AbstractSyntaxTree::Let(node) => eval_let(&mut global_context, node),
         AbstractSyntaxTree::Expr(node) => eval_expr(&mut global_context, node),
-    }
+    })
 }
 
 /// Bind an expression to a name
@@ -219,7 +219,7 @@ mod test_evalutate {
         program.bindings.insert("some_int".to_string(), Literal::Int(-5));
 
         let input = make_tree("is_lang_good;");
-        assert_eq!(evaluate(&mut program, &input), Literal::Bool(true));
+        assert_eq!(force_evaluate(&mut program, &input), Literal::Bool(true));
     }
 
     #[rstest]
@@ -232,7 +232,7 @@ mod test_evalutate {
         let mut program = Program::init_with_std_streams();
         let tree = make_tree(input);
 
-        evaluate(&mut program, &tree);
+        force_evaluate(&mut program, &tree);
         assert_eq!(program.bindings["t"], value);
     }
 
@@ -249,7 +249,7 @@ mod test_evalutate {
         program.bindings.insert("nullString".into(), Literal::Null);
 
         let input = make_tree("let validString: string = nullString!;");
-        assert_eq!(evaluate(&mut program, &input), Literal::Null);
+        assert_eq!(force_evaluate(&mut program, &input), Literal::Null);
     }
 
     #[rstest]
@@ -334,8 +334,8 @@ mod test_evalutate {
         let invocation = make_tree("square(5);");
         let mut program = Program::init_with_std_streams();
 
-        evaluate(&mut program, &definition);
-        assert_eq!(evaluate(&mut program, &invocation), Literal::Int(25));
+        force_evaluate(&mut program, &definition);
+        assert_eq!(force_evaluate(&mut program, &invocation), Literal::Int(25));
     }
 
     #[test]
@@ -347,9 +347,9 @@ mod test_evalutate {
         let square_three = make_tree("square(3);");
         let mut program = Program::init_with_std_streams();
 
-        evaluate(&mut program, &define_x);
-        evaluate(&mut program, &define_square);
-        assert_eq!(evaluate(&mut program, &square_three), Literal::Int(9));
+        force_evaluate(&mut program, &define_x);
+        force_evaluate(&mut program, &define_square);
+        assert_eq!(force_evaluate(&mut program, &square_three), Literal::Int(9));
     }
 
     #[test]
@@ -357,29 +357,36 @@ mod test_evalutate {
         let mut program = Program::init_with_std_streams();
 
         let define_sum = "let sum = (a:int)->(b:int)->(c:int)->a+b+c;";
-        evaluate(&mut program, &make_tree(define_sum));
-        evaluate(&mut program, &make_tree("let addThree = sum(3);"));
-        evaluate(&mut program, &make_tree("let addTen = addThree(7);"));
+        force_evaluate(&mut program, &make_tree(define_sum));
+        force_evaluate(&mut program, &make_tree("let addThree = sum(3);"));
+        force_evaluate(&mut program, &make_tree("let addTen = addThree(7);"));
 
-        assert_eq!(evaluate(&mut program, &make_tree("addTen(2015);")), Literal::Int(2025));
+        assert_eq!(
+            force_evaluate(&mut program, &make_tree("addTen(2015);")),
+            Literal::Int(2025)
+        );
     }
 
     #[test]
     fn it_calls_function_with_function_argument() {
         let mut program = Program::init_with_std_streams();
 
-        evaluate(&mut program, &make_tree(
+        force_evaluate(&mut program, &make_tree(
             "let compose(f: (int -> int), g: (int -> int)) -> (x: int) -> f(g(x));"));
-        evaluate(&mut program, &make_tree(
+            force_evaluate(&mut program, &make_tree(
             "let addThree = compose((x: int) -> x + 1, (x: int) -> x + 2);"));
         assert_eq!(
-            evaluate(&mut program,
-            &make_tree("addThree(5);")), Literal::Int(8)
+            force_evaluate(&mut program, &make_tree("addThree(5);")),
+            Literal::Int(8)
         );
     }
 
     // evaluate an AST on a new program
-    fn evaluate_fresh(tree: AbstractSyntaxTree) -> Literal{
-        return evaluate(&mut Program::init_with_std_streams(), &tree);
+    fn evaluate_fresh(tree: AbstractSyntaxTree) -> Literal {
+        evaluate(&mut Program::init_with_std_streams(), &tree).unwrap()
+    }
+
+    fn force_evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
+        evaluate(program, &tree).unwrap()
     }
 }

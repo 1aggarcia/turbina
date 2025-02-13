@@ -1,6 +1,6 @@
 use regex::Regex;
 
-use crate::errors::{IntepreterError, Result};
+use crate::errors::{IntepreterError, MultiResult};
 use crate::models::{
     BinaryOp, Literal, Token, Type, UnaryOp
 };
@@ -17,7 +17,7 @@ use crate::models::{
 /// - formatters: (parentheses, brackets, semicolon, comma)
 /// 
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
-pub fn tokenize(line: &str) -> Result<Vec<Token>> {
+pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
     // removing comments will remove a trailing newline,
     // so we have to check for it first
     let newline_regex = Regex::new("[\r\n]+$").unwrap();
@@ -108,7 +108,7 @@ fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
     return Some(op)
 }
 
-fn formatter_to_token(text: &str) -> Result<Token> {
+fn formatter_to_token(text: &str) -> MultiResult<Token> {
     let token = match text {
         ":" => Token::Colon,
         ";" => Token::Semicolon,

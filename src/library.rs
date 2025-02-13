@@ -184,10 +184,10 @@ mod test_library {
         }
     }
 
-    fn run_cmd(input: &str) -> Literal{
+    fn run_cmd(input: &str) -> Literal {
         let mut program = Program::init_with_std_streams();
         let syntax_tree = make_tree(input);
         validate(&program, &syntax_tree).unwrap();
-        evaluate(&mut program, &syntax_tree)
+        evaluate(&mut program, &syntax_tree).unwrap()
     }
 }

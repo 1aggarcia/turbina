@@ -2,10 +2,8 @@ use crate::models::{
     AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
 };
 
-use crate::errors::{IntepreterError, error};
+use crate::errors::{error, IntepreterError, Result};
 use crate::streams::TokenStream;
-
-type ParseResult<T> = Result<T, IntepreterError>;
 
 /// Consumes the next statement from the token stream and returns a syntax tree
 /// representing the statement using recursive descent parsing.
@@ -15,7 +13,7 @@ type ParseResult<T> = Result<T, IntepreterError>;
 /// ```text
 /// <statement> ::=  (<let> | <expr>) [";" | Newline]
 /// ```
-pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSyntaxTree> {
+pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxTree> {
     skip_newlines(token_stream);
 
     let Ok(first) = token_stream.peek() else {
@@ -37,7 +35,7 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> ParseResult<AbstractSy
 /// ```test
 /// <expr> ::= <cond_expr> | <function> | <term> {BinaryOp <term>}
 /// ```
-fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
+fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
     if tokens.peek()? == Token::If {
         let cond_expr = parse_cond_expr(tokens)?;
         return Ok(Expr::Cond(cond_expr));
@@ -82,7 +80,7 @@ fn parse_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
 /// ```text
 /// <cond_expr> ::= If "(" <expr> ")" <expr> Else <expr>
 /// ```
-fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
+fn parse_cond_expr(tokens: &mut TokenStream) -> Result<CondExpr> {
     match_next(tokens, Token::If)?;
     match_next(tokens, Token::OpenParens)?;
     let condition = Box::new(parse_expr(tokens)?);
@@ -105,7 +103,7 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> ParseResult<CondExpr> {
 /// 
 /// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
 /// ```
-fn parse_function(tokens: &mut TokenStream) -> ParseResult<Function> {
+fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
     let mut params = Vec::<(String, Type)>::new();
 
     match_next(tokens, Token::OpenParens)?;
@@ -135,7 +133,7 @@ fn parse_function(tokens: &mut TokenStream) -> ParseResult<Function> {
 /// ```text
 /// <term> ::= "!" <term> | ["-"] <base_term>
 /// ```
-fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
+fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
     let first = tokens.peek()?;
 
     if first == Token::UnaryOp(UnaryOp::Not) {
@@ -154,7 +152,7 @@ fn parse_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 /// ```text
 /// <base_term> ::= Literal | Null | (Id | "(" <expr> ")") ["!"] {<arg_list> ["!"]}
 /// ```
-fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
+fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
     let first = tokens.pop()?;
     if Token::Null == first {
         return Ok(Term::Literal(Literal::Null));
@@ -192,7 +190,7 @@ fn parse_base_term(tokens: &mut TokenStream) -> ParseResult<Term> {
 fn complete_term_with_arg_list(
     callable: Term,
     tokens: &mut TokenStream
-) -> ParseResult<Term> {
+) -> Result<Term> {
     // we might be at the end of the stream, but that's allowed since
     // callable is a valid term
     if !next_token_matches(tokens, Token::OpenParens) {
@@ -225,7 +223,7 @@ fn complete_term_with_arg_list(
 /// ```text
 /// <let> ::= Let Id [<type_declaration>] Equals <expr> | Let Id <function>
 /// ```
-fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
+fn parse_let(tokens: &mut TokenStream) -> Result<LetNode> {
     match_next(tokens, Token::Let)?;
     let id = parse_id(tokens)?;
 
@@ -250,7 +248,7 @@ fn parse_let(tokens: &mut TokenStream) -> ParseResult<LetNode> {
 }
 
 /// Match the next token as an Id and extract the String name from it
-fn parse_id(tokens: &mut TokenStream) -> ParseResult<String> {
+fn parse_id(tokens: &mut TokenStream) -> Result<String> {
     let id_token = tokens.pop()?;
     match id_token {
         Token::Id(s) => Ok(s.to_string()),
@@ -267,7 +265,7 @@ fn parse_id(tokens: &mut TokenStream) -> ParseResult<String> {
 /// ```text
 /// <type_declaration> :: = ":" <base_type>
 /// ```
-fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
+fn parse_type_declaration(tokens: &mut TokenStream) -> Result<Type> {
     match_next(tokens, Token::Colon)?;
     parse_base_type(tokens)
 }
@@ -282,11 +280,11 @@ fn parse_type_declaration(tokens: &mut TokenStream) -> ParseResult<Type> {
 /// <function_type> ::= arg_types "->" <type>
 /// <arg_types> ::= <base_type> | "(" ") | "(" <type> "," <type> {"," <type>} ")"
 /// ```
-fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
+fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
     /// Decide between leaving a base type alone or parsing it as a function
     fn complete_type(
         base_type: Type, tokens: &mut TokenStream
-    ) -> ParseResult<Type> {
+    ) -> Result<Type> {
         if next_token_matches(tokens, Token::Arrow) {
             complete_function_type(vec![base_type], tokens)
         } else {
@@ -297,7 +295,7 @@ fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
     fn complete_function_type(
         arg_types: Vec<Type>,
         tokens: &mut TokenStream
-    ) -> ParseResult<Type> {
+    ) -> Result<Type> {
         match_next(tokens, Token::Arrow)?;
         let return_type = parse_type(tokens)?;
 
@@ -336,7 +334,7 @@ fn parse_type(tokens: &mut TokenStream) -> ParseResult<Type> {
 /// ```text
 /// <base_type> ::= Type ["?"] | "(" <type> ")" ["?"]
 /// ```
-fn parse_base_type(tokens: &mut TokenStream) -> ParseResult<Type> {
+fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
     if tokens.peek()? == Token::OpenParens {
         tokens.pop()?;
         let datatype = parse_type(tokens)?;
@@ -356,7 +354,7 @@ fn parse_base_type(tokens: &mut TokenStream) -> ParseResult<Type> {
 }
 
 /// Given a base type, make it nullable if and only if the next token is "?"
-fn complete_base_type(base_type: Type, tokens: &mut TokenStream) -> ParseResult<Type> {
+fn complete_base_type(base_type: Type, tokens: &mut TokenStream) -> Result<Type> {
     if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Nullable)) {
         tokens.pop()?;
         Ok(base_type.to_nullable())
@@ -382,7 +380,7 @@ fn next_token_matches(stream: &mut TokenStream, token: Token) -> bool {
 
 /// Take the next token from the stream and compare it to the expected token.
 /// If they do not match, return a syntax error 
-fn match_next(stream: &mut TokenStream, expected: Token) -> ParseResult<()> {
+fn match_next(stream: &mut TokenStream, expected: Token) -> Result<()> {
     let next = stream.pop()?;
     if next != expected {
         // TODO: improve debug string
@@ -405,7 +403,7 @@ pub mod test_utils {
         parse_statement(&mut token_stream).unwrap()
     }
 
-    pub fn parse_tokens(tokens: Vec<Token>) -> ParseResult<AbstractSyntaxTree> {
+    pub fn parse_tokens(tokens: Vec<Token>) -> Result<AbstractSyntaxTree> {
         let mut tokens = TokenStream::from_tokens(tokens);
         parse_statement(&mut tokens)
     }
