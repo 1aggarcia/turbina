@@ -324,31 +324,30 @@ fn validated_negated_int(context: &TypeContext, inner_term: &Term) -> SubResult 
 /// Get the return type of a binary operator if the left and right operand
 /// types are valid, otherwise return a validation error
 fn binary_op_return_type(left: Type, operator: BinaryOp, right: Type) -> SubResult {
-    let type_error = error::binary_op_types(operator, &left, &right);
+    use BinaryOp::*;
+
+    let type_error =
+        Err(error::binary_op_types(operator, &left, &right).into());
+
     match operator {
         // equality operators
-        BinaryOp::NotEq | BinaryOp::Equals => {
-            if left.is_assignable_to(&right) || right.is_assignable_to(&left) {
-                Ok(Type::Bool)
-            } else {
-                Err(type_error.into())
-            }
-        },
+        NotEq | Equals =>
+            if left.is_assignable_to(&right) || right.is_assignable_to(&left)
+                { Ok(Type::Bool) } else { type_error },
+
+        // number comparison
+        GreaterThan | GreaterThanOrEqual | LessThan | LessThanOrEqual =>
+            if left == right && left == Type::Int
+                { Ok(Type::Bool) } else { type_error },
 
         // math operators
-        BinaryOp::Plus => match (&left, right) {
+        Plus => match (&left, right) {
             (Type::String, Type::String)
             | (Type::Int, Type::Int) => Ok(left),
-            _ => Err(vec![type_error])
+            _ => type_error
         },
-        BinaryOp::Minus
-        | BinaryOp::Percent
-        | BinaryOp::Slash
-        | BinaryOp::Star => if left == Type::Int {
-            Ok(Type::Int)
-        } else {
-            Err(vec![type_error])
-        }
+        Minus | Percent | Slash | Star =>
+            if left == Type::Int { Ok(Type::Int) } else { type_error },
     }
 }
 
@@ -449,6 +448,11 @@ mod test_validate {
         #[case("true % false;", BinaryOp::Percent, Type::Bool, Type::Bool)]
         #[case("0 == false;", BinaryOp::Equals, Type::Int, Type::Bool)]
         #[case("\"\" != 1;", BinaryOp::NotEq, Type::String, Type::Int)]
+
+        #[case("2 >  false;", BinaryOp::GreaterThan, Type::Int, Type::Bool)]
+        #[case("2 >= \"\";", BinaryOp::GreaterThanOrEqual, Type::Int, Type::String)]
+        #[case("2 <  \"\";", BinaryOp::LessThan, Type::Int, Type::String)]
+        #[case("2 <= false;", BinaryOp::LessThanOrEqual, Type::Int, Type::Bool)]
         fn it_returns_error_for_illegal_types(
             #[case] input: &str,
             #[case] op: BinaryOp,
@@ -476,6 +480,21 @@ mod test_validate {
             let tree = make_tree(input);
             assert_eq!(validate_fresh(tree), Err(errors));
         }
+
+        // TODO: refactor below tests into here
+        #[rstest]
+        #[case("2 > 2;", Type::Bool)]
+        #[case("2 >= 2;", Type::Bool)]
+        #[case("2 < 2;", Type::Bool)]
+        #[case("2 <= 2;", Type::Bool)]
+        fn it_returns_ok_for_good_operands(
+            #[case] input: &str,
+            #[case] evaluated_type: Type
+        ) {
+            let tree = make_tree(input);
+            assert_eq!(validate_fresh(tree), ok_without_binding(evaluated_type))
+        }
+
 
         #[test]
         fn it_returns_ok_for_int_addition() {

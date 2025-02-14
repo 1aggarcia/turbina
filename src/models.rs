@@ -267,6 +267,10 @@ pub enum BinaryOp {
     Percent,
     Equals,
     NotEq,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 }
 
 impl fmt::Debug for BinaryOp {
@@ -279,6 +283,10 @@ impl fmt::Debug for BinaryOp {
             Self::Percent => "%",
             Self::Equals => "==",
             Self::NotEq => "!=",
+            Self::LessThan => "<",
+            Self::LessThanOrEqual => "<=",
+            Self::GreaterThan => ">",
+            Self::GreaterThanOrEqual => ">=",
         };
         write!(f, "{string}")?;
         Ok(())

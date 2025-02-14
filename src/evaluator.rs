@@ -140,20 +140,31 @@ fn eval_id(context: &mut EvalContext, id: &str) -> Literal {
 
 /// Helper to compute the result of the binary operation
 fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal {
+    use BinaryOp::*;
+
     match operator {
-        BinaryOp::Plus => eval_plus(left, right),
-        BinaryOp::Minus =>
+        Plus => eval_plus(left, right),
+        Minus =>
             Literal::Int(literal_as_int(left) - literal_as_int(right)),
-        BinaryOp::Star =>
+        Star =>
             Literal::Int(literal_as_int(left) * literal_as_int(right)),
-        BinaryOp::Slash =>
+        Slash =>
             Literal::Int(literal_as_int(left) / literal_as_int(right)),
-        BinaryOp::Percent =>
+        Percent =>
             Literal::Int(literal_as_int(left) % literal_as_int(right)),
 
+        GreaterThan =>
+            Literal::Bool(literal_as_int(left) > literal_as_int(right)),
+        GreaterThanOrEqual =>
+            Literal::Bool(literal_as_int(left) >= literal_as_int(right)),
+        LessThan =>
+            Literal::Bool(literal_as_int(left) < literal_as_int(right)),
+        LessThanOrEqual =>
+            Literal::Bool(literal_as_int(left) <= literal_as_int(right)),
+
         // these use the derived `PartialEq` trait on enum `Literal`
-        BinaryOp::Equals => Literal::Bool(left == right),
-        BinaryOp::NotEq => Literal::Bool(left != right),
+        Equals => Literal::Bool(left == right),
+        NotEq => Literal::Bool(left != right), 
     }
 }
 
@@ -281,11 +292,17 @@ mod test_evalutate {
     }
 
     #[rstest]
-    // ints
+    // int equality
     #[case("3 == 5;", 3 == 5)]
     #[case("12 == 12;", 12 == 12)]
     #[case("0 != 0;", 0 != 0)]
     #[case("2 != 1;", 2 != 1)]
+
+    // int comparison
+    #[case("2 > 1;", 2 > 1)]
+    #[case("2 < 1;", 2 < 1)]
+    #[case("2 >= 2;", 2 >= 2)]
+    #[case("2 <= 2;", 2 <= 2)]
 
     // strings
     #[case("\"a\" == \"a\";", true)]

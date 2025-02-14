@@ -28,7 +28,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;(),\[\]]|->)
-        | (?P<binary_op>==|!=|[+*\-/%])
+        | (?P<binary_op>==|!=|<=|>=|[+*\-/%<>])
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
@@ -93,6 +93,10 @@ fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
         "%" => BinaryOp::Percent,
         "==" => BinaryOp::Equals,
         "!=" => BinaryOp::NotEq,
+        "<" => BinaryOp::LessThan,
+        "<=" => BinaryOp::LessThanOrEqual,
+        ">" => BinaryOp::GreaterThan,
+        ">=" => BinaryOp::GreaterThanOrEqual,
         _ => return None,
     };
     return Some(op)
@@ -304,6 +308,10 @@ mod tests {
     #[case("%", BinaryOp::Percent)]
     #[case("==", BinaryOp::Equals)]
     #[case("!=", BinaryOp::NotEq)]
+    #[case("<", BinaryOp::LessThan)]
+    #[case("<=", BinaryOp::LessThanOrEqual)]
+    #[case(">", BinaryOp::GreaterThan)]
+    #[case(">=", BinaryOp::GreaterThanOrEqual)]
     fn binary_operators(#[case] token: &str, #[case] op: BinaryOp) {
         assert_eq!(tokenize(token), Ok(vec![op_token(op)]));
     }
