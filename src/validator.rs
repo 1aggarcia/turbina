@@ -481,12 +481,10 @@ mod test_validate {
             assert_eq!(validate_fresh(tree), Err(errors));
         }
 
-        // TODO: refactor below tests into here
         #[rstest]
-        #[case("2 > 2;", Type::Bool)]
-        #[case("2 >= 2;", Type::Bool)]
-        #[case("2 < 2;", Type::Bool)]
-        #[case("2 <= 2;", Type::Bool)]
+        #[case("2 + 2;", Type::Int)]
+        #[case("2 / 2;", Type::Int)]
+        #[case(r#""a" + "b";"#, Type::String)]
         fn it_returns_ok_for_good_operands(
             #[case] input: &str,
             #[case] evaluated_type: Type
@@ -495,30 +493,17 @@ mod test_validate {
             assert_eq!(validate_fresh(tree), ok_without_binding(evaluated_type))
         }
 
-
-        #[test]
-        fn it_returns_ok_for_int_addition() {
-            let tree = make_tree("2 + 2;");
-            assert_eq!(validate_fresh(tree), ok_without_binding(Type::Int));
-        }
-
-        #[test]
-        fn it_returns_ok_for_int_division() {
-            let tree = make_tree("2 / 2;");
-            assert_eq!(validate_fresh(tree), ok_without_binding(Type::Int));
-        }
-
-        #[test]
-        fn it_returns_ok_for_string_concatenation() {
-            let tree = make_tree("\"a\" + \"b\";");
-            assert_eq!(validate_fresh(tree), ok_without_binding(Type::String));
-        }
-
         #[rstest]
-        #[case(make_tree("0 == 1;"))]
-        #[case(make_tree("true != false;"))]
-        #[case(make_tree("\"a\" == \"b\";"))]
-        fn it_returns_ok_for_boolean_operator_on_same_type(#[case] tree: AbstractSyntaxTree) {
+        #[case("0 == 1;")]
+        #[case("true != false;")]
+        #[case("\"a\" == \"b\";")]
+
+        #[case("2 > 2;")]
+        #[case("2 >= 2;")]
+        #[case("2 < 2;")]
+        #[case("2 <= 2;")]
+        fn it_returns_ok_for_boolean_operator_on_same_type(#[case] input: &str) {
+            let tree = make_tree(input);
             let expected = ok_without_binding(Type::Bool);
             assert_eq!(validate_fresh(tree), expected);
         }
