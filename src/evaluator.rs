@@ -292,7 +292,10 @@ mod test_evalutate {
     #[case("3 * (2 - 5);", -9)]
     #[case("(25 % (18 / 3)) - (10 + 4);", -13)]
     #[case("(25 % 18 / 3) - (10 + 4);", -12)]
-    // TODO: thorough PEMDAS test
+    #[case::pemdas(
+        "1 + 2 * 3 - 4 / 5 + 6 % 7",
+        1 + (2 * 3) - (4 / 5) + (6 % 7)
+    )]
     fn it_evaluates_complex_expressions(
         #[case] input: &str, #[case] expected_val: i32
     ) {
@@ -333,6 +336,9 @@ mod test_evalutate {
 
     #[case("false || (true && false);", false)]
     #[case("(false && true) || (false || true);", true)]
+
+    #[case("4 - 3 > 3 - 4;", true)]
+    #[case("4 - 3 > 3 - 4 && 4 - 3 < 3 - 4;", false)]
     fn it_evaluates_binary_bool_operators(
         #[case] input: &str, #[case] expected_val: bool
     ) {
