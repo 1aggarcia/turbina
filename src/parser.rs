@@ -32,21 +32,13 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
     return Ok(statement);
 }
 
-/// ```test
-/// <expr> ::= <cond_expr> | <function> | <term> {BinaryOp <term>}
+/// ```text
+/// <expr> ::= <cond_expr> | <function> | <binary_expr>
 /// ```
 fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
     if tokens.peek()? == Token::If {
         let cond_expr = parse_cond_expr(tokens)?;
         return Ok(Expr::Cond(cond_expr));
-    }
-
-    /// to decide when to stop parsing, since expr is variable length
-    fn next_is_operator(tokens: &mut TokenStream) -> bool {
-        match tokens.peek() {
-            Ok(Token::BinaryOp(_)) => true,
-            _ => false,
-        }
     }
 
     let next_is_function =
@@ -62,19 +54,81 @@ fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
         return Ok(expr);
     }
 
-    let first = parse_term(tokens)?;
-    let mut rest = Vec::<(BinaryOp, Term)>::new();
+    let binary_expr = parse_binary_expr(tokens, 0)?;
+    Ok(Expr::Binary(binary_expr))
+}
 
-    while next_is_operator(tokens) {
+// TODO: move logic for binary expressions to seperate file
+
+static MAX_EXPRESSION_PRECEDENCE: u8 = 1;
+
+/// ```text
+/// <binary_expr> ::= <expr_lvl_1> {(And | Or) <expr_lvl_1>}
+/// <expr_lvl_1> :: = <term> {BinaryOp <term>}
+/// ```
+/// Operator precedence is expressed by giving levels to each expression; e.g.
+/// `<expr_lvl_2>` has precedence above `<expr_lvl_3>` but not `<expr_lvl_1>`.
+/// Naming things is hard, so why bother? Let's just use numbers.
+fn parse_binary_expr(
+    tokens: &mut TokenStream,
+    precedence: u8
+) -> Result<BinaryExpr> {
+    if precedence > MAX_EXPRESSION_PRECEDENCE {
+        let expr = BinaryExpr { first: parse_term(tokens)?, rest: vec![] };
+        return Ok(expr);
+    }
+
+    let first = parse_binary_expr(tokens, precedence + 1)?;
+    let mut rest = vec![];
+
+    while next_is_operator(tokens, precedence) {
         let op_token = tokens.pop()?;
         let operator = match op_token {
             Token::BinaryOp(op) => op,
             _ => return Err(error::unexpected_token("binary op", op_token))
         };
-        let term = parse_term(tokens)?;
-        rest.push((operator, term));
+        let expr = parse_binary_expr(tokens, precedence + 1)?;
+        rest.push((operator, expr_as_term(expr)));
     }
-    Ok(Expr::Binary(BinaryExpr { first, rest }))
+
+    // avoid re-wrapping expressions as another expression if possible
+    if rest.is_empty() {
+        return Ok(first);
+    }
+    Ok(BinaryExpr { first: expr_as_term(first), rest })
+}
+
+/// Decide if the next token is an operator with the given precedence without
+/// consuming it. If there is no next token, returns false.
+fn next_is_operator(tokens: &mut TokenStream, precedence: u8) -> bool {
+    let Ok(Token::BinaryOp(operator)) = tokens.peek() else {
+        return false;
+    };
+    return get_binary_operator_precedence(operator) == precedence
+}
+
+/// Returns precedence of operator, with smaller being higher
+fn get_binary_operator_precedence(operator: BinaryOp) -> u8 {
+    use BinaryOp::*;
+
+    // using match to guarantee that all operators have a precedence level
+    // if new operators are added, this produces a compiler error
+    match operator {
+        And | Or => 0,
+
+        Plus | Minus | Star | Slash | Percent | Equals | NotEq | LessThan
+        | LessThanOrEqual | GreaterThan | GreaterThanOrEqual => 1,
+    }
+}
+
+/// If the expression contains one term, unwrap the term.
+/// Otherwise, wrap the expression into a term
+fn expr_as_term(expr: BinaryExpr) -> Term {
+    if expr.rest.is_empty() {
+        expr.first
+    } else {
+        Term::Expr(Box::new(Expr::Binary(expr)))
+    }
 }
 
 /// ```text
