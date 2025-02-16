@@ -594,6 +594,21 @@ mod test_parse {
         }
 
         #[test]
+        fn it_respects_boolean_operator_prescedence() {
+            let input = force_tokenize("1 == 0 || 1 != 0;");
+
+            let left = bin_expr(int_term(1), vec![(BinaryOp::Equals, int_term(0))]); 
+            let right = bin_expr(int_term(1), vec![(BinaryOp::NotEq, int_term(0))]);
+            
+            let expr = bin_expr(
+                Term::Expr(Box::new(left)),
+                vec![(BinaryOp::Or, Term::Expr(Box::new(right)))]
+            );
+            let expected = AbstractSyntaxTree::Expr(expr);
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
         fn it_parses_if_else_expression() {
             let input = force_tokenize("if (cond) \"abc\" else \"def\";");
 

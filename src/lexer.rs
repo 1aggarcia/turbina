@@ -28,7 +28,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;(),\[\]]|->)
-        | (?P<binary_op>==|!=|<=|>=|[+*\-/%<>])
+        | (?P<binary_op>==|!=|<=|>=|&&|\|\||[+*\-/%<>])
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z]\w*)
@@ -92,6 +92,8 @@ fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
         "/" => BinaryOp::Slash,
         "%" => BinaryOp::Percent,
         "==" => BinaryOp::Equals,
+        "&&" => BinaryOp::And,
+        "||" => BinaryOp::Or,
         "!=" => BinaryOp::NotEq,
         "<" => BinaryOp::LessThan,
         "<=" => BinaryOp::LessThanOrEqual,
@@ -307,6 +309,8 @@ mod tests {
     #[case("/", BinaryOp::Slash)]
     #[case("%", BinaryOp::Percent)]
     #[case("==", BinaryOp::Equals)]
+    #[case("&&", BinaryOp::And)]
+    #[case("||", BinaryOp::Or)]
     #[case("!=", BinaryOp::NotEq)]
     #[case("<", BinaryOp::LessThan)]
     #[case("<=", BinaryOp::LessThanOrEqual)]

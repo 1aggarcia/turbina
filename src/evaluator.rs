@@ -162,9 +162,12 @@ fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal
         LessThanOrEqual =>
             Literal::Bool(literal_as_int(left) <= literal_as_int(right)),
 
+        And => Literal::Bool(literal_as_bool(left) && literal_as_bool(right)),
+        Or => Literal::Bool(literal_as_bool(left) || literal_as_bool(right)),
+
         // these use the derived `PartialEq` trait on enum `Literal`
         Equals => Literal::Bool(left == right),
-        NotEq => Literal::Bool(left != right), 
+        NotEq => Literal::Bool(left != right),
     }
 }
 
@@ -187,6 +190,13 @@ fn literal_as_int(literal: Literal) -> i32 {
     match literal {
         Literal::Int(i) => i,
         _ => panic!("expected int literal, got {:?}", literal),
+    }
+}
+
+fn literal_as_bool(literal: Literal) -> bool {
+    match literal {
+        Literal::Bool(b) => b,
+        _ => panic!("expected bool literal, got {:?}", literal),
     }
 }
 
@@ -315,6 +325,14 @@ mod test_evalutate {
     #[case("true != true;", false)]
     #[case("false == true;", false)]
     #[case("true != false;", true)]
+
+    #[case("true && true;", true)]
+    #[case("true && false;", false)]
+    #[case("false || false;", false)]
+    #[case("false || true;", true)]
+
+    #[case("false || (true && false);", false)]
+    #[case("(false && true) || (false || true);", true)]
     fn it_evaluates_binary_bool_operators(
         #[case] input: &str, #[case] expected_val: bool
     ) {

@@ -330,6 +330,9 @@ fn binary_op_return_type(left: Type, operator: BinaryOp, right: Type) -> SubResu
         Err(error::binary_op_types(operator, &left, &right).into());
 
     match operator {
+        And | Or => if left == Type::Bool && left == right
+            { Ok(Type::Bool) } else { type_error }
+
         // equality operators
         NotEq | Equals =>
             if left.is_assignable_to(&right) || right.is_assignable_to(&left)
@@ -347,7 +350,7 @@ fn binary_op_return_type(left: Type, operator: BinaryOp, right: Type) -> SubResu
             _ => type_error
         },
         Minus | Percent | Slash | Star =>
-            if left == Type::Int { Ok(Type::Int) } else { type_error },
+            if left == Type::Int { Ok(Type::Int) } else { type_error }, 
     }
 }
 
@@ -494,14 +497,21 @@ mod test_validate {
         }
 
         #[rstest]
+        // equality
         #[case("0 == 1;")]
         #[case("true != false;")]
         #[case("\"a\" == \"b\";")]
 
+        // comparison
         #[case("2 > 2;")]
         #[case("2 >= 2;")]
         #[case("2 < 2;")]
         #[case("2 <= 2;")]
+
+        // compound
+        #[case("false && true;")]
+        #[case("false || true;")]
+        #[case("1 % 3 == 0 && 1 % 5 == 0;")]
         fn it_returns_ok_for_boolean_operator_on_same_type(#[case] input: &str) {
             let tree = make_tree(input);
             let expected = ok_without_binding(Type::Bool);
