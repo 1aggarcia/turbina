@@ -2,6 +2,7 @@ import { Editor } from "@monaco-editor/react";
 import { CSSProperties, useState } from "react";
 import { run_turbina_program } from "turbina";
 import { Header } from "./Header";
+import { ResizablePanels } from "./ResizablePanels";
 
 const SAMPLE_PROGRAM =
 `// define a binding like this
@@ -49,7 +50,6 @@ const containerStyle: CSSProperties = {
 
 const consoleDivStyle: CSSProperties = {
     fontSize: CODE_FONT_SIZE,
-    flexGrow: 1,
     textAlign: "left",
     padding: "1rem",
 };
@@ -91,27 +91,30 @@ export function CodePlayground() {
                 </button>
             </Header>
 
-            <div style={{ display: "flex", flexGrow: 1 }}>
-                <div className="content-box" style={{ width: "60%", paddingBlock: "10px" }}>
-                <Editor
-                    value={sourceCode}
-                    /* Rust syntax highlighting works decently and doesn't give
-                     * validation errors */
-                    language="rust"
-                    onChange={text => setSourceCode(text ?? "")}
-                    options={{
-                        minimap: { enabled: false },
-                        fontSize: CODE_FONT_SIZE,
-                        contextmenu: false,
-                        scrollBeyondLastLine: false,
-                    }}
-                />
-                </div>
-                <div style={{ width: "8px", backgroundColor: "#f1f1f1" }} />
-                <div className="content-box" style={consoleDivStyle}>
-                    <pre style={{ margin: 0 }}>{consoleOutput}</pre>
-                </div>
-            </div>
+            <ResizablePanels
+                firstComponent={
+                    <div style={{ paddingBlock: "10px", width: "100%" }}>
+                        <Editor
+                            value={sourceCode}
+                            /* Rust syntax highlighting works decently and
+                            doesn't give validation errors */
+                            language="rust"
+                            onChange={text => setSourceCode(text ?? "")}
+                            options={{
+                                minimap: { enabled: false },
+                                fontSize: CODE_FONT_SIZE,
+                                contextmenu: false,
+                                scrollBeyondLastLine: false,
+                            }}
+                        />
+                    </div>
+                }
+                secondComponent={
+                    <pre style={{ ...consoleDivStyle, margin: 0 }}>
+                        {consoleOutput}
+                    </pre>
+                }
+            />
         </div>
     )
 }
