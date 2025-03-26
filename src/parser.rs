@@ -255,12 +255,20 @@ fn complete_term_with_arg_list(
     let mut args = Vec::<Expr>::new();
 
     if tokens.peek()? != Token::CloseParens {
+        skip_newlines(tokens);
         args.push(parse_expr(tokens)?);
+
+        skip_newlines(tokens);
         while tokens.peek()? == Token::Comma {
             tokens.pop()?;
+
+            skip_newlines(tokens);
             args.push(parse_expr(tokens)?);
+
+            skip_newlines(tokens);
         }
-    } 
+    }
+
     match_next(tokens, Token::CloseParens)?;
 
     let func_call = FuncCall { func: Box::new(callable), args };
@@ -938,12 +946,27 @@ mod test_parse {
             else "unknown";
         "#
     )]
+    #[case::function_args_on_seperate_lines("randInt(1, 2);", "
+        randInt(
+            1,
+            2
+        );
+    ")]
+    #[case::function_args_split_unconventionally("randInt(1, 2);", "
+        randInt(
+
+
+            1
+            ,
+
+            2);
+    ")]
     fn it_parses_equivalent_statements(#[case] vers1: &str, #[case] vers2: &str) {
         let res1 = parse_tokens(force_tokenize(vers1));
         let res2 = parse_tokens(force_tokenize(vers2));
 
+        assert_eq!(res1, res2);
         assert!(matches!(res1, Ok(_)));
-        assert_eq!(res1, res2)
     }
 
     #[test]
