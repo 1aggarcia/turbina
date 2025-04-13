@@ -293,7 +293,7 @@ mod test_evalutate {
     #[case("(25 % (18 / 3)) - (10 + 4);", -13)]
     #[case("(25 % 18 / 3) - (10 + 4);", -12)]
     #[case::pemdas(
-        "1 + 2 * 3 - 4 / 5 + 6 % 7",
+        "1 + 2 * 3 - 4 / 5 + 6 % 7;",
         1 + (2 * 3) - (4 / 5) + (6 % 7)
     )]
     fn it_evaluates_complex_expressions(

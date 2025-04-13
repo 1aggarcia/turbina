@@ -532,10 +532,10 @@ mod test_validate {
             let expected = ok_without_binding(Type::Bool);
 
             // should be transitive
-            assert_eq!(validate(&program, &make_tree("a == b")), expected);
-            assert_eq!(validate(&program, &make_tree("a != b")), expected);
-            assert_eq!(validate(&program, &make_tree("b == a")), expected);
-            assert_eq!(validate(&program, &make_tree("b != a")), expected);
+            assert_eq!(validate(&program, &make_tree("a == b;")), expected);
+            assert_eq!(validate(&program, &make_tree("a != b;")), expected);
+            assert_eq!(validate(&program, &make_tree("b == a;")), expected);
+            assert_eq!(validate(&program, &make_tree("b != a;")), expected);
         }
 
         #[rstest]
@@ -554,8 +554,8 @@ mod test_validate {
             let expected_not_eq = Err(
                 vec![error::binary_op_types(BinaryOp::NotEq, &type_a, &type_b)]
             );
-            assert_eq!(validate(&program, &make_tree("a == b")), expected_eq);
-            assert_eq!(validate(&program, &make_tree("a != b")), expected_not_eq);
+            assert_eq!(validate(&program, &make_tree("a == b;")), expected_eq);
+            assert_eq!(validate(&program, &make_tree("a != b;")), expected_not_eq);
         }
     }
 
@@ -670,7 +670,7 @@ mod test_validate {
         #[case::native_func("reverse;", &[Type::String], Type::String)]
         #[case::explicit_return_type("(): bool -> true;", &[], Type::Bool)]
         #[case::param_used_in_body("(x: int) -> x * x;", &[Type::Int], Type::Int)]
-        #[case::returns_unknown("(): unknown -> 2025", &[], Type::Unknown)]
+        #[case::returns_unknown("(): unknown -> 2025;", &[], Type::Unknown)]
         #[case::curried_function(
             // this function returns another function
             "(x: int) -> (y: int) -> x + y;",
@@ -680,7 +680,7 @@ mod test_validate {
             Type::Func { input: vec![Type::Int], output: Box::new(Type::Int) }
         )]
         #[case::higher_order_func(
-            "(f: (string -> int), x: string) -> f(x) + 3",
+            "(f: (string -> int), x: string) -> f(x) + 3;",
             &[Type::func(&[Type::String], Type::Int), Type::String],
             Type::Int,
         )]
@@ -761,11 +761,11 @@ mod test_validate {
             "let something = \"a\" + \"b\";", "something", Type::String)]
 
         #[case::int_as_unknown(
-            "let x: unknown = 5", "x", Type::Unknown)]
+            "let x: unknown = 5;", "x", Type::Unknown)]
         #[case::string_as_unknown(
-            "let y: unknown = \"\"", "y", Type::Unknown)]
+            "let y: unknown = \"\";", "y", Type::Unknown)]
         #[case::function_as_unknown(
-            "let f: unknown = () -> 3", "f", Type::Unknown)]
+            "let f: unknown = () -> 3;", "f", Type::Unknown)]
 
         #[case::int_as_nullable_type(
             "let n: int? = 3;", "n", Type::Int.to_nullable())]

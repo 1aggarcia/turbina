@@ -916,15 +916,6 @@ mod test_parse {
     }
 
     #[test]
-    fn it_returns_same_tree_for_statement_ending_in_newlines_and_semicolon() {
-        let newline_statement = parse_tokens(force_tokenize("2 + 2\n\n\n"));
-        let semicolon_statement = parse_tokens(force_tokenize("2 + 2;"));
-
-        assert!(matches!(newline_statement, Ok(_)));
-        assert_eq!(newline_statement, semicolon_statement);
-    }
-
-    #[test]
     fn it_ignores_tokens_after_semicolon() {
         let multiple_statements =
         parse_tokens(force_tokenize("2 + 2; 5 + 5; let = badsyntax ->"));
