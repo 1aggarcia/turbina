@@ -1,6 +1,6 @@
 use regex::Regex;
 
-use crate::errors::{IntepreterError, MultiResult};
+use crate::errors::{InterpreterError, MultiResult};
 use crate::models::{
     BinaryOp, Literal, Token, Type, UnaryOp
 };
@@ -38,7 +38,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
     let re = Regex::new(&pattern).unwrap();
     let capture_matches = re.captures_iter(line_without_comments);
     let mut tokens = Vec::<Token>::new();
-    let mut errors = Vec::<IntepreterError>::new();
+    let mut errors = Vec::<InterpreterError>::new();
 
     for x in capture_matches {
         let token = {
@@ -66,7 +66,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
             } else {
                 // ok to unwrap get() with 0, guaranteed not to be None
                 let payload = x.get(0).unwrap().as_str().to_string();
-                errors.push(IntepreterError::UnrecognizedToken { payload });
+                errors.push(InterpreterError::UnrecognizedToken { payload });
                 continue;
             }
         };
@@ -125,7 +125,7 @@ fn formatter_to_token(text: &str) -> MultiResult<Token> {
         "]" => Token::CloseSquareBracket,
         "->" => Token::Arrow,
         _ => return Err(
-            IntepreterError::UnrecognizedToken { payload: text.into() }.into()
+            InterpreterError::UnrecognizedToken { payload: text.into() }.into()
         )
     };
     Ok(token)
@@ -331,8 +331,8 @@ mod tests {
     #[test]
     fn symbol_starting_with_numbers() {
         let errors = vec![
-            IntepreterError::UnrecognizedToken { payload: "23sdf".into() },
-            IntepreterError::UnrecognizedToken { payload: "5l".into() }
+            InterpreterError::UnrecognizedToken { payload: "23sdf".into() },
+            InterpreterError::UnrecognizedToken { payload: "5l".into() }
         ];
         assert_eq!(tokenize("23sdf 5l"), Err(errors));
     }

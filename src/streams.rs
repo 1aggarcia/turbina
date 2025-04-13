@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::io::{stderr, stdin, stdout, BufRead, BufReader, Write};
 use std::fs::File;
 
-use crate::errors::{IntepreterError, error};
+use crate::errors::{InterpreterError, error};
 use crate::lexer::tokenize;
 use crate::models::Token;
 
@@ -29,7 +29,7 @@ impl Debug for OutputStreams {
 pub trait InputStream {
     /// Read the next line containing source code from the stream.
     /// If there is no more source code, returns `EndOfFile`` error.
-    fn next_line(&mut self) -> Result<String, IntepreterError>;
+    fn next_line(&mut self) -> Result<String, InterpreterError>;
 }
 
 pub struct FileStream {
@@ -37,7 +37,7 @@ pub struct FileStream {
 }
 
 impl InputStream for FileStream {
-    fn next_line(&mut self) -> Result<String, IntepreterError> {
+    fn next_line(&mut self) -> Result<String, InterpreterError> {
         let mut buf: String = String::new();
 
         // re-read if the last line is empty or a comment
@@ -53,7 +53,7 @@ impl InputStream for FileStream {
 
 pub struct StdinStream;
 impl InputStream for StdinStream {
-    fn next_line(&mut self) -> Result<String, IntepreterError> {
+    fn next_line(&mut self) -> Result<String, InterpreterError> {
         let mut buf: String = String::new();
 
         // re-read if the last line is empty or a comment
@@ -89,7 +89,7 @@ impl StringStream {
 }
 
 impl InputStream for StringStream {
-    fn next_line(&mut self) -> Result<String, IntepreterError> {
+    fn next_line(&mut self) -> Result<String, InterpreterError> {
         let line = self.lines.get(self.line_num)
             .ok_or(error::unexpected_end_of_input())?;
 
@@ -120,19 +120,19 @@ impl TokenStream {
     }
 
     /// Advances to the next token and returns the current one
-    pub fn pop(&mut self) -> Result<Token, IntepreterError> {
+    pub fn pop(&mut self) -> Result<Token, InterpreterError> {
         let token = self.peek()?;
         self.position += 1;
         return Ok(token);
     }
 
     /// Returns the token currently being pointed to
-    pub fn peek(&mut self) -> Result<Token, IntepreterError> {
+    pub fn peek(&mut self) -> Result<Token, InterpreterError> {
         self.lookahead(0)
     }
 
     /// Returns the token at the current position plus `offset`
-    pub fn lookahead(&mut self, offset: usize) -> Result<Token, IntepreterError> {
+    pub fn lookahead(&mut self, offset: usize) -> Result<Token, InterpreterError> {
         if let Some(token) = self.tokens.get(self.position + offset) {
             return Ok(token.clone());
         }

@@ -1,6 +1,6 @@
 use std::io::{Error, Write};
 
-use errors::IntepreterError;
+use errors::InterpreterError;
 use evaluator::evaluate;
 use models::{AbstractSyntaxTree, Literal, Program, Type};
 use parser::parse_statement;
@@ -92,7 +92,7 @@ pub fn run_as_file(
         match validate_next_statement(&mut program, &mut token_stream) {
             Ok(result) => statements.push(result),
             Err(statement_errors) => {
-                if statement_errors.contains(&IntepreterError::EndOfFile) {
+                if statement_errors.contains(&InterpreterError::EndOfFile) {
                     break;
                 }
                 errors.extend(statement_errors);
@@ -138,7 +138,7 @@ pub fn run_repl() {
         match eval_result {
             Ok(result) => println!("{result}"),
             Err(errors) => {
-                if errors.contains(&IntepreterError::EndOfFile) {
+                if errors.contains(&InterpreterError::EndOfFile) {
                     break;
                 }
                 errors.iter().for_each(|e| eprintln!("{e}"));
@@ -153,7 +153,7 @@ pub fn run_repl() {
 fn validate_next_statement(
     program: &mut Program,
     token_stream: &mut TokenStream
-) -> Result<Statement, Vec<IntepreterError>> {
+) -> Result<Statement, Vec<InterpreterError>> {
     let syntax_tree = parse_statement(token_stream)?;
 
     let tree_type = validate(program, &syntax_tree)?;
@@ -168,7 +168,7 @@ fn validate_next_statement(
 fn evaluate_statement(
     program: &mut Program,
     (syntax_tree, tree_type): &Statement,
-) -> Result<String, IntepreterError> {
+) -> Result<String, InterpreterError> {
     let output = match evaluate(program, &syntax_tree)? {
         // Function types look nicer to print than any form of the struct
         Literal::Closure(_) => tree_type.to_string(),

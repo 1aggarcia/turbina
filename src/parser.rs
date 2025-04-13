@@ -2,7 +2,7 @@ use crate::models::{
     AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
 };
 
-use crate::errors::{error, IntepreterError, Result};
+use crate::errors::{error, InterpreterError, Result};
 use crate::streams::TokenStream;
 
 /// Consumes the next statement from the token stream and returns a syntax tree
@@ -17,7 +17,7 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
     skip_newlines(token_stream);
 
     let Ok(first) = token_stream.peek() else {
-        return Err(IntepreterError::EndOfFile);
+        return Err(InterpreterError::EndOfFile);
     };
     let statement = match first {
         Token::Let => AbstractSyntaxTree::Let(parse_let(token_stream)?),
@@ -27,7 +27,7 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
     let statement_end = token_stream.pop()?;
     match statement_end {
         Token::Semicolon | Token::Newline => {},
-        _ => return Err(IntepreterError::end_of_statement(statement_end)),
+        _ => return Err(InterpreterError::end_of_statement(statement_end)),
     }
     return Ok(statement);
 }
@@ -62,7 +62,9 @@ static MAX_EXPRESSION_PRECEDENCE: u8 = 3;
 
 /// ```text
 /// <binary_expr> ::= <expr_lvl_1> {(And | Or) <expr_lvl_1>}
-/// <expr_lvl_1> :: = <term> {BinaryOp <term>}
+/// <expr_lvl_1> :: = <expr_lvl_2> {(== | != | < | <= | > | >=) <expr_lvl_2>}
+/// <expr_lvl_2> :: = <expr_lvl_3> {(+ | -) <expr_lvl_3>}
+/// <expr_lvl_3> :: = <term> {(* | / | %) <term>}
 /// ```
 /// Operator precedence is expressed by giving levels to each expression; e.g.
 /// `<expr_lvl_2>` has precedence above `<expr_lvl_3>` but not `<expr_lvl_1>`.
@@ -98,7 +100,10 @@ fn parse_binary_expr(
 
 /// Decide if the next token is an operator with the given precedence without
 /// consuming it. If there is no next token, returns false.
+/// 
+/// Consumes any newlines at the front of the stream.
 fn next_is_operator(tokens: &mut TokenStream, precedence: u8) -> bool {
+    skip_newlines(tokens);
     let Ok(Token::BinaryOp(operator)) = tokens.peek() else {
         return false;
     };
@@ -492,7 +497,7 @@ mod test_parse {
             #[case] token: Token,
             #[case] node: AbstractSyntaxTree
         ) {
-            let input = vec![token.clone(), Token::Newline];
+            let input = vec![token.clone(), Token::Semicolon];
             assert_eq!(parse_tokens(input), Ok(node));
         }
 
@@ -579,7 +584,7 @@ mod test_parse {
         fn it_returns_error_for_not_null_literal() {
             let tokens = force_tokenize("null!;");
             let expected =
-                IntepreterError::end_of_statement(Token::UnaryOp(UnaryOp::Not));
+                InterpreterError::end_of_statement(Token::UnaryOp(UnaryOp::Not));
             assert_eq!(parse_tokens(tokens), Err(expected));
         }
 
@@ -595,7 +600,7 @@ mod test_parse {
         #[test]
         fn it_returns_error_for_multiple_ints() {
             let input = force_tokenize("3 2;");
-            let error = IntepreterError::end_of_statement(int_token(2));
+            let error = InterpreterError::end_of_statement(int_token(2));
             assert_eq!(parse_tokens(input), Err(error));
         }
 
@@ -781,7 +786,7 @@ mod test_parse {
         #[test]
         fn it_returns_error_for_equals_in_let_expr() {
             let input = force_tokenize("let x = 1 = 0;");
-            let error = IntepreterError::end_of_statement(
+            let error = InterpreterError::end_of_statement(
                 Token::UnaryOp(UnaryOp::Equals)
             );
             assert_eq!(parse_tokens(input), Err(error)); 
@@ -898,7 +903,7 @@ mod test_parse {
     #[case(force_tokenize("3 +"), error::unexpected_end_of_input())]
     fn it_returns_error_for_incomplete_statements(
         #[case] tokens: Vec<Token>,
-        #[case] error: IntepreterError
+        #[case] error: InterpreterError
     ) {
         assert_eq!(parse_tokens(tokens), Err(error));
     }
@@ -923,7 +928,7 @@ mod test_parse {
     fn it_ignores_tokens_after_semicolon() {
         let multiple_statements =
         parse_tokens(force_tokenize("2 + 2; 5 + 5; let = badsyntax ->"));
-        let one_statement = parse_tokens(force_tokenize("2+2\n"));
+        let one_statement = parse_tokens(force_tokenize("2+2;"));
     
         assert!(matches!(multiple_statements, Ok(_)));
         assert_eq!(multiple_statements, one_statement);
@@ -971,7 +976,7 @@ mod test_parse {
 
     #[test]
     fn it_returns_end_of_file_error_for_empty_stream() {
-        assert_eq!(parse_tokens(vec![]), Err(IntepreterError::EndOfFile));
+        assert_eq!(parse_tokens(vec![]), Err(InterpreterError::EndOfFile));
     }
 
     fn force_tokenize(line: &str) -> Vec<Token> {

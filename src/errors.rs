@@ -3,10 +3,10 @@ use custom_error::custom_error;
 
 use crate::models::{Term, Token, Type};
 
-pub type Result<T> = std::result::Result<T, IntepreterError>;
-pub type MultiResult<T> = std::result::Result<T, Vec<IntepreterError>>;
+pub type Result<T> = std::result::Result<T, InterpreterError>;
+pub type MultiResult<T> = std::result::Result<T, Vec<InterpreterError>>;
 
-custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
+custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
     TypeError { message: String } = "Type Error: {message}",
     MismatchedTypes { type1: Type, type2: Type } = "Mismatched Types: got {type1} and {type2}",
@@ -22,7 +22,7 @@ custom_error!{#[derive(PartialEq, Clone)] pub IntepreterError
     EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS",
 }
 
-impl IntepreterError {
+impl InterpreterError {
     pub fn not_a_function(term: &Term) -> Self {
         Self::TypeError {
             message: format!("Tried to call '{term:?}', but it is not a function")
@@ -42,14 +42,14 @@ impl IntepreterError {
 }
 
 // allows implicit conversion using ? operator
-impl From<std::io::Error> for IntepreterError {
+impl From<std::io::Error> for InterpreterError {
     fn from(value: std::io::Error) -> Self {
         Self::IOError { message: value.to_string() }
     }
 }
 
-impl From<IntepreterError> for Vec<IntepreterError> {
-    fn from(value: IntepreterError) -> Self {
+impl From<InterpreterError> for Vec<InterpreterError> {
+    fn from(value: InterpreterError) -> Self {
         vec![value]
     }
 }
@@ -59,19 +59,19 @@ impl From<IntepreterError> for Vec<IntepreterError> {
 /// This was more necessary when I had plain string errors, but over the
 /// functions should be removed in favor of the enum impl above. 
 pub mod error {
-    use super::IntepreterError;
-    use super::IntepreterError::*;
+    use super::InterpreterError;
+    use super::InterpreterError::*;
     use crate::models::{BinaryOp, Token, Type};
 
-    pub fn unexpected_end_of_input() -> IntepreterError {
+    pub fn unexpected_end_of_input() -> InterpreterError {
         SyntaxError { message: "Unexpected end of input".into() }
     }
 
-    pub fn unexpected_token(expected: &str, got: Token) -> IntepreterError {
+    pub fn unexpected_token(expected: &str, got: Token) -> InterpreterError {
         SyntaxError { message: format!("Expected {}, got {:?}", expected, got) }
     }
 
-    pub fn not_a_type(token: Token) -> IntepreterError {
+    pub fn not_a_type(token: Token) -> InterpreterError {
         TypeError { message: format!("'{:?}' is not a valid type", token) }
     }
 
@@ -79,7 +79,7 @@ pub mod error {
         operator: BinaryOp,
         left_type: &Type,
         right_type: &Type
-    ) -> IntepreterError {
+    ) -> InterpreterError {
         let message = format!(
             "Illegal types for '{:?}' operator: {:?}, {:?}",
             operator,
@@ -89,16 +89,16 @@ pub mod error {
         return TypeError { message };
     }
 
-    pub fn unary_op_type(operator: &str, datatype: Type) -> IntepreterError {
+    pub fn unary_op_type(operator: &str, datatype: Type) -> InterpreterError {
         let message = format!("Cannot apply {} to token of type {:?}", operator, datatype);
         return TypeError { message };
     }
 
-    pub fn undefined_id(id: &str) -> IntepreterError {
+    pub fn undefined_id(id: &str) -> InterpreterError {
         UndefinedError { id: id.into() }
     }
 
-    pub fn already_defined(id: &str) -> IntepreterError {
+    pub fn already_defined(id: &str) -> InterpreterError {
         ReassignError { id: id.into() }
     }
 }

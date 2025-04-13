@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::errors::{error, IntepreterError, MultiResult};
+use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{
     AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type
 };
@@ -98,7 +98,7 @@ fn validate_expr(context: &TypeContext, expr: &Expr) -> SubResult {
 
 /// Check that the types for every term in the expression are valid
 fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
-    let mut errors = Vec::<IntepreterError>::new();
+    let mut errors = Vec::<InterpreterError>::new();
     let mut result = None;
 
     match validate_term(context, &expr.first) {
@@ -135,17 +135,17 @@ fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
 /// Check that the condition is a boolean type, and the "if" and "else" branches
 /// are of the same type
 fn validate_cond_expr(context: &TypeContext, expr: &CondExpr) -> SubResult {
-    let mut errors = Vec::<IntepreterError>::new();
+    let mut errors = Vec::<InterpreterError>::new();
 
     let cond_type = validate_expr(context, &expr.cond)?;
     if cond_type != Type::Bool {
-        errors.push(IntepreterError::InvalidType { datatype: cond_type });
+        errors.push(InterpreterError::InvalidType { datatype: cond_type });
     }
 
     let true_type = validate_expr(context, &expr.if_true)?;
     let false_type = validate_expr(context, &expr.if_false)?;
     if true_type != false_type {
-        let err = IntepreterError::MismatchedTypes {
+        let err = InterpreterError::MismatchedTypes {
             type1: true_type.clone(),
             type2: false_type
         };
@@ -165,12 +165,12 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
     let (param_types, output_type) = match validate_term(context, &call.func)? {
         Type::Func { input, output } => (input, output),
         _ => {
-            let err = IntepreterError::not_a_function(&call.func); 
+            let err = InterpreterError::not_a_function(&call.func); 
             return Err(vec![err]);
         }
     };
     if call.args.len() != param_types.len() {
-        let err = IntepreterError::ArgCount {
+        let err = InterpreterError::ArgCount {
             got: call.args.len(),
             expected: param_types.len()
         };
@@ -183,7 +183,7 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
         if arg_type.is_assignable_to(param_type) {
             continue;
         }
-        errors.push(IntepreterError::UnexpectedType {
+        errors.push(InterpreterError::UnexpectedType {
             got: arg_type,
             expected: param_type.clone()
         });
@@ -234,11 +234,11 @@ fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
 
     // must also be stored as a list since maps don't have order
     let mut param_type_list = Vec::<Type>::new();
-    let mut param_errors = Vec::<IntepreterError>::new();
+    let mut param_errors = Vec::<InterpreterError>::new();
 
     for (id, datatype) in function.params.clone() {
         if context.contains_parameter(&id) {
-            param_errors.push(IntepreterError::ReassignError { id });
+            param_errors.push(InterpreterError::ReassignError { id });
             continue;
         }
         param_types.insert(id.clone(), datatype.clone());
@@ -277,7 +277,7 @@ fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
 
         let body_type = validate_expr(&func_context, &func_body)?;
         if !body_type.is_assignable_to(&declared_return_type) {
-            return Err(IntepreterError
+            return Err(InterpreterError
                 ::bad_return_type(declared_return_type, &body_type).into());
         }
         Ok(func_type)
@@ -285,7 +285,7 @@ fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
         let FuncBody::Expr(func_body) = &function.body else {
             // this should never happen
             let message = "Function type is undecidable".to_string();
-            return Err(IntepreterError::TypeError { message }.into());
+            return Err(InterpreterError::TypeError { message }.into());
         };
 
         let func_type = Type::Func {
@@ -368,7 +368,7 @@ fn validate_let(context: &TypeContext, node: &LetNode) -> SubResult {
     };
 
     if !expr_type.is_assignable_to(&declared_type) {
-        let err = IntepreterError::UnexpectedType {
+        let err = InterpreterError::UnexpectedType {
             got: expr_type,
             expected: declared_type
         };
@@ -434,7 +434,7 @@ mod test_validate {
         #[case("-\"str\";", error::unary_op_type("-", Type::String))]
         fn it_returns_error_for_bad_negated_types(
             #[case] input: &str,
-            #[case] error: IntepreterError,
+            #[case] error: InterpreterError,
         ) {
             let tree = make_tree(input);
             assert_eq!(validate_fresh(tree), Err(vec![error]));
@@ -477,7 +477,7 @@ mod test_validate {
         // both args undefined
         #[case("x + y - z;", ["x", "y", "z"].map(error::undefined_id).to_vec())]
         fn it_returns_error_for_child_error(
-            #[case] input: &str, #[case] errors: Vec<IntepreterError>
+            #[case] input: &str, #[case] errors: Vec<InterpreterError>
         ) {
             // symbol does not exist
             let tree = make_tree(input);
@@ -565,7 +565,7 @@ mod test_validate {
         #[test]
         fn it_returns_error_for_non_bool_condition() {
             let input = make_tree("if (3) false else true;");
-            let expected = IntepreterError::InvalidType { datatype: Type::Int };
+            let expected = InterpreterError::InvalidType { datatype: Type::Int };
 
             assert_eq!(validate_fresh(input), Err(vec![expected]));
         }
@@ -575,8 +575,8 @@ mod test_validate {
             let input = make_tree("if (1) 2 else \"\";");
 
             let expected = vec![
-                IntepreterError::InvalidType { datatype: Type::Int },
-                IntepreterError::MismatchedTypes {
+                InterpreterError::InvalidType { datatype: Type::Int },
+                InterpreterError::MismatchedTypes {
                     type1: Type::Int,
                     type2: Type::String
                 },
@@ -598,7 +598,7 @@ mod test_validate {
         fn it_returns_error_for_undefined_function() {
             let input = make_tree("test(5);");
             let expected = vec![
-                IntepreterError::UndefinedError { id: "test".into() }
+                InterpreterError::UndefinedError { id: "test".into() }
             ];
             assert_eq!(validate_fresh(input), Err(expected));
         }
@@ -610,7 +610,7 @@ mod test_validate {
             let mut program = Program::init_with_std_streams();
             program.type_context.insert("five".into(), Type::Int);
             
-            let err = IntepreterError::not_a_function(&Term::Id("five".into()));
+            let err = InterpreterError::not_a_function(&Term::Id("five".into()));
             assert_eq!(validate(&program, &tree), Err(vec![err]));
         }
 
@@ -619,7 +619,7 @@ mod test_validate {
             let tree = make_tree("f(1, 2, 3);");
             let program = make_program_with_func("f", vec![Type::Int]);
 
-            let err = IntepreterError::ArgCount { got: 3, expected: 1 };
+            let err = InterpreterError::ArgCount { got: 3, expected: 1 };
             assert_eq!(validate(&program, &tree), Err(vec![err])); 
         }
 
@@ -630,8 +630,8 @@ mod test_validate {
                 make_program_with_func("f", vec![Type::Int, Type::Bool]);
 
             let errs = vec![
-                IntepreterError::UnexpectedType { got: Type::Bool, expected: Type::Int },
-                IntepreterError::UnexpectedType { got: Type::String, expected: Type::Bool },
+                InterpreterError::UnexpectedType { got: Type::Bool, expected: Type::Int },
+                InterpreterError::UnexpectedType { got: Type::String, expected: Type::Bool },
             ];
             assert_eq!(validate(&program, &tree), Err(errs));
         }
@@ -715,24 +715,24 @@ mod test_validate {
         #[case::undefined_symbol("(y: int) -> x;", &[error::undefined_id("x")])]
         #[case::bad_return_type(
             "(): bool -> \"\";",
-            &[IntepreterError::bad_return_type(&Type::Bool, &Type::String)]
+            &[InterpreterError::bad_return_type(&Type::Bool, &Type::String)]
         )]
         #[case::reused_parameter(
             "(x: int) -> (y: bool) -> (x: int) -> x;",
-            &[IntepreterError::ReassignError { id: "x".into() }]
+            &[InterpreterError::ReassignError { id: "x".into() }]
         )]
         #[case::many_reused_parameters(
             "(x: int, y: int) -> (y: string, a: int, x: null) -> null;",
             &[
-                IntepreterError::ReassignError { id: "y".into() },
-                IntepreterError::ReassignError { id: "x".into() }
+                InterpreterError::ReassignError { id: "y".into() },
+                InterpreterError::ReassignError { id: "x".into() }
             ]
         )]
         #[case::recursive_function_without_return_type(
             "let f(x: int) -> f(x - 1);",
-            &[IntepreterError::UndefinedError { id: "f".into() }]
+            &[InterpreterError::UndefinedError { id: "f".into() }]
         )]
-        fn it_returns_error(#[case] input: &str, #[case] errors: &[IntepreterError]) {
+        fn it_returns_error(#[case] input: &str, #[case] errors: &[InterpreterError]) {
             let tree = make_tree(input);
             assert_eq!(validate_fresh(tree), Err(errors.to_vec()));
         }
@@ -808,7 +808,7 @@ mod test_validate {
             #[case] actual: Type,
         ) {
             let tree = make_tree(input);
-            let error = IntepreterError::UnexpectedType {
+            let error = InterpreterError::UnexpectedType {
                 got: actual,
                 expected: declared,
             };
@@ -821,7 +821,7 @@ mod test_validate {
             program.type_context.insert("a".to_string(), Type::Unknown);
 
             let tree = make_tree("let b: int = a;");
-            let error = IntepreterError::UnexpectedType {
+            let error = InterpreterError::UnexpectedType {
                 got: Type::Unknown,
                 expected: Type::Int
             };
