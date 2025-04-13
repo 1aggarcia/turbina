@@ -109,13 +109,10 @@ pub fn run_as_file(
 
     // evaluate validated statements
     for statement in statements {
-        match evaluate_statement(&mut program, &statement) {
-            Ok(result) => writeln!(program.output.stdout, "{result}")?,
-            Err(err) => {
-                writeln!(program.output.stderr, "{err}")?;
-                break;
-            },
-        };
+        if let Err(err) = evaluate_statement(&mut program, &statement) {
+            writeln!(program.output.stderr, "{err}")?;
+            break;
+        }
     }
     Ok(())
 }
