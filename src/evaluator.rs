@@ -107,6 +107,15 @@ fn eval_func_call(context: &mut EvalContext, call: &FuncCall) -> Literal {
     eval_expr(&mut function_context, &function_body)
 }
 
+/// Evaluates all expressions in the list passed in
+fn eval_list(context: &mut EvalContext, list: &Vec<Expr>) -> Literal {
+    let literals = list
+        .iter()
+        .map(|expr| eval_expr(context, expr))
+        .collect();
+    Literal::List(literals)
+}
+
 fn eval_term(context: &mut EvalContext, term: &Term) -> Literal {
     #[inline(always)]
     fn eval_negated(context: &mut EvalContext, inner_term: &Term) -> Literal {
@@ -125,6 +134,7 @@ fn eval_term(context: &mut EvalContext, term: &Term) -> Literal {
         Term::Expr(expr) => eval_expr(context, expr),
         Term::FuncCall(call) => eval_func_call(context, call),
         Term::NotNull(term) => eval_term(context, term),
+        Term::List(list) => eval_list(context, list),
     }
 }
 
@@ -210,7 +220,7 @@ fn literal_to_string(literal: Literal) -> Option<String> {
 
 #[cfg(test)]
 mod test_evalutate {
-    use crate::{models::test_utils::term_tree, parser::test_utils::make_tree};
+    use crate::{models::test_utils::*, parser::test_utils::make_tree};
 
     use super::*;
     use rstest::rstest;
@@ -344,6 +354,24 @@ mod test_evalutate {
     ) {
         let input = make_tree(input);
         let expected = Literal::Bool(expected_val);
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_evaluates_list_of_literals() {
+        let input = make_tree("[1, 2, 3];");
+        let expected = Literal::List(
+            vec![Literal::Int(1), Literal::Int(2), Literal::Int(3)]
+        );
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_evaluates_list_of_expressions() {
+        let input = make_tree("[false && true, (() -> 15)()];");
+        let expected = Literal::List(
+            vec![Literal::Bool(false), Literal::Int(15)]
+        );
         assert_eq!(evaluate_fresh(input), expected);
     }
 

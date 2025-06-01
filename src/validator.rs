@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{
@@ -192,6 +192,34 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
     if errors.is_empty() { Ok(*output_type) } else { Err(errors) }
 }
 
+/// Determines the strictest type that applies to all elements in the list
+fn validate_list(context: &TypeContext, list: &Vec<Expr>) -> SubResult {
+    let mut list_types = HashSet::<Type>::new();
+    let mut contains_null = false;
+
+    for element in list {
+        let element_type = validate_expr(context, &element)?;
+        if element_type == Type::Null {
+            contains_null = true;
+        } else {
+            list_types.insert(element_type);
+        }
+    }
+    let list_type = if list_types.is_empty() && contains_null {
+        Type::Null
+    } else if list_types.len() != 1 {
+        Type::Unknown
+    } else {
+        let raw_type = list_types.iter().next().unwrap().clone();
+        if contains_null {
+            Type::Nullable(Box::new(raw_type))
+        } else {
+            raw_type
+        }
+    };
+    Ok(Type::List(Box::new(list_type)))
+}
+
 /// For literals, check that the type matches any unary operators.
 /// 
 /// For non-literals, check that they exist and their type matches any
@@ -204,13 +232,14 @@ fn validate_term(context: &TypeContext, term: &Term) -> SubResult {
         Term::Minus(term) => validated_negated_int(context, term),
         Term::Expr(expr) => validate_expr(context, expr),
         Term::FuncCall(call) => validate_func_call(context, call),
+        Term::List(list) => validate_list(context, list),
         Term::NotNull(term) => {
             let datatype = validate_term(context, term)?;
             if let Type::Nullable(inner_type) = datatype {
                 return Ok(*inner_type);
             }
             Ok(datatype)
-        }
+        },
     }
 }
 
@@ -221,6 +250,8 @@ fn get_literal_type(literal: &Literal) -> SubResult {
         Literal::Int(_) => Type::Int,
         Literal::String(_) => Type::String,
         Literal::Null => Type::Null,
+        Literal::List(list) =>
+            panic!("Literal list created before evaluation: {:?}", list), 
         Literal::Closure(closure) =>
             panic!("Closure created before evaluation: {:?}", closure),
     };
@@ -438,6 +469,26 @@ mod test_validate {
         ) {
             let tree = make_tree(input);
             assert_eq!(validate_fresh(tree), Err(vec![error]));
+        }
+
+        #[rstest]
+        #[case::string_list(r#"["one", "two", "three"];"#, Type::String)]
+        #[case::bool_list("[false, true];", Type::Bool)]
+        #[case::many_types(r#"["abc", 123, true];"#, Type::Unknown)]
+        #[case::many_types_and_null(r#"["abc", null, true];"#, Type::Unknown)]
+        #[case::empty_list("[];", Type::Unknown)]
+        #[case::null(r#"[null, null, null];"#, Type::Null)]
+        #[case::nullable_int_list(
+            r#"[1, 4, null, 5];"#,
+            Type::Nullable(Box::new(Type::Int))
+        )]
+        fn it_determines_strictest_type_for_lists(
+            #[case] input: &str,
+            #[case] list_type: Type,
+        ) {
+            let tree = make_tree(input);
+            let expected = Type::List(Box::new(list_type));
+            assert_eq!(validate_fresh(tree), ok_without_binding(expected));
         }
     }
 

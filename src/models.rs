@@ -139,6 +139,7 @@ pub enum Literal {
     String(String),
     Bool(bool),
     Closure(Closure),
+    List(Vec<Literal>),
     Null,
 }
 
@@ -149,6 +150,14 @@ impl std::fmt::Display for Literal {
             Self::String(s) => write!(f, "\"{s}\""),
             Self::Bool(s) => write!(f, "{s}"),
             Self::Closure(_) => write!(f, "<function>"),
+            Self::List(list) => {
+                let string_representation = list
+                    .iter()
+                    .map(|elem| elem.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "[{}]", string_representation)
+            },
             Self::Null => write!(f, "null"),
         }
     }
@@ -167,7 +176,7 @@ pub enum FuncBody {
     Native(fn(Vec<Literal>, &mut EvalContext) -> Literal)
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub enum Type {
     // primitives
     Int,
@@ -178,6 +187,7 @@ pub enum Type {
     // compound types
     Nullable(Box<Type>),
     Func { input: Vec<Type>, output: Box<Type> },
+    List(Box<Type>),
 
     // type that includes all values
     Unknown,
@@ -191,6 +201,7 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Unknown => write!(f, "unknown"),
             Type::Null => write!(f, "null"),
+            Type::List(element_type) => write!(f, "{element_type}[]"),
             Type::Func { input, output } => {
                 // don't show parentheses for functions with one argument
                 if input.len() == 1 {
@@ -331,6 +342,7 @@ pub enum Term {
     Not(Box<Term>),  // negate boolean terms
     Minus(Box<Term>),  // negate int terms
     NotNull(Box<Term>),
+    List(Vec<Expr>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -430,6 +442,10 @@ pub mod test_utils {
 
     pub fn str_term(string: &str) -> Term {
         Term::Literal(Literal::String(string.into()))
+    }
+
+    pub fn bool_term(boolean: bool) -> Term {
+        Term::Literal(Literal::Bool(boolean))
     }
 
     pub fn term_tree(term: Term) -> AbstractSyntaxTree {
