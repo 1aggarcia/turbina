@@ -176,7 +176,7 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
         };
         return Err(vec![err]);
     }
-    
+
     let mut errors = vec![];
     for (arg, param_type) in call.args.iter().zip(param_types.iter()) {
         let arg_type = validate_expr(context, arg)?;
@@ -194,6 +194,9 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
 
 /// Determines the strictest type that applies to all elements in the list
 fn validate_list(context: &TypeContext, list: &Vec<Expr>) -> SubResult {
+    if list.is_empty() {
+        return Ok(Type::EmptyList);
+    }
     let mut list_types = HashSet::<Type>::new();
     let mut contains_null = false;
 
@@ -212,12 +215,12 @@ fn validate_list(context: &TypeContext, list: &Vec<Expr>) -> SubResult {
     } else {
         let raw_type = list_types.iter().next().unwrap().clone();
         if contains_null {
-            Type::Nullable(Box::new(raw_type))
+            raw_type.to_nullable()
         } else {
             raw_type
         }
     };
-    Ok(Type::List(Box::new(list_type)))
+    Ok(list_type.to_list())
 }
 
 /// For literals, check that the type matches any unary operators.
@@ -327,7 +330,7 @@ fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
     }
 }
 
-/// Check that the id exists in the program's type enviornment
+/// Check that the id exists in the program's type environment
 /// The id may not have an associated value until evaluation
 fn validate_id(context: &TypeContext, id: &String) -> SubResult {
     context.lookup(id).ok_or(error::undefined_id(id).into())
@@ -476,11 +479,10 @@ mod test_validate {
         #[case::bool_list("[false, true];", Type::Bool)]
         #[case::many_types(r#"["abc", 123, true];"#, Type::Unknown)]
         #[case::many_types_and_null(r#"["abc", null, true];"#, Type::Unknown)]
-        #[case::empty_list("[];", Type::Unknown)]
         #[case::null(r#"[null, null, null];"#, Type::Null)]
         #[case::nullable_int_list(
             r#"[1, 4, null, 5];"#,
-            Type::Nullable(Box::new(Type::Int))
+            Type::Int.to_nullable()
         )]
         fn it_determines_strictest_type_for_lists(
             #[case] input: &str,
@@ -488,6 +490,13 @@ mod test_validate {
         ) {
             let tree = make_tree(input);
             let expected = Type::List(Box::new(list_type));
+            assert_eq!(validate_fresh(tree), ok_without_binding(expected));
+        }
+
+        #[test]
+        fn it_returns_correct_empty_list_type() {
+            let tree = make_tree("[];");
+            let expected = Type::EmptyList;
             assert_eq!(validate_fresh(tree), ok_without_binding(expected));
         }
     }
@@ -827,6 +836,21 @@ mod test_validate {
             "f",
             Type::func(&[Type::Int], Type::Unknown)
         )]
+        #[case::list_with_explicit_type(
+            "let x: int[] = [1];",
+            "x",
+            Type::Int.to_list(),
+        )]
+        #[case::empty_list(
+            "let x: string[] = [];",
+            "x",
+            Type::String.to_list(),
+        )]
+        #[case::nullable_list_with_only_null(
+            "let x: string?[] = [null, null];",
+            "x",
+            Type::String.to_nullable().to_list(),
+        )]
         fn it_returns_correct_type(
             #[case] input: &str,
             #[case] symbol: &str,
@@ -852,6 +876,11 @@ mod test_validate {
             "let f: (unknown -> int) = (x: int): unknown -> null;",
             Type::func(&[Type::Unknown], Type::Int),
             Type::func(&[Type::Int], Type::Unknown),
+        )]
+        #[case::empty_list(
+            "let x: string = [];",
+            Type::String,
+            Type::EmptyList,
         )]
         fn it_returns_type_error_for_conflicting_types(
             #[case] input: &str,

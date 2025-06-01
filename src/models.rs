@@ -183,6 +183,7 @@ pub enum Type {
     String,
     Bool,
     Null,
+    EmptyList,
 
     // compound types
     Nullable(Box<Type>),
@@ -201,7 +202,14 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Unknown => write!(f, "unknown"),
             Type::Null => write!(f, "null"),
-            Type::List(element_type) => write!(f, "{element_type}[]"),
+            Type::EmptyList => write!(f, "[]"),
+            Type::List(element_type) => {
+                if matches!(**element_type, Type::Func { .. }) {
+                    write!(f, "({})[]", element_type)
+                } else {
+                    write!(f, "{}[]", element_type)
+                }
+            },
             Type::Func { input, output } => {
                 // don't show parentheses for functions with one argument
                 if input.len() == 1 {
@@ -229,6 +237,11 @@ impl fmt::Display for Type {
 impl Type {
     pub fn func(input: &[Type], output: Type) -> Self {
         Self::Func { input: input.to_vec(), output: Box::new(output) }
+    }
+
+    /// Create a list type from some base type
+    pub fn to_list(self) -> Self {
+        Self::List(Box::new(self))
     }
 
     /// Wrap a type in the nullable type.
@@ -263,6 +276,12 @@ impl Type {
                     .iter()
                     .zip(sub_ins.iter())
                     .all(|(super_in, sub_in)| super_in.is_assignable_to(sub_in))
+            },
+            Type::List(supertype_list) => match self {
+                Type::EmptyList => true,
+                Type::List(subtype_list) =>
+                    subtype_list.is_assignable_to(&supertype_list),
+                _ => false,
             },
             _ => supertype == self,
         }

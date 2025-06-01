@@ -350,7 +350,7 @@ fn parse_id(tokens: &mut TokenStream) -> Result<String> {
     }
 }
 
-/// Type declaractions cannot include function types without parentheses
+/// Type declarations cannot include function types without parentheses
 /// since return types and function bodies are ambiguous 
 ///
 /// e.g. `(): (bool -> bool) -> (x: bool) -> true` is a function that returns a
@@ -371,7 +371,7 @@ fn parse_type_declaration(tokens: &mut TokenStream) -> Result<Type> {
 /// Note the `arg_types` non-terminal cannot be a list of one type, since that
 /// conflicts with a variant of `base_type` 
 /// ```text
-/// <function_type> ::= arg_types "->" <type>
+/// <function_type> ::= <arg_types> "->" <type>
 /// <arg_types> ::= <base_type> | "(" ") | "(" <type> "," <type> {"," <type>} ")"
 /// ```
 fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
@@ -426,7 +426,7 @@ fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
 }
 
 /// ```text
-/// <base_type> ::= Type ["?"] | "(" <type> ")" ["?"]
+/// <base_type> ::= Type ["?"] | "(" <type> ")" ["?"] | <base-type> "[]"
 /// ```
 fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
     if tokens.peek()? == Token::OpenParens {
@@ -447,11 +447,19 @@ fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
     complete_base_type(datatype, tokens)
 }
 
-/// Given a base type, make it nullable if and only if the next token is "?"
+/// Given a base type, recursively wrap it as a list type if the next tokens
+/// are "[]". If the next token is "?", make it a nullable type. Nullable
+/// types cannot be stacked the same way list types can.
 fn complete_base_type(base_type: Type, tokens: &mut TokenStream) -> Result<Type> {
-    if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Nullable)) {
+    if !matches!(base_type, Type::Nullable(..))
+        && next_token_matches(tokens, Token::UnaryOp(UnaryOp::Nullable))
+    {
         tokens.pop()?;
-        Ok(base_type.to_nullable())
+        complete_base_type(base_type.to_nullable(), tokens)
+    } else if next_token_matches(tokens, Token::OpenSquareBracket) {
+        tokens.pop()?;
+        match_next(tokens, Token::CloseSquareBracket)?;
+        complete_base_type(base_type.to_list(), tokens)
     } else {
         Ok(base_type.clone())
     }
@@ -844,6 +852,29 @@ mod test_parse {
             id: "nullableData".into(),
             datatype: Some(Type::String.to_nullable()),
             value: bin_expr(Term::Literal(Literal::Null), vec![]),
+        })]
+        #[case::list_type("let nums: int[] = [1, 2];", LetNode {
+            id: "nums".into(),
+            datatype: Some(Type::Int.to_list()),
+            value: term_expr(Term::List(vec![
+                term_expr(int_term(1)),
+                term_expr(int_term(2)),
+            ]))
+        })]
+        #[case::nested_list_type("let x: string[][][] = [];", LetNode {
+            id: "x".into(),
+            datatype: Some(Type::String.to_list().to_list().to_list()),
+            value: term_expr(Term::List(vec![])),
+        })]
+        #[case::nested_list_and_nullable_types("let x: int?[][]?[] = [];", LetNode {
+            id: "x".into(),
+            datatype: Some(
+                Type::Int.to_nullable()
+                    .to_list()
+                    .to_list().to_nullable()
+                    .to_list()
+            ),
+            value: term_expr(Term::List(vec![])),
         })]
         fn it_parses_var_binding(#[case] input: &str, #[case] expected: LetNode) {
             let input = force_tokenize(input);
