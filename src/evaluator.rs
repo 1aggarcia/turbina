@@ -75,23 +75,22 @@ fn eval_function(context: &mut EvalContext, function: &Function) -> Literal {
     Literal::Closure(closure)
 }
 
-/// Invoke a function with the passed in arguments
-fn eval_func_call(context: &mut EvalContext, call: &FuncCall) -> Literal {
-    let Literal::Closure(closure) = eval_term(context, &call.func) else {
-        panic!("bad type: {:?}", call.func);
-    };
+/// Invoke a function with the passed in arguments.
+/// Made public so that library functions (e.g. map, filter, reduce) can
+/// evaluate user-supplied functions.
+pub fn eval_func_call(
+    context: &mut EvalContext,
+    closure: &Closure, 
+    args: Vec<Literal>,
+) -> Literal {
     let Closure { function, parent_scope } = closure;
-
-    let args: Vec<Literal> = call.args.iter()
-        .map(|a| eval_expr(context, a)).collect();
-
-    let function_body = match function.body {
+    let function_body = match &function.body {
         FuncBody::Native(native_func) => return native_func(args, context),
-        FuncBody::Expr(expr) => *expr,
+        FuncBody::Expr(expr) => expr,
     };
 
     // create local scope with arguments bound to parameters
-    let mut function_bindings = parent_scope;
+    let mut function_bindings = parent_scope.to_owned();
     for ((param_name, _), arg) in function.params.iter().zip(args.iter()) {
         function_bindings.insert(param_name.clone(), arg.clone());
     }
@@ -103,7 +102,6 @@ fn eval_func_call(context: &mut EvalContext, call: &FuncCall) -> Literal {
             parent: Some(&context.scope),
         }
     };
-
     eval_expr(&mut function_context, &function_body)
 }
 
@@ -127,12 +125,22 @@ fn eval_term(context: &mut EvalContext, term: &Term) -> Literal {
         }
     }
 
+    #[inline(always)]
+    fn eval_wrapped_func_call(context: &mut EvalContext, call: &FuncCall) -> Literal {
+        let Literal::Closure(closure) = eval_term(context, &call.func) else {
+            panic!("bad type: {:?}", call.func);
+        };
+        let args: Vec<Literal> = call.args.iter()
+            .map(|a| eval_expr(context, a)).collect();
+        eval_func_call(context, &closure, args)
+    }
+
     match term {
         Term::Literal(lit) => lit.clone(),
         Term::Id(id) => eval_id(context, id),
         Term::Not(t) | Term::Minus(t) => eval_negated(context, t),
         Term::Expr(expr) => eval_expr(context, expr),
-        Term::FuncCall(call) => eval_func_call(context, call),
+        Term::FuncCall(call) => eval_wrapped_func_call(context, call),
         Term::NotNull(term) => eval_term(context, term),
         Term::List(list) => eval_list(context, list),
     }

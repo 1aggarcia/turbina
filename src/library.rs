@@ -4,7 +4,7 @@ use std::io::Write;
 use rand::Rng;
 use once_cell::sync::Lazy;
 
-use crate::models::{EvalContext, FuncBody, Function, Literal, Type};
+use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function, Literal, Type}};
 
 pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     ("reverse", Function {
@@ -92,6 +92,41 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             Literal::Int(num)
         }),
     }),
+    // TODO: replace types with generic types once type parameters are
+    // implemented. This should already work with the type checker off,
+    // there just needs to be typing support for generics.
+
+    // type signature: (T[], T -> R) -> R[]
+    ("map", Function {
+        params: vec![
+            ("list".into(), Type::Int.to_list()),
+            ("mapFunc".into(), Type::func(&[Type::Int], Type::Unknown))
+        ],
+        return_type: Some(Type::Unknown.to_list()),
+        body: FuncBody::Native(lib_map)
+    }),
+    // type signature: (T[], T -> bool) -> T[]
+    ("filter", Function {
+        params: vec![
+            ("list".into(), Type::Int.to_list()),
+            ("predicate".into(), Type::func(&[Type::Int], Type::Bool))
+        ],
+        return_type: Some(Type::Int.to_list()),
+        body: FuncBody::Native(lib_filter)
+    }),
+    // type signature: (T[], (R, T) -> R, R) -> R
+    ("reduce", Function {
+        params: vec![
+            ("list".into(), Type::Int.to_list()),
+            (
+                "reducer".into(),
+                Type::func(&[Type::Int, Type::Int], Type::Unknown)
+            ),
+            ("initValue".into(), Type::Unknown),
+        ],
+        return_type: Some(Type::Unknown.to_list()),
+        body: FuncBody::Native(lib_reduce)
+    }),
 ]});
 
 // TODO: create macro for repeated arg unwrapping
@@ -121,6 +156,59 @@ fn lib_to_string(args: Vec<Literal>) -> String {
         Literal::String(s) => s.clone(),
         _ => data.to_string(),
     }
+}
+
+fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::List(list),
+        Literal::Closure(map_func), 
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    let transformed = list
+        .iter()
+        .map(|elem| eval_func_call(
+            context,
+            &map_func,
+            vec![elem.to_owned()]
+        ))
+        .collect();
+    Literal::List(transformed)
+}
+
+fn lib_filter(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::List(list),
+        Literal::Closure(predicate), 
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    let mut transformed = Vec::with_capacity(list.len());
+    for elem in list {
+        let should_include =
+            eval_func_call(context, &predicate, vec![elem.clone()]);
+        if should_include == Literal::Bool(true) {
+            transformed.push(elem.clone());
+        }
+    }
+    Literal::List(transformed)
+}
+
+fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::List(list),
+        Literal::Closure(reducer),
+        init_value,
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    list
+        .iter()
+        .fold(init_value.clone(), |accumulator, elem| eval_func_call(
+            context,
+            reducer,
+            vec![accumulator.to_owned(), elem.clone()]
+        ))
 }
 
 #[cfg(test)]
@@ -182,6 +270,45 @@ mod test_library {
             assert!(0 <= rand_int);
             assert!(rand_int < 123);
         }
+    }
+
+    #[rstest]
+    #[case::map1(
+        "map([65, 44, 12], (x: int) -> x * 10);",
+        &[650, 440, 120]
+    )]
+    #[case::map2(
+        "map([1, 2, 3, 4, 5], (x: int) -> x % 2);",
+        &[1, 0, 1, 0, 1]
+    )]
+    #[case::filter(
+        "filter([1, 65, 54, 12], (x: int) -> x < 50);",
+        &[1, 12]
+    )]
+    fn test_list_transformations(
+        #[case] input: &str,
+        #[case] expected: &[i32],
+    ) {
+        let expected_list =
+            Literal::List(expected.iter().map(|i| Literal::Int(*i)).collect());
+        assert_eq!(run_cmd(input), expected_list);
+    }
+
+    #[rstest]
+    #[case::empty_list(
+        "reduce([], (x: int, y: int) -> 0, 15);",
+        15
+    )]
+    #[case::nonempty_list(
+        "reduce([1, 2, 3, 4], (x: int, y: int) -> x + y, 10);",
+        20
+    )]
+    #[case::max(
+        "reduce([5, 8, 1, 6], (x: int, y: int) -> if (x > y) x else y, 0);",
+        8
+    )]
+    fn test_reduce(#[case] input: &str, #[case] expected: i32) {
+        assert_eq!(run_cmd(input), Literal::Int(expected));
     }
 
     fn run_cmd(input: &str) -> Literal {
