@@ -459,6 +459,17 @@ mod test_evalutate {
         );
     }
 
+    #[test]
+    fn it_calls_passed_in_function_with_less_args_than_param_type_defines() {
+        let mut program = Program::init_with_std_streams();
+
+        force_evaluate(&mut program, &make_tree(
+            "let callBinaryFunc(binaryFunc: ((int, int) -> int)) -> binaryFunc(4, 14);"));
+        let result = force_evaluate(&mut program, &make_tree(
+            "callBinaryFunc((x: int) -> x * 2);"));
+        assert_eq!(result, Literal::Int(8));
+    }
+
     // evaluate an AST on a new program
     fn evaluate_fresh(tree: AbstractSyntaxTree) -> Literal {
         evaluate(&mut Program::init_with_std_streams(), &tree).unwrap()

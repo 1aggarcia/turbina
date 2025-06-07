@@ -126,20 +126,51 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         return_type: Some(generic_list("T")),
         body: FuncBody::Native(lib_filter)
     }),
-    // type signature: (T[], (R, T) -> R, R) -> R
     ("reduce", Function {
         type_params: vec!["T".into(), "R".into()],
         params: vec![
             ("list".into(), generic_list("T")),
             ("reducer".into(), Type::func(
                 &[generic_type("R"), generic_type("T")],
-                Type::Generic("R".into())
+                generic_type("R")
             )),
             ("initValue".into(), Type::Generic("R".into())),
         ],
         return_type: Some(generic_type("R")),
         body: FuncBody::Native(lib_reduce)
     }),
+    ("makeList", Function {
+        type_params: vec!["T".into()],
+        params: vec![
+            ("length".into(), Type::Int),
+            ("elemFunc".into(), Type::func(
+                &[Type::Int],
+                generic_type("T")
+            ))
+        ],
+        return_type: Some(generic_list("T")),
+        body: FuncBody::Native(|args, context| {
+            let [
+                Literal::Int(length),
+                Literal::Closure(elem_func)
+            ] = args.as_slice() else {
+                panic!("bad args");
+            };
+            if *length < 0 {
+                panic!("Cannot create a list with a negative length");
+            }
+            let mut list = Vec::<Literal>::new();
+            for i in 0..*length {
+                let elem = eval_func_call(
+                    context,
+                    elem_func.clone(),
+                    vec![Literal::Int(i)]
+                );
+                list.push(elem);
+            }
+            Literal::List(list)
+        })
+    })
 ]});
 
 // TODO: create macro for repeated arg unwrapping
@@ -338,6 +369,26 @@ mod test_library {
     )]
     fn test_reduce(#[case] input: &str, #[case] expected: i32) {
         assert_eq!(run_cmd(input), Literal::Int(expected));
+    }
+
+    #[test]
+    fn test_make_int_list() {
+        let expected = [0, 1, 2, 3, 4]
+            .iter().map(|i| Literal::Int(*i)).collect();
+        assert_eq!(
+            run_cmd("makeList(5, (i: int) -> i);"),
+            Literal::List(expected)
+        )
+    }
+
+    #[test]
+    fn test_make_string_list() {
+        let expected = ["", "", "", "", "", "", "", "", ""]
+            .iter().map(|i| Literal::String(i.to_string())).collect();
+        assert_eq!(
+            run_cmd(r#"makeList(9, () -> "");"#),
+            Literal::List(expected)
+        )
     }
 
     fn run_cmd(input: &str) -> Literal {

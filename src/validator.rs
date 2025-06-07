@@ -697,6 +697,16 @@ mod test_validate {
         }
 
         #[test]
+        fn it_returns_ok_for_function_passed_in_with_less_args_than_param_type() {
+            // passed in function only has one arg
+            let tree = make_tree("f((arg: int) -> null);");
+            // function definition has a param with a function with two args
+            let param_type = Type::func(&[Type::Int, Type::Bool], Type::Null);
+            let program = make_program_with_func("f", vec![param_type]);
+            assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
+        }
+
+        #[test]
         fn it_returns_ok_for_empty_defined_function() {
             let tree = make_tree("randInt();");
             let program = make_program_with_func("randInt",  vec![]);
@@ -711,7 +721,7 @@ mod test_validate {
         }
 
         /// Create a `Program` with a function of name `name`,
-        /// and input types `params`, and return type int in the type context
+        /// and input types `params`, and return type `int` in the type context
         fn make_program_with_func(name: &str, params: Vec<Type>) -> Program {
             let func_type = Type::Func { input: params, output: Box::new(Type::Int) };
 

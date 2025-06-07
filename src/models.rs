@@ -289,7 +289,7 @@ impl Type {
                 if !sub_out.is_assignable_to(&super_out) {
                     return false;
                 }
-                if super_ins.len() != sub_ins.len() {
+                if super_ins.len() < sub_ins.len() {
                     return false;
                 }
                 // all inputs that the supertype accepts must be accepted by the subtype
