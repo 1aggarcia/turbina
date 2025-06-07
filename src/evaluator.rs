@@ -14,26 +14,28 @@ pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Result<Lite
             parent: None,
         }
     };
+    // TODO: remove reference, this should be able to consume the tree
+    let owned_tree: AbstractSyntaxTree = tree.clone();
 
     // TODO: integrate result type into helpers below for runtime errors
-    Ok(match tree {
+    Ok(match owned_tree {
         AbstractSyntaxTree::Let(node) => eval_let(&mut global_context, node),
         AbstractSyntaxTree::Expr(node) => eval_expr(&mut global_context, node),
     })
 }
 
 /// Bind an expression to a name
-fn eval_let(context: &mut EvalContext, node: &LetNode) -> Literal {
+fn eval_let(context: &mut EvalContext, node: LetNode) -> Literal {
     if context.scope.bindings.contains_key(&node.id) {
         panic!("variable '{}' already defined", node.id);
     }
-    let literal_value = eval_expr(context, &node.value);
-    context.scope.bindings.insert(node.id.clone(), literal_value.clone());
+    let literal_value = eval_expr(context, node.value);
+    context.scope.bindings.insert(node.id, literal_value.clone());
 
     return literal_value;
 }
 
-fn eval_expr(context: &mut EvalContext, expr: &Expr) -> Literal {
+fn eval_expr(context: &mut EvalContext, expr: Expr) -> Literal {
     match expr {
         Expr::Binary(b) => eval_binary_expr(context, b),
         Expr::Cond(c) => eval_cond_expr(context, c),
@@ -42,36 +44,36 @@ fn eval_expr(context: &mut EvalContext, expr: &Expr) -> Literal {
 }
 
 /// Reduce a sequence of terms and operators to a single literal
-fn eval_binary_expr(context: &mut EvalContext, expr: &BinaryExpr) -> Literal {
-    let mut result = eval_term(context, &expr.first);
+fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
+    let mut result = eval_term(context, expr.first);
 
-    for (op, term) in &expr.rest {
-        let new_arg = eval_term(context, &term);
-        result = eval_binary_op(result, op, new_arg);
+    for (op, term) in expr.rest {
+        let new_arg = eval_term(context, term);
+        result = eval_binary_op(result, &op, new_arg);
     }
 
     return result;
 }
 
-fn eval_cond_expr(context: &mut EvalContext, expr: &CondExpr) -> Literal {
-    let cond_result = eval_expr(context, &expr.cond);
+fn eval_cond_expr(context: &mut EvalContext, expr: CondExpr) -> Literal {
+    let cond_result = eval_expr(context, *expr.cond);
     match cond_result {
-        Literal::Bool(true) => eval_expr(context, &expr.if_true),
-        Literal::Bool(false) => eval_expr(context, &expr.if_false),
+        Literal::Bool(true) => eval_expr(context, *expr.if_true),
+        Literal::Bool(false) => eval_expr(context, *expr.if_false),
         _ => panic!("TYPE CHECKER FAILED: condition did not evaluate to bool: {cond_result:?}")
     }
 }
 
 /// Returns a closure with the passed in function and parent scope saved to it
-/// (if it is not the global sopce)
-fn eval_function(context: &mut EvalContext, function: &Function) -> Literal {
+/// (if it is not the global scope)
+fn eval_function(context: &mut EvalContext, function: Function) -> Literal {
     let parent_scope = if context.scope.is_local_scope() {
         context.scope.bindings.clone()
     } else {
         HashMap::new()
     };
 
-    let closure = Closure { function: function.clone(), parent_scope };
+    let closure = Closure { function: function, parent_scope };
     Literal::Closure(closure)
 }
 
@@ -80,43 +82,42 @@ fn eval_function(context: &mut EvalContext, function: &Function) -> Literal {
 /// evaluate user-supplied functions.
 pub fn eval_func_call(
     context: &mut EvalContext,
-    closure: &Closure, 
+    closure: Closure, 
     args: Vec<Literal>,
 ) -> Literal {
-    let Closure { function, parent_scope } = closure;
-    let function_body = match &function.body {
+    let Closure { function, mut parent_scope } = closure;
+    let function_body = match function.body {
         FuncBody::Native(native_func) => return native_func(args, context),
         FuncBody::Expr(expr) => expr,
     };
 
     // create local scope with arguments bound to parameters
-    let mut function_bindings = parent_scope.to_owned();
-    for ((param_name, _), arg) in function.params.iter().zip(args.iter()) {
-        function_bindings.insert(param_name.clone(), arg.clone());
+    for ((param_name, _), arg) in function.params.iter().zip(args.into_iter()) {
+        parent_scope.insert(param_name.clone(), arg);
     }
 
     let mut function_context = EvalContext {
         output: context.output,
         scope: Scope {
-            bindings: &mut function_bindings,
+            bindings: &mut parent_scope,
             parent: Some(&context.scope),
         }
     };
-    eval_expr(&mut function_context, &function_body)
+    eval_expr(&mut function_context, *function_body)
 }
 
 /// Evaluates all expressions in the list passed in
-fn eval_list(context: &mut EvalContext, list: &Vec<Expr>) -> Literal {
+fn eval_list(context: &mut EvalContext, list: Vec<Expr>) -> Literal {
     let literals = list
-        .iter()
+        .into_iter()
         .map(|expr| eval_expr(context, expr))
         .collect();
     Literal::List(literals)
 }
 
-fn eval_term(context: &mut EvalContext, term: &Term) -> Literal {
+fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
     #[inline(always)]
-    fn eval_negated(context: &mut EvalContext, inner_term: &Term) -> Literal {
+    fn eval_negated(context: &mut EvalContext, inner_term: Term) -> Literal {
         let inner_result = eval_term(context, inner_term);
         match inner_result {
             Literal::Bool(bool) => Literal::Bool(!bool),
@@ -126,22 +127,22 @@ fn eval_term(context: &mut EvalContext, term: &Term) -> Literal {
     }
 
     #[inline(always)]
-    fn eval_wrapped_func_call(context: &mut EvalContext, call: &FuncCall) -> Literal {
-        let Literal::Closure(closure) = eval_term(context, &call.func) else {
+    fn eval_wrapped_func_call(context: &mut EvalContext, call: FuncCall) -> Literal {
+        let Literal::Closure(closure) = eval_term(context, *call.func.clone()) else {
             panic!("bad type: {:?}", call.func);
         };
-        let args: Vec<Literal> = call.args.iter()
+        let args: Vec<Literal> = call.args.into_iter()
             .map(|a| eval_expr(context, a)).collect();
-        eval_func_call(context, &closure, args)
+        eval_func_call(context, closure, args)
     }
 
     match term {
-        Term::Literal(lit) => lit.clone(),
-        Term::Id(id) => eval_id(context, id),
-        Term::Not(t) | Term::Minus(t) => eval_negated(context, t),
-        Term::Expr(expr) => eval_expr(context, expr),
+        Term::Literal(lit) => lit,
+        Term::Id(id) => eval_id(context, &id),
+        Term::Not(t) | Term::Minus(t) => eval_negated(context, *t),
+        Term::Expr(expr) => eval_expr(context, *expr),
         Term::FuncCall(call) => eval_wrapped_func_call(context, call),
-        Term::NotNull(term) => eval_term(context, term),
+        Term::NotNull(term) => eval_term(context, *term),
         Term::List(list) => eval_list(context, list),
     }
 }
@@ -149,7 +150,7 @@ fn eval_term(context: &mut EvalContext, term: &Term) -> Literal {
 /// Lookup the value stored for a variable name
 fn eval_id(context: &mut EvalContext, id: &str) -> Literal {
     match context.scope.lookup(id) {
-        Some(literal) => literal.clone(),
+        Some(literal) => literal,
 
         // TODO: this should never happen, but use result type anyway
         None => panic!("variable '{}' does not exist", id),

@@ -160,16 +160,18 @@ fn lib_to_string(args: Vec<Literal>) -> String {
 
 fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
-        Literal::List(list),
-        Literal::Closure(map_func), 
+        Literal::List(list_ref),
+        Literal::Closure(map_func_ref), 
     ] = args.as_slice() else {
         panic!("bad args");
     };
+    let list = list_ref.clone();
+    let map_func = map_func_ref.clone();
     let transformed = list
         .iter()
         .map(|elem| eval_func_call(
             context,
-            &map_func,
+            map_func.clone(),
             vec![elem.to_owned()]
         ))
         .collect();
@@ -178,15 +180,17 @@ fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 
 fn lib_filter(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
-        Literal::List(list),
-        Literal::Closure(predicate), 
+        Literal::List(list_ref),
+        Literal::Closure(predicate_ref), 
     ] = args.as_slice() else {
         panic!("bad args");
     };
+    let list = list_ref.clone();
+    let predicate = predicate_ref.clone();
     let mut transformed = Vec::with_capacity(list.len());
     for elem in list {
         let should_include =
-            eval_func_call(context, &predicate, vec![elem.clone()]);
+            eval_func_call(context, predicate.clone(), vec![elem.clone()]);
         if should_include == Literal::Bool(true) {
             transformed.push(elem.clone());
         }
@@ -206,7 +210,7 @@ fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         .iter()
         .fold(init_value.clone(), |accumulator, elem| eval_func_call(
             context,
-            reducer,
+            reducer.clone(),
             vec![accumulator.to_owned(), elem.clone()]
         ))
 }

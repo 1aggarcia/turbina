@@ -63,6 +63,7 @@ impl Scope<'_> {
     /// recursively search the parent scopes until reaching the global scope.
     pub fn lookup(&self, id: &str) -> Option<Literal> {
         match self.bindings.get(id) {
+            // TODO: try to make this return a reference 
             Some(value) => Some(value.clone()),
             None => self.parent
                 .and_then(|parent_scope| parent_scope.lookup(id)),
@@ -346,7 +347,7 @@ impl fmt::Debug for UnaryOp {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum AbstractSyntaxTree {
     Let(LetNode),
     Expr(Expr),
@@ -416,7 +417,7 @@ pub struct Function {
    pub body: FuncBody,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct LetNode {
     pub id: String,
     pub datatype: Option<Type>,
