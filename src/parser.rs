@@ -42,11 +42,14 @@ fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
     }
 
     let next_is_function =
-        tokens.lookahead(0)? == Token::OpenParens
-        && (
+        if tokens.lookahead(0)? == Token::open_type_list() {
+            true
+        } else if tokens.lookahead(0)? != Token::OpenParens {
+            false
+        } else {
             tokens.lookahead(1)? == Token::CloseParens
-            || tokens.lookahead(2)? == Token::Colon
-        );
+            || tokens.lookahead(2)? == Token::Colon 
+        };
 
     if next_is_function {
         let function = parse_function(tokens)?;
@@ -159,12 +162,27 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> Result<CondExpr> {
 }
 
 /// ```text
-/// <function> ::= "(" <param_list> ")" [<type_declaration>] "->" <expr>
+/// <function> ::= [type_param_list] "(" <param_list> ")" [<type_declaration>] "->" <expr>
 /// 
+/// <type_param_list> ::= "<" [Id] {"," Id} ">"
 /// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
 /// ```
 fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
     let mut params = Vec::<(String, Type)>::new();
+    let mut type_params = Vec::<String>::new();
+
+    if tokens.peek()? == Token::open_type_list() {
+        tokens.pop()?;
+        if tokens.peek()? == Token::close_type_list() {
+            return Err(InterpreterError::EmptyTypeList);
+        }
+        type_params.push(parse_id(tokens)?);
+        while tokens.peek()? != Token::close_type_list() {
+            match_next(tokens, Token::Comma)?;
+            type_params.push(parse_id(tokens)?);
+        }
+        match_next(tokens, Token::close_type_list())?;
+    }
 
     match_next(tokens, Token::OpenParens)?;
     while tokens.peek()? != Token::CloseParens {
@@ -187,7 +205,12 @@ fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
     skip_newlines(tokens);
     let body_expr = parse_expr(tokens)?;
 
-    Ok(Function { params, return_type, body: FuncBody::Expr(Box::new(body_expr)) })
+    Ok(Function {
+        type_params,
+        params,
+        return_type,
+        body: FuncBody::Expr(Box::new(body_expr))
+    })
 }
 
 /// ```text
@@ -322,7 +345,10 @@ fn parse_let(tokens: &mut TokenStream) -> Result<LetNode> {
     let id = parse_id(tokens)?;
 
     let includes_type_declaration = tokens.peek()? == Token::Colon;
-    let is_shorthand_function = tokens.peek()? == Token::OpenParens;
+    let is_shorthand_function = [
+        Token::OpenParens,
+        Token::open_type_list()
+    ].contains(&tokens.peek()?);
 
     let datatype = if includes_type_declaration {
         Some(parse_type_declaration(tokens)?)
@@ -441,8 +467,10 @@ fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
         return Ok(Type::Null);
     }
 
-    let Token::Type(datatype) = type_token else {
-        return Err(error::not_a_type(type_token));
+    let datatype = match type_token {
+        Token::Type(literal_type) => literal_type,
+        Token::Id(type_name) => Type::Generic(type_name),
+        _ => return Err(error::not_a_type(type_token)), 
     };
     complete_base_type(datatype, tokens)
 }
@@ -771,26 +799,52 @@ mod test_parse {
         use super::*;
 
         #[rstest]
-        #[case::thunk("() -> 3;", vec![], None, int_term(3))]
+        #[case::thunk("() -> 3;", vec![], vec![], None, int_term(3))]
         #[case::many_params("(x: int, y: string) -> 3;",
-            vec![("x".into(), Type::Int), ("y".into(), Type::String)],
+            vec![],
+            vec![("x", Type::Int), ("y".into(), Type::String)],
             None,
             int_term(3)
         )]
         #[case::declared_return_type("(): bool -> true;",
             vec![],
+            vec![],
             Some(Type::Bool),
             Term::Literal(Literal::Bool(true))
         )]
+        #[case::one_generic_type("<T>(x: T) -> x;",
+            vec!["T"],
+            vec![("x", Type::Generic("T".into()))],
+            None,
+            Term::Id("x".into())
+        )]
+        #[case::many_generic_types("<A, B, C> (a: A, b: B, c: C): C -> null;",
+            vec!["A", "B", "C"],
+            vec![
+                ("a", Type::Generic("A".into())),
+                ("b", Type::Generic("B".into())),
+                ("c", Type::Generic("C".into())),
+            ],
+            Some(Type::Generic("C".into())),
+            Term::Literal(Literal::Null),
+        )]
         fn it_parses_function(
             #[case] input: &str,
-            #[case] params: Vec<(String, Type)>,
+            #[case] type_params: Vec<&str>,
+            #[case] params: Vec<(&str, Type)>,
             #[case] return_type: Option<Type>,
             #[case] body_term: Term,
         ) {
             let tokens = force_tokenize(input);
             let function = Function {
-                params,
+                type_params: type_params
+                    .into_iter()
+                    .map(|t| t.to_owned())
+                    .collect(),
+                params: params
+                    .into_iter()
+                    .map(|(p, t)|(p.to_owned(), t))
+                    .collect(),
                 return_type,
                 body: FuncBody::Expr(Box::new(term_expr(body_term))),
             };
@@ -803,6 +857,13 @@ mod test_parse {
         fn it_returns_error_for_non_id_param() {
             let input = force_tokenize("(x: int, 3: int) => x;");
             let err = error::unexpected_token("identifier", int_token(3));
+            assert_eq!(parse_tokens(input), Err(err));
+        }
+
+        #[test]
+        fn it_returns_error_for_empty_type_param_list() {
+            let input = force_tokenize("<>() -> null;");
+            let err = InterpreterError::EmptyTypeList;
             assert_eq!(parse_tokens(input), Err(err));
         }
     }
@@ -941,8 +1002,8 @@ mod test_parse {
 
         #[test]
         fn it_returns_error_for_invalid_let_type() {
-            let input = force_tokenize("let x: y = z;");
-            let error = error::not_a_type(Token::Id("y".to_string()));
+            let input = force_tokenize("let x: 5 = z;");
+            let error = error::not_a_type(int_token(5));
             assert_eq!(parse_tokens(input), Err(error)); 
         }
 
@@ -978,6 +1039,7 @@ mod test_parse {
                     vec![(BinaryOp::And, bool_term(true))]
                 ),
                 Expr::Function(Function {
+                    type_params: vec![],
                     params: vec![],
                     return_type: None,
                     body: FuncBody::Expr(Box::new(term_expr(int_term(15))))
@@ -1018,6 +1080,10 @@ mod test_parse {
 
     #[rstest]
     #[case::shorthand_function("let not(b: bool) -> !b;", "let not = (b: bool) -> !b;")]
+    #[case::shorthand_function_with_generic_types(
+        "let identity <T> (x: T) -> x;",
+        "let identity = <T> (x: T) -> x;",
+    )]
     #[case::if_else_on_seperate_lines("if (true) 1 else 0;", "
         if (true)
             1

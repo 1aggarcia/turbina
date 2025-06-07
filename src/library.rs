@@ -1,4 +1,4 @@
-// The standard library avaliable anywhere in Turbina
+// The standard library available anywhere in Turbina
 
 use std::io::Write;
 use rand::Rng;
@@ -8,16 +8,19 @@ use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function,
 
 pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     ("reverse", Function {
+        type_params: vec![],
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(lib_reverse),
     }),
     ("exit", Function {
+        type_params: vec![],
         params: vec![("code".into(), Type::Int)],
         return_type: Some(Type::Null),
         body: FuncBody::Native(lib_exit),
     }),
     ("len", Function {
+        type_params: vec![],
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::Int),
         body: FuncBody::Native(|args, _| {
@@ -28,6 +31,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         }),
     }),
     ("uppercase", Function {
+        type_params: vec![],
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
@@ -38,6 +42,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         }),
     }),
     ("lowercase", Function {
+        type_params: vec![],
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
@@ -48,6 +53,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         }),
     }),
     ("printScope", Function {
+        type_params: vec![],
         params: vec![],
         return_type: Some(Type::Null),
         body: FuncBody::Native(|_, context| {
@@ -56,6 +62,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         }),
     }),
     ("toString", Function {
+        type_params: vec![],
         params: vec![("data".into(), Type::Unknown)],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
@@ -63,6 +70,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         }),
     }),
     ("print", Function {
+        type_params: vec![],
         params: vec![("data".into(), Type::Unknown)],
         return_type: Some(Type::Null),
         body: FuncBody::Native(|args, context| {
@@ -71,6 +79,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         }),
     }),
     ("println", Function {
+        type_params: vec![],
         params: vec![("data".into(), Type::Unknown)],
         return_type: Some(Type::Null),
         body: FuncBody::Native(|args, context| {
@@ -79,6 +88,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         }),
     }),
     ("randInt", Function {
+        type_params: vec![],
         params: vec![("min".into(), Type::Int), ("max".into(), Type::Int)],
         return_type: Some(Type::Int),
         body: FuncBody::Native(|args, _| {
@@ -92,39 +102,42 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             Literal::Int(num)
         }),
     }),
-    // TODO: replace types with generic types once type parameters are
-    // implemented. This should already work with the type checker off,
-    // there just needs to be typing support for generics.
-
-    // type signature: (T[], T -> R) -> R[]
     ("map", Function {
+        type_params: vec!["T".into(), "R".into()],
         params: vec![
-            ("list".into(), Type::Int.to_list()),
-            ("mapFunc".into(), Type::func(&[Type::Int], Type::Unknown))
+            ("list".into(), generic_list("T")),
+            ("mapFunc".into(), Type::func(
+                &[generic_type("T")],
+                generic_type("R")
+            ))
         ],
-        return_type: Some(Type::Unknown.to_list()),
+        return_type: Some(generic_list("R")),
         body: FuncBody::Native(lib_map)
     }),
-    // type signature: (T[], T -> bool) -> T[]
     ("filter", Function {
+        type_params: vec!["T".into()],
         params: vec![
-            ("list".into(), Type::Int.to_list()),
-            ("predicate".into(), Type::func(&[Type::Int], Type::Bool))
+            ("list".into(), generic_list("T")),
+            ("predicate".into(), Type::func(
+                &[generic_type("T")],
+                Type::Bool
+            ))
         ],
-        return_type: Some(Type::Int.to_list()),
+        return_type: Some(generic_list("T")),
         body: FuncBody::Native(lib_filter)
     }),
     // type signature: (T[], (R, T) -> R, R) -> R
     ("reduce", Function {
+        type_params: vec!["T".into(), "R".into()],
         params: vec![
-            ("list".into(), Type::Int.to_list()),
-            (
-                "reducer".into(),
-                Type::func(&[Type::Int, Type::Int], Type::Unknown)
-            ),
-            ("initValue".into(), Type::Unknown),
+            ("list".into(), generic_list("T")),
+            ("reducer".into(), Type::func(
+                &[generic_type("R"), generic_type("T")],
+                Type::Generic("R".into())
+            )),
+            ("initValue".into(), Type::Generic("R".into())),
         ],
-        return_type: Some(Type::Unknown.to_list()),
+        return_type: Some(generic_type("R")),
         body: FuncBody::Native(lib_reduce)
     }),
 ]});
@@ -215,6 +228,14 @@ fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         ))
 }
 
+fn generic_type(type_name: &str) -> Type {
+    Type::Generic(type_name.to_string())
+}
+
+fn generic_list(type_name: &str) -> Type {
+    Type::Generic(type_name.to_string()).to_list()
+}
+
 #[cfg(test)]
 mod test_library {
     use rstest::rstest;
@@ -284,6 +305,10 @@ mod test_library {
     #[case::map2(
         "map([1, 2, 3, 4, 5], (x: int) -> x % 2);",
         &[1, 0, 1, 0, 1]
+    )]
+    #[case::map3(
+        r#"map(["a", "bcd", "ef"], (s: string) -> len(s));"#,
+        &[1, 3, 2]
     )]
     #[case::filter(
         "filter([1, 65, 54, 12], (x: int) -> x < 50);",

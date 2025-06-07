@@ -134,6 +134,16 @@ pub enum Token {
     Null,
 }
 
+impl Token {
+    pub fn open_type_list() -> Self {
+        Token::BinaryOp(BinaryOp::LessThan)
+    }
+
+    pub fn close_type_list() -> Self {
+        Token::BinaryOp(BinaryOp::GreaterThan)
+    }
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum Literal {
     Int(i32),
@@ -191,6 +201,9 @@ pub enum Type {
     Func { input: Vec<Type>, output: Box<Type> },
     List(Box<Type>),
 
+    // type variable
+    Generic(String),
+
     // type that includes all values
     Unknown,
 }
@@ -223,6 +236,7 @@ impl fmt::Display for Type {
 
                 write!(f, "({}) -> {}", args, output)
             },
+            Type::Generic(id) => write!(f, "{}", id),
             Type::Nullable(datatype) => {
                 // nullable functions are ambiguous without parentheses
                 if matches!(**datatype, Type::Func {..}) {
@@ -258,8 +272,14 @@ impl Type {
 
     /// Returns true if and only if this type is a valid member of the supertype
     pub fn is_assignable_to(&self, supertype: &Type) -> bool {
+        // TODO: this essentially bypasses type checking, use a type context
+        // and perform proper type checking with type parameters
+        if matches!(self, Self::Generic(_)) {
+            return true;
+        }
         match supertype {
             Type::Unknown => true,
+            Type::Generic(_) => true,
             Type::Nullable(inner_type) =>
                 [&Type::Null, &**inner_type].contains(&self),
             Type::Func { input: super_ins, output: super_out } => {
@@ -412,9 +432,10 @@ pub struct CondExpr {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Function {
-   pub params: Vec<(String, Type)>,
-   pub return_type: Option<Type>,
-   pub body: FuncBody,
+    pub type_params: Vec<String>,
+    pub params: Vec<(String, Type)>,
+    pub return_type: Option<Type>,
+    pub body: FuncBody,
 }
 
 #[derive(Debug, PartialEq, Clone)]
