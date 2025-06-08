@@ -466,7 +466,7 @@ struct ListParserConfig<T> {
 /// Utility to parse lists of any type of element and with any open/closing
 /// brackets (e.g. [], (), <>)
 /// ```text
-/// <generic_list> ::= <opening_token> [<item> {"," <item>}] <closing_token>
+/// <generic_list> ::= <opening_token> [<item> {"," <item>} [","]] <closing_token>
 /// ```
 fn parse_list<T>(
     tokens: &mut TokenStream,
@@ -482,8 +482,10 @@ fn parse_list<T>(
             match_next(tokens, Token::Comma)?;
         }
         skip_newlines(tokens);
-        let next_item = (config.item_parser)(tokens)?;
-        items.push(next_item);
+        if tokens.peek()? != config.closing_token {
+            let next_item = (config.item_parser)(tokens)?;
+            items.push(next_item);
+        }
     }
     skip_newlines(tokens);
     match_next(tokens, config.closing_token)?;
@@ -1111,6 +1113,16 @@ mod test_parse {
 
             2);
     ")]
+    #[case::function_args_with_trailing_comma("randInt(1, 2);", "
+        randInt(
+            1,
+            2,
+        );
+    ")]
+    #[case::list_with_trailing_comma("[1,2,3,4,5];", "[
+        1, 2,
+        3, 4, 5,
+    ];")]
     fn it_parses_equivalent_statements(#[case] vers1: &str, #[case] vers2: &str) {
         let res1 = parse_tokens(force_tokenize(vers1));
         let res2 = parse_tokens(force_tokenize(vers2));
