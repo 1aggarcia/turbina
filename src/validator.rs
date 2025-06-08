@@ -215,12 +215,12 @@ fn validate_list(context: &TypeContext, list: &Vec<Expr>) -> SubResult {
     } else {
         let raw_type = list_types.iter().next().unwrap().clone();
         if contains_null {
-            raw_type.to_nullable()
+            raw_type.as_nullable()
         } else {
             raw_type
         }
     };
-    Ok(list_type.to_list())
+    Ok(list_type.as_list())
 }
 
 /// For literals, check that the type matches any unary operators.
@@ -442,7 +442,7 @@ mod test_validate {
 
         #[rstest]
         #[case(Type::String, Type::String)]
-        #[case(Type::Int.to_nullable(), Type::Int)]
+        #[case(Type::Int.as_nullable(), Type::Int)]
         fn it_performs_non_null_assertion(
             #[case] symbol_type: Type,
             #[case] casted_type: Type
@@ -482,7 +482,7 @@ mod test_validate {
         #[case::null(r#"[null, null, null];"#, Type::Null)]
         #[case::nullable_int_list(
             r#"[1, 4, null, 5];"#,
-            Type::Int.to_nullable()
+            Type::Int.as_nullable()
         )]
         fn it_determines_strictest_type_for_lists(
             #[case] input: &str,
@@ -580,8 +580,8 @@ mod test_validate {
 
         #[rstest]
         #[case(Type::Unknown, Type::Int)]
-        #[case(Type::String, Type::String.to_nullable())]
-        #[case(Type::Null, Type::String.to_nullable())]
+        #[case(Type::String, Type::String.as_nullable())]
+        #[case(Type::Null, Type::String.as_nullable())]
         fn it_returns_ok_for_equality_of_comparable_types(
             #[case] type_a: Type, #[case] type_b: Type
         ) {
@@ -600,7 +600,7 @@ mod test_validate {
 
         #[rstest]
         #[case(Type::Int, Type::String)]
-        #[case(Type::Int.to_nullable(), Type::String.to_nullable())]
+        #[case(Type::Int.as_nullable(), Type::String.as_nullable())]
         fn it_returns_error_for_equality_of_disjoint_types(
             #[case] type_a: Type, #[case] type_b: Type
         ) {
@@ -838,9 +838,9 @@ mod test_validate {
             "let f: unknown = () -> 3;", "f", Type::Unknown)]
 
         #[case::int_as_nullable_type(
-            "let n: int? = 3;", "n", Type::Int.to_nullable())]
+            "let n: int? = 3;", "n", Type::Int.as_nullable())]
         #[case::null_as_nullable_type(
-                "let n: int? = null;", "n", Type::Int.to_nullable())]
+                "let n: int? = null;", "n", Type::Int.as_nullable())]
         #[case::func_with_explicit_type(
             "let f: (int -> unknown) = (x: unknown): int -> 0;",
             "f",
@@ -849,17 +849,17 @@ mod test_validate {
         #[case::list_with_explicit_type(
             "let x: int[] = [1];",
             "x",
-            Type::Int.to_list(),
+            Type::Int.as_list(),
         )]
         #[case::empty_list(
             "let x: string[] = [];",
             "x",
-            Type::String.to_list(),
+            Type::String.as_list(),
         )]
         #[case::nullable_list_with_only_null(
             "let x: string?[] = [null, null];",
             "x",
-            Type::String.to_nullable().to_list(),
+            Type::String.as_nullable().as_list(),
         )]
         fn it_returns_correct_type(
             #[case] input: &str,
@@ -873,7 +873,7 @@ mod test_validate {
         #[test]
         fn it_allows_casted_nullable_value_to_be_assigned_as_not_null() {
             let mut program = Program::init_with_std_streams();
-            program.type_context.insert("nullString".into(), Type::String.to_nullable());
+            program.type_context.insert("nullString".into(), Type::String.as_nullable());
     
             let input = make_tree("let validString: string = nullString!;");
             let expected = ok_with_binding("validString", Type::String);

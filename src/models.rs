@@ -255,12 +255,12 @@ impl Type {
     }
 
     /// Create a list type from some base type
-    pub fn to_list(self) -> Self {
+    pub fn as_list(self) -> Self {
         Self::List(Box::new(self))
     }
 
     /// Wrap a type in the nullable type.
-    pub fn to_nullable(self) -> Self {
+    pub fn as_nullable(self) -> Self {
         if let Type::Nullable(_) = self {
             return self;
         }
@@ -511,7 +511,7 @@ mod test_type {
         let nullable_func = Type::Func {
             input: vec![],
             output: Box::new(Type::Int)
-        }.to_nullable();
+        }.as_nullable();
 
         assert_eq!(format!("{}", nullable_func), "(() -> int)?");
     }
@@ -520,7 +520,7 @@ mod test_type {
     fn test_display_function_with_nullable_return_type() {
         let func = Type::Func {
             input: vec![],
-            output: Box::new(Type::Int.to_nullable())
+            output: Box::new(Type::Int.as_nullable())
         };
         assert_eq!(format!("{}", func), "() -> int?");
     }

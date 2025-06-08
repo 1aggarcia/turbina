@@ -264,7 +264,7 @@ fn generic_type(type_name: &str) -> Type {
 }
 
 fn generic_list(type_name: &str) -> Type {
-    Type::Generic(type_name.to_string()).to_list()
+    Type::Generic(type_name.to_string()).as_list()
 }
 
 #[cfg(test)]

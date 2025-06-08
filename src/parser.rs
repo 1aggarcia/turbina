@@ -168,7 +168,6 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> Result<CondExpr> {
 /// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
 /// ```
 fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
-    let mut params = Vec::<(String, Type)>::new();
     let mut type_params = Vec::<String>::new();
 
     if tokens.peek()? == Token::open_type_list() {
@@ -176,25 +175,20 @@ fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
         if tokens.peek()? == Token::close_type_list() {
             return Err(InterpreterError::EmptyTypeList);
         }
-        type_params.push(parse_id(tokens)?);
-        while tokens.peek()? != Token::close_type_list() {
-            match_next(tokens, Token::Comma)?;
-            type_params.push(parse_id(tokens)?);
-        }
-        match_next(tokens, Token::close_type_list())?;
+        type_params = parse_list(tokens, ListParserConfig {
+            item_parser: parse_id,
+            opening_token: None,
+            closing_token: Token::close_type_list(),
+        })?;
     }
 
-    match_next(tokens, Token::OpenParens)?;
-    while tokens.peek()? != Token::CloseParens {
-        // skip comma for first parameter
-        if !params.is_empty() {
-            match_next(tokens, Token::Comma)?;
-        }
-        let id = parse_id(tokens)?; 
-        let datatype = parse_type_declaration(tokens)?;
-        params.push((id, datatype));
-    }
-    match_next(tokens, Token::CloseParens)?;
+    let params = parse_list(tokens, ListParserConfig {
+        item_parser: |tokens|
+            Ok((parse_id(tokens)?, parse_type_declaration(tokens)?)),
+        opening_token: Some(Token::OpenParens),
+        closing_token: Token::CloseParens,
+    })?;
+
     let return_type = if tokens.peek()? == Token::Colon {
         Some(parse_type_declaration(tokens)?)
     } else {
@@ -249,25 +243,12 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
     if let Token::Literal(lit) = first {
         return Ok(Term::Literal(lit));
     }
-    // TODO: refactor with `complete_term_with_arg_list` for general list parser 
     if Token::OpenSquareBracket == first {
-        let mut elements = Vec::<Expr>::new();
-
-        if tokens.peek()? != Token::CloseSquareBracket {
-            skip_newlines(tokens);
-            elements.push(parse_expr(tokens)?);
-
-            skip_newlines(tokens);
-            while tokens.peek()? == Token::Comma {
-                tokens.pop()?;
-
-                skip_newlines(tokens);
-                elements.push(parse_expr(tokens)?);
-
-                skip_newlines(tokens);
-            }
-        }
-        match_next(tokens, Token::CloseSquareBracket)?;
+        let elements = parse_list(tokens, ListParserConfig {
+            item_parser: parse_expr,
+            opening_token: None,
+            closing_token: Token::CloseSquareBracket,
+        })?;
         return Ok(Term::List(elements));
     }
     let callable = if let Token::Id(id) = first {
@@ -305,25 +286,11 @@ fn complete_term_with_arg_list(
     if !next_token_matches(tokens, Token::OpenParens) {
         return Ok(callable);
     }
-    tokens.pop()?;
-    let mut args = Vec::<Expr>::new();
-
-    if tokens.peek()? != Token::CloseParens {
-        skip_newlines(tokens);
-        args.push(parse_expr(tokens)?);
-
-        skip_newlines(tokens);
-        while tokens.peek()? == Token::Comma {
-            tokens.pop()?;
-
-            skip_newlines(tokens);
-            args.push(parse_expr(tokens)?);
-
-            skip_newlines(tokens);
-        }
-    }
-
-    match_next(tokens, Token::CloseParens)?;
+    let args = parse_list(tokens, ListParserConfig {
+        item_parser: parse_expr,
+        opening_token: Some(Token::OpenParens),
+        closing_token: Token::CloseParens,
+    })?;
 
     let func_call = FuncCall { func: Box::new(callable), args };
     let callable = if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
@@ -432,15 +399,11 @@ fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
         return complete_type(base_type, tokens);
     }
 
-    tokens.pop()?;  // consume "("
-    let mut types_in_parens = vec![];
-    while tokens.peek()? != Token::CloseParens {
-        if !types_in_parens.is_empty() {
-            match_next(tokens, Token::Comma)?;
-        }
-        types_in_parens.push(parse_type(tokens)?);
-    }
-    tokens.pop()?;  // consume ")"
+    let types_in_parens = parse_list(tokens, ListParserConfig {
+        item_parser: parse_type,
+        opening_token: Some(Token::OpenParens),
+        closing_token: Token::CloseParens,
+    })?;
 
     if types_in_parens.len() == 1 {
         let base_type = complete_base_type(types_in_parens[0].clone(), tokens)?;
@@ -483,14 +446,48 @@ fn complete_base_type(base_type: Type, tokens: &mut TokenStream) -> Result<Type>
         && next_token_matches(tokens, Token::UnaryOp(UnaryOp::Nullable))
     {
         tokens.pop()?;
-        complete_base_type(base_type.to_nullable(), tokens)
+        complete_base_type(base_type.as_nullable(), tokens)
     } else if next_token_matches(tokens, Token::OpenSquareBracket) {
         tokens.pop()?;
         match_next(tokens, Token::CloseSquareBracket)?;
-        complete_base_type(base_type.to_list(), tokens)
+        complete_base_type(base_type.as_list(), tokens)
     } else {
         Ok(base_type.clone())
     }
+}
+
+struct ListParserConfig<T> {
+    pub item_parser: fn(&mut TokenStream) -> Result<T>,
+    /// Set to `None` if the first token is already consumed
+    pub opening_token: Option<Token>,
+    pub closing_token: Token,
+}
+
+/// Utility to parse lists of any type of element and with any open/closing
+/// brackets (e.g. [], (), <>)
+/// ```text
+/// <generic_list> ::= <opening_token> [<item> {"," <item>}] <closing_token>
+/// ```
+fn parse_list<T>(
+    tokens: &mut TokenStream,
+    config: ListParserConfig<T>
+) -> Result<Vec<T>> {
+    let mut items = Vec::<T>::new();
+
+    if let Some(token) = config.opening_token {
+        match_next(tokens, token)?;
+    }
+    while tokens.peek()? != config.closing_token {
+        if !items.is_empty() {
+            match_next(tokens, Token::Comma)?;
+        }
+        skip_newlines(tokens);
+        let next_item = (config.item_parser)(tokens)?;
+        items.push(next_item);
+    }
+    skip_newlines(tokens);
+    match_next(tokens, config.closing_token)?;
+    Ok(items)
 }
 
 /// Skip over any newlines at the front of the stream.
@@ -911,12 +908,12 @@ mod test_parse {
         })]
         #[case::nullable_type("let nullableData: string? = null;", LetNode {
             id: "nullableData".into(),
-            datatype: Some(Type::String.to_nullable()),
+            datatype: Some(Type::String.as_nullable()),
             value: bin_expr(Term::Literal(Literal::Null), vec![]),
         })]
         #[case::list_type("let nums: int[] = [1, 2];", LetNode {
             id: "nums".into(),
-            datatype: Some(Type::Int.to_list()),
+            datatype: Some(Type::Int.as_list()),
             value: term_expr(Term::List(vec![
                 term_expr(int_term(1)),
                 term_expr(int_term(2)),
@@ -924,16 +921,16 @@ mod test_parse {
         })]
         #[case::nested_list_type("let x: string[][][] = [];", LetNode {
             id: "x".into(),
-            datatype: Some(Type::String.to_list().to_list().to_list()),
+            datatype: Some(Type::String.as_list().as_list().as_list()),
             value: term_expr(Term::List(vec![])),
         })]
         #[case::nested_list_and_nullable_types("let x: int?[][]?[] = [];", LetNode {
             id: "x".into(),
             datatype: Some(
-                Type::Int.to_nullable()
-                    .to_list()
-                    .to_list().to_nullable()
-                    .to_list()
+                Type::Int.as_nullable()
+                    .as_list()
+                    .as_list().as_nullable()
+                    .as_list()
             ),
             value: term_expr(Term::List(vec![])),
         })]
@@ -948,7 +945,7 @@ mod test_parse {
         #[case::no_args("(() -> bool)", Type::func(&[], Type::Bool))]
         #[case::nullable(
             "(int -> bool)?",
-            Type::func(&[Type::Int], Type::Bool).to_nullable()
+            Type::func(&[Type::Int], Type::Bool).as_nullable()
         )]
         #[case::many_args(
             "((int, string) -> bool)",

@@ -91,7 +91,7 @@ pub mod error {
     }
 
     pub fn unary_op_type(operator: &str, datatype: Type) -> InterpreterError {
-        let message = format!("Cannot apply {} to token of type {:?}", operator, datatype);
+        let message = format!("Cannot apply {} to token of type '{}'", operator, datatype);
         return TypeError { message };
     }
 
