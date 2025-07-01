@@ -25,6 +25,9 @@ struct TypeContext<'a> {
     /// bindings created as function parameters
     parameter_types: &'a HashMap<String, Type>,
 
+    /// the names of type parameters declared in function definitions
+    generic_type_parameters: &'a [String],
+
     /// The name being bound in a statement, if any. This allows recursive
     /// functions to reference themselves in their own definition.
     name_to_bind: Option<String>,
@@ -57,6 +60,18 @@ impl TypeContext<'_> {
             .map(|parent_context| parent_context.contains_parameter(id))
             .unwrap_or(false)  // base case
     }
+
+    /// Recursively search through all type contexts and determine if the
+    /// given generic type has been declared
+    pub fn contains_type_parameter(&self, type_parameter: &String) -> bool {
+        if self.generic_type_parameters.contains(type_parameter) {
+            return true;
+        }
+        self.parent
+            .map(|parent_context|
+                parent_context.contains_type_parameter(type_parameter))
+            .unwrap_or(false)  // base case
+    }
 }
 
 /// Find syntax errors not caught while parsing
@@ -70,6 +85,7 @@ pub fn validate(
     let mut global_context = TypeContext {
         variable_types: &program.type_context,
         parameter_types: &HashMap::new(),
+        generic_type_parameters: &[],
         name_to_bind: None,
         parent: None,
     };
@@ -144,6 +160,8 @@ fn validate_cond_expr(context: &TypeContext, expr: &CondExpr) -> SubResult {
 
     let true_type = validate_expr(context, &expr.if_true)?;
     let false_type = validate_expr(context, &expr.if_false)?;
+    // TODO: find the strictest type that applies to both types instead of
+    // direct type comparison
     if true_type != false_type {
         let err = InterpreterError::MismatchedTypes {
             type1: true_type.clone(),
@@ -261,9 +279,27 @@ fn get_literal_type(literal: &Literal) -> SubResult {
     Ok(datatype)
 }
 
-/// Check that the return type can be resolved with global bindings and new
-/// bindings introduced by the input parameters
+/// Check two assertions:
+/// - That the return type can be resolved with global bindings and new
+///     bindings introduced by the input parameters
+/// - That all generic types used in the function body are declared in either
+///     the function definition or the parent scope.
 fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
+    // if the type is generic, has it been declared?
+    let validate_type_reference = |datatype: &Type| {
+        let Type::Generic(type_param) = datatype else {
+            return Ok(());
+        };
+        if function.type_params.contains(&type_param)
+                || context.contains_type_parameter(&type_param) {
+            Ok(())
+        } else {
+            Err(InterpreterError::UndeclaredGeneric {
+                generic: type_param.into()
+            })
+        }
+    };
+
     let mut param_types = HashMap::<String, Type>::new();
 
     // must also be stored as a list since maps don't have order
@@ -273,6 +309,10 @@ fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
     for (id, datatype) in function.params.clone() {
         if context.contains_parameter(&id) {
             param_errors.push(InterpreterError::ReassignError { id });
+            continue;
+        }
+        if let Err(err) = validate_type_reference(&datatype) {
+            param_errors.push(err);
             continue;
         }
         param_types.insert(id.clone(), datatype.clone());
@@ -286,11 +326,15 @@ fn validate_function(context: &TypeContext, function: &Function) -> SubResult {
     let mut func_context = TypeContext {
         variable_types: &mut HashMap::new(),
         parameter_types: &param_types,
+        generic_type_parameters: &function.type_params,
         name_to_bind: None,
         parent: Some(&context),
     };
 
     if let Some(declared_return_type) = &function.return_type {
+        if let Err(err) = validate_type_reference(declared_return_type) {
+            return Err(err.into());
+        }
         let func_type = Type::Func {
             input: param_type_list,
             output: Box::new(declared_return_type.clone())
@@ -677,7 +721,7 @@ mod test_validate {
         #[test]
         fn it_returns_error_for_wrong_num_args() {
             let tree = make_tree("f(1, 2, 3);");
-            let program = make_program_with_func("f", vec![Type::Int]);
+            let program = make_program_with_func("f", &[Type::Int], Type::Int);
 
             let err = InterpreterError::ArgCount { got: 3, expected: 1 };
             assert_eq!(validate(&program, &tree), Err(vec![err])); 
@@ -686,8 +730,8 @@ mod test_validate {
         #[test]
         fn it_returns_error_for_mismatched_types() {
             let tree = make_tree(r#"f(false, "");"#);
-            let program =
-                make_program_with_func("f", vec![Type::Int, Type::Bool]);
+            let program = make_program_with_func(
+                "f", &[Type::Int, Type::Bool], Type::Int);
 
             let errs = vec![
                 InterpreterError::UnexpectedType { got: Type::Bool, expected: Type::Int },
@@ -702,30 +746,44 @@ mod test_validate {
             let tree = make_tree("f((arg: int) -> null);");
             // function definition has a param with a function with two args
             let param_type = Type::func(&[Type::Int, Type::Bool], Type::Null);
-            let program = make_program_with_func("f", vec![param_type]);
+            let program =
+                make_program_with_func("f", &[param_type], Type::Int);
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_empty_defined_function() {
             let tree = make_tree("randInt();");
-            let program = make_program_with_func("randInt",  vec![]);
+            let program = make_program_with_func("randInt",  &[], Type::Int);
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
 
         #[test]
         fn it_returns_ok_for_multi_arg_function() {
             let tree = make_tree("f(1, false);");
-            let program = make_program_with_func("f",  vec![Type::Int, Type::Bool]);
+            let program = make_program_with_func(
+                "f",  &[Type::Int, Type::Bool], Type::Int);
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
         }
 
-        /// Create a `Program` with a function of name `name`,
-        /// and input types `params`, and return type `int` in the type context
-        fn make_program_with_func(name: &str, params: Vec<Type>) -> Program {
-            let func_type = Type::Func { input: params, output: Box::new(Type::Int) };
+        #[test]
+        fn it_infers_correct_type_from_generic_function_arguments() {
+            let generic_t = || Type::Generic("T".into());
+            let program = make_program_with_func(
+                "f", &[generic_t()], generic_t());
+            let tree = make_tree("f(false);",);
+            assert_eq!(validate(&program, &tree), ok_without_binding(Type::Bool));
+        }
 
+        /// Create a `Program` with a function of name `name`, input types
+        /// `params`, and return type `return_type` in the type context
+        fn make_program_with_func(
+            name: &str,
+            params: &[Type],
+            return_type: Type
+        ) -> Program {
             let mut program = Program::init_with_std_streams();
+            let func_type = Type::func(params, return_type);
             program.type_context.insert(name.to_string(), func_type);
             program
         }
@@ -781,6 +839,26 @@ mod test_validate {
             }));
         }
 
+        #[test]
+        fn it_returns_ok_for_explicit_generic_type() {
+            let input = make_tree("<T>(x: T, y: int) -> x;");
+            let result = validate_fresh(input);
+            assert_eq!(result, ok_without_binding(Type::func(
+                &[generic_t(), Type::Int],
+                generic_t()
+            )))
+        }
+
+        #[test]
+        fn it_returns_ok_for_generic_type_in_nested_function() {
+            let input = make_tree("<T>() -> (x: T): T -> x;");
+            let result = validate_fresh(input);
+            assert_eq!(result, ok_without_binding(Type::func(
+                &[],
+                Type::func(&[generic_t()], generic_t()))
+            ));
+        }
+
         #[rstest]
         #[case::undefined_symbol("(y: int) -> x;", &[error::undefined_id("x")])]
         #[case::bad_return_type(
@@ -802,6 +880,14 @@ mod test_validate {
             "let f(x: int) -> f(x - 1);",
             &[InterpreterError::UndefinedError { id: "f".into() }]
         )]
+        #[case::generic_param_not_in_type_param_list(
+            "(x: T) -> null;",
+            &[InterpreterError::UndeclaredGeneric { generic: "T".into() }]
+        )]
+        #[case::generic_return_type_not_in_type_param_list(
+            "(): T -> null;",
+            &[InterpreterError::UndeclaredGeneric { generic: "T".into() }]
+        )]
         fn it_returns_error(#[case] input: &str, #[case] errors: &[InterpreterError]) {
             let tree = make_tree(input);
             assert_eq!(validate_fresh(tree), Err(errors.to_vec()));
@@ -817,6 +903,10 @@ mod test_validate {
             assert_eq!(validate_fresh(input), ok_with_binding("f", func_type));
         }
 
+        /// shorthand for a generic type 'T'
+        fn generic_t() -> Type {
+            Type::Generic("T".into())
+        }
     }
 
     mod bindings {

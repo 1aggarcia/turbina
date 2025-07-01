@@ -8,17 +8,21 @@ pub type MultiResult<T> = std::result::Result<T, Vec<InterpreterError>>;
 
 custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
+
     TypeError { message: String } = "Type Error: {message}",
     MismatchedTypes { type1: Type, type2: Type } = "Mismatched Types: got {type1} and {type2}",
     InvalidType { datatype: Type } = "Expression of type '{datatype}' not allowed in this position",
     UnexpectedType { got: Type, expected: Type } = "Expression of type '{got}' cannot be assigned to '{expected}'",
+    EmptyTypeList = "Cannot define a function with an empty type parameter list",
+    UndeclaredGeneric { generic: String } =
+        "Cannot use generic type '{generic}' without declaring it in the function definition",
+
     InvalidNullable { inner_type: Type } = "Type '{inner_type}' cannot be made nullable",
     IOError { message: String } = "IO Error: {message}",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",
     UnrecognizedToken { payload: String } = "Unrecognized Token: {payload}",
     ArgCount { got: usize, expected: usize } = "Passed {got} args to function but expected {expected}",
-    EmptyTypeList = "Cannot define a function with an empty type parameter list",
 
     EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS",
 }
