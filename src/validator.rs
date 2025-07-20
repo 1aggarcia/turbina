@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{
@@ -151,30 +151,16 @@ fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
 /// Check that the condition is a boolean type, and the "if" and "else" branches
 /// are of the same type
 fn validate_cond_expr(context: &TypeContext, expr: &CondExpr) -> SubResult {
-    let mut errors = Vec::<InterpreterError>::new();
-
     let cond_type = validate_expr(context, &expr.cond)?;
     if cond_type != Type::Bool {
-        errors.push(InterpreterError::InvalidType { datatype: cond_type });
+        return Err(InterpreterError::InvalidType {
+            datatype: cond_type
+        }.into());
     }
-
     let true_type = validate_expr(context, &expr.if_true)?;
     let false_type = validate_expr(context, &expr.if_false)?;
-    // TODO: find the strictest type that applies to both types instead of
-    // direct type comparison
-    if true_type != false_type {
-        let err = InterpreterError::MismatchedTypes {
-            type1: true_type.clone(),
-            type2: false_type
-        };
-        errors.push(err);
-    }
-
-    if errors.is_empty() {
-        return Ok(true_type);
-    } else {
-        return Err(errors);
-    }
+    let union_type = find_union_type(true_type, false_type);
+    Ok(union_type)
 }
 
 /// Check that the function being called is defined and the input types match
@@ -212,33 +198,44 @@ fn validate_func_call(context: &TypeContext, call: &FuncCall) -> SubResult {
 
 /// Determines the strictest type that applies to all elements in the list
 fn validate_list(context: &TypeContext, list: &Vec<Expr>) -> SubResult {
-    if list.is_empty() {
-        return Ok(Type::EmptyList);
-    }
-    let mut list_types = HashSet::<Type>::new();
-    let mut contains_null = false;
+    let list_type = list
+        .iter()
+        .map(|element| validate_expr(context, element))  
+        .collect::<MultiResult<Vec<Type>>>()?
+        .into_iter()
+        .reduce(find_union_type)
+        .map(|union_type| union_type.as_list())
+        .unwrap_or(Type::EmptyList);
 
-    for element in list {
-        let element_type = validate_expr(context, &element)?;
-        if element_type == Type::Null {
-            contains_null = true;
-        } else {
-            list_types.insert(element_type);
+    Ok(list_type)
+}
+
+/// Returns the strictest type possible that includes both input types
+fn find_union_type(type1: Type, type2: Type) -> Type {
+    if type1 == type2 {
+        type1
+    } else if type1.is_assignable_to(&type2) {
+        type2
+    } else if type2.is_assignable_to(&type1) {
+        type1
+    } else if type1 == Type::Null {
+        type2.as_nullable()
+    } else if type2 == Type::Null {
+        type1.as_nullable()
+    } else {
+        match (type1, type2) {
+            (Type::List(inner_type1), Type::List(inner_type2)) =>
+                find_union_type(*inner_type1, *inner_type2).as_list(),
+
+            (Type::Nullable(inner_type_1), outer_type2) =>
+                find_union_type(*inner_type_1, outer_type2).as_nullable(),
+
+            (outer_type1, Type::Nullable(inner_type2)) =>
+                find_union_type(outer_type1, *inner_type2).as_nullable(),
+
+            _ => Type::Unknown
         }
     }
-    let list_type = if list_types.is_empty() && contains_null {
-        Type::Null
-    } else if list_types.len() != 1 {
-        Type::Unknown
-    } else {
-        let raw_type = list_types.iter().next().unwrap().clone();
-        if contains_null {
-            raw_type.as_nullable()
-        } else {
-            raw_type
-        }
-    };
-    Ok(list_type.as_list())
 }
 
 /// For literals, check that the type matches any unary operators.
@@ -522,7 +519,10 @@ mod test_validate {
         #[case::string_list(r#"["one", "two", "three"];"#, Type::String)]
         #[case::bool_list("[false, true];", Type::Bool)]
         #[case::many_types(r#"["abc", 123, true];"#, Type::Unknown)]
-        #[case::many_types_and_null(r#"["abc", null, true];"#, Type::Unknown)]
+        #[case::many_types_and_null(
+            r#"["abc", null, true];"#,
+            Type::Unknown.as_nullable()
+        )]
         #[case::null(r#"[null, null, null];"#, Type::Null)]
         #[case::nullable_int_list(
             r#"[1, 4, null, 5];"#,
@@ -674,24 +674,35 @@ mod test_validate {
             assert_eq!(validate_fresh(input), Err(vec![expected]));
         }
 
-        #[test]
-        fn it_returns_error_for_mismatched_types() {
-            let input = make_tree("if (1) 2 else \"\";");
-
-            let expected = vec![
-                InterpreterError::InvalidType { datatype: Type::Int },
-                InterpreterError::MismatchedTypes {
-                    type1: Type::Int,
-                    type2: Type::String
-                },
-            ];
-            assert_eq!(validate_fresh(input), Err(expected));
-        }
-
-        #[test]
-        fn it_returns_ok_for_valid_types() {
-            let input = make_tree("if (true) 3 else 4;");
-            assert_eq!(validate_fresh(input), ok_without_binding(Type::Int));
+        #[rstest]
+        #[case::both_int("if (true) 3 else 4;", Type::Int)]
+        #[case::both_string(r#"if (false) "a" else "b";"#, Type::String)]
+        #[case::null_and_primitive(
+            "if (true) null else 3;",
+            Type::Int.as_nullable())
+        ]
+        #[case::disjoint_types(
+            "if (false) 3 else true;",
+            Type::Unknown
+        )]
+        #[case::list_and_empty_list(
+            "if (true) [] else [123];",
+            Type::Int.as_list()
+        )]
+        #[case::unknown_list(
+            r#"if (false) [1] else ["string"];"#,
+            Type::Unknown.as_list()
+        )]
+        #[case::nested_if_else_with_complex_type(
+            "if (false) [] else if (true) null else [() -> 0];",
+            Type::func(&[], Type::Int).as_list().as_nullable()
+        )]
+        fn it_infers_correct_type_for_both_conditions(
+            #[case] input: &str, #[case] expected_type: Type
+        ) {
+            let syntax_tree = make_tree(input);
+            let expected = ok_without_binding(expected_type);
+            assert_eq!(validate_fresh(syntax_tree), expected);
         }
     }
 
@@ -767,7 +778,7 @@ mod test_validate {
         }
 
         #[test]
-        fn it_infers_correct_type_from_generic_function_arguments() {
+        fn it_infers_correct_return_type_from_generic_function_arguments() {
             let generic_t = || Type::Generic("T".into());
             let program = make_program_with_func(
                 "f", &[generic_t()], generic_t());
@@ -931,6 +942,11 @@ mod test_validate {
             "let n: int? = 3;", "n", Type::Int.as_nullable())]
         #[case::null_as_nullable_type(
                 "let n: int? = null;", "n", Type::Int.as_nullable())]
+        #[case::int_as_nullable_unknown(
+            "let x: unknown? = 5;", "x", Type::Unknown.as_nullable())]
+        #[case::null_as_nullable_unknown(
+            "let x: unknown? = null;", "x", Type::Unknown.as_nullable())]
+
         #[case::func_with_explicit_type(
             "let f: (int -> unknown) = (x: unknown): int -> 0;",
             "f",

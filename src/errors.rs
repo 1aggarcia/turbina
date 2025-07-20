@@ -10,7 +10,6 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
 
     TypeError { message: String } = "Type Error: {message}",
-    MismatchedTypes { type1: Type, type2: Type } = "Mismatched Types: got {type1} and {type2}",
     InvalidType { datatype: Type } = "Expression of type '{datatype}' not allowed in this position",
     UnexpectedType { got: Type, expected: Type } = "Expression of type '{got}' cannot be assigned to '{expected}'",
     EmptyTypeList = "Cannot define a function with an empty type parameter list",

@@ -281,7 +281,7 @@ impl Type {
             Type::Unknown => true,
             Type::Generic(_) => true,
             Type::Nullable(inner_type) =>
-                [&Type::Null, &**inner_type].contains(&self),
+                *self == Type::Null || self.is_assignable_to(inner_type),
             Type::Func { input: super_ins, output: super_out } => {
                 let Type::Func { input: sub_ins, output: sub_out } = self else {
                     return false;
