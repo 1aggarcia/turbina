@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Term, Token, Type, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Term, Token, Type, UnaryOp
 };
 
 use crate::errors::{error, InterpreterError, Result};
@@ -33,12 +33,16 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
 }
 
 /// ```text
-/// <expr> ::= <cond_expr> | <function> | <binary_expr>
+/// <expr> ::= <code_block> | <cond_expr> | <function> | <binary_expr>
 /// ```
 fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
     if tokens.peek()? == Token::If {
         let cond_expr = parse_cond_expr(tokens)?;
         return Ok(Expr::Cond(cond_expr));
+    }
+    if tokens.peek()? == Token::OpenCurlyBracket {
+        let code_block = parse_code_block(tokens)?;
+        return Ok(Expr::CodeBlock(code_block));
     }
 
     let next_is_function =
@@ -140,6 +144,40 @@ fn expr_as_term(expr: BinaryExpr) -> Term {
     }
 }
 
+/// <code_block> ::= 
+///     | "{" (<statement> | {<statement>}) [<expr>] "}"
+///     | "{" <expr> "}"
+fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
+    let mut statements = vec![];
+
+    match_next(tokens, Token::OpenCurlyBracket)?;
+    skip_newlines(tokens);
+    while !next_token_matches(tokens, Token::CloseCurlyBracket) {
+        let statement = match tokens.peek()? {
+            Token::Let => AbstractSyntaxTree::Let(parse_let(tokens)?),
+            _ => AbstractSyntaxTree::Expr(parse_expr(tokens)?),
+        };
+        statements.push(statement);
+        let statement_end = tokens.peek()?;
+        match statement_end {
+            Token::Semicolon | Token::Newline => {
+                tokens.pop()?;
+            },
+            // final expression without semicolon allowed, but no more
+            // statements are allowed afterwards
+            _ => break,
+        }
+        skip_newlines(tokens);
+    }
+    match_next(tokens, Token::CloseCurlyBracket)?;
+
+    if statements.is_empty() {
+        return Err(InterpreterError::EmptyCodeBlock);
+    }
+    let code_block = CodeBlock { statements };
+    Ok(code_block)
+}
+
 /// ```text
 /// <cond_expr> ::= If "(" <expr> ")" <expr> Else <expr>
 /// ```
@@ -162,7 +200,8 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> Result<CondExpr> {
 }
 
 /// ```text
-/// <function> ::= [type_param_list] "(" <param_list> ")" [<type_declaration>] "->" <expr>
+/// <function> ::= [type_param_list] "(" <param_list> ")" [<type_declaration>] <function_body>
+/// <function_body> ::= "->" <expr> | <code_block>
 /// 
 /// <type_param_list> ::= "<" [Id] {"," Id} ">"
 /// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
@@ -195,9 +234,13 @@ fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
         None
     };
 
-    match_next(tokens, Token::Arrow)?;
-    skip_newlines(tokens);
-    let body_expr = parse_expr(tokens)?;
+    let body_expr = if tokens.peek()? == Token::OpenCurlyBracket {
+        Expr::CodeBlock(parse_code_block(tokens)?)
+    } else {
+        match_next(tokens, Token::Arrow)?;
+        skip_newlines(tokens);
+        parse_expr(tokens)?
+    };
 
     Ok(Function {
         type_params,
@@ -723,7 +766,7 @@ mod test_parse {
         }
 
         #[test]
-        fn it_respects_boolean_operator_prescedence() {
+        fn it_respects_boolean_operator_precedence() {
             let input = force_tokenize("1 == 0 || 1 != 0;");
 
             let left = bin_expr(int_term(1), vec![(BinaryOp::Equals, int_term(0))]); 
@@ -792,6 +835,45 @@ mod test_parse {
             assert_eq!(parse_tokens(input), Ok(expected));
         }
 
+        #[test]
+        fn it_parses_code_block_with_no_result_value() {
+            let tokens = force_tokenize("{
+                println(1);
+                println(2);
+            };");
+            let expected_block = CodeBlock {
+                statements: vec![
+                    parse_tokens(force_tokenize("println(1);")).unwrap(),
+                    parse_tokens(force_tokenize("println(2);")).unwrap(),
+                ]
+            };
+            let expected =
+                AbstractSyntaxTree::Expr(Expr::CodeBlock(expected_block));
+            assert_eq!(parse_tokens(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_code_block_with_binding() {
+            let tokens = force_tokenize("{
+                let two = 2;
+                two
+            };");
+            let expected_block = CodeBlock {
+                statements: vec![
+                    parse_tokens(force_tokenize("let two = 2;")).unwrap(),
+                    parse_tokens(force_tokenize("two;")).unwrap(),
+                ],
+            };
+            let expected =
+                AbstractSyntaxTree::Expr(Expr::CodeBlock(expected_block));
+            assert_eq!(parse_tokens(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_empty_code_block() {
+            let tokens = force_tokenize("{};");
+            assert_eq!(parse_tokens(tokens), Err(InterpreterError::EmptyCodeBlock))
+        }
     }
 
     mod function {
@@ -1083,25 +1165,27 @@ mod test_parse {
         "let identity <T> (x: T) -> x;",
         "let identity = <T> (x: T) -> x;",
     )]
-    #[case::if_else_on_seperate_lines("if (true) 1 else 0;", "
+    #[case::if_else_on_separate_lines("if (true) 1 else 0;", "
         if (true)
             1
         else
             0;
     ")]
-    #[case::function_on_seperate_lines(
+    #[case::function_on_separate_lines(
         r#"let toString(x: int) -> if (x == 0) "0" else if (x == 1) "1" else "unknown";"#,
         r#"
-        let toString(x: int) ->
+        let toString(
+            x: int
+        ) ->
             if (x == 0) "0"
             else if (x == 1) "1"
             else "unknown";
         "#
     )]
-    #[case::function_args_on_seperate_lines("randInt(1, 2);", "
+    #[case::function_args_on_separate_lines("randInt(1, 2);", "
         randInt(
             1,
-            2
+            2  // TODO: this should work with trailing comma
         );
     ")]
     #[case::function_args_split_unconventionally("randInt(1, 2);", "
@@ -1119,6 +1203,16 @@ mod test_parse {
             2,
         );
     ")]
+    #[case::function_body_without_arrow(
+        "let fn(x: int) -> {
+            let square = x * 2;
+            square
+        };",
+        "let fn(x: int) {
+            let square = x * 2;
+            square
+        };"
+    )]
     #[case::list_with_trailing_comma("[1,2,3,4,5];", "[
         1, 2,
         3, 4, 5,

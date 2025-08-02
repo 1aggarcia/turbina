@@ -27,7 +27,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
-        | (?P<fmt>[:;(),\[\]]|->)
+        | (?P<fmt>[:;(),\[\]{}]|->)
         | (?P<binary_op>==|!=|<=|>=|&&|\|\||[+*\-/%<>])
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
@@ -123,6 +123,8 @@ fn formatter_to_token(text: &str) -> MultiResult<Token> {
         "," => Token::Comma,
         "[" => Token::OpenSquareBracket,
         "]" => Token::CloseSquareBracket,
+        "{" => Token::OpenCurlyBracket,
+        "}" => Token::CloseCurlyBracket,
         "->" => Token::Arrow,
         _ => return Err(
             InterpreterError::UnrecognizedToken { payload: text.into() }.into()
@@ -189,6 +191,8 @@ mod tests {
     #[case(",", Token::Comma)]
     #[case("[", Token::OpenSquareBracket)]
     #[case("]", Token::CloseSquareBracket)]
+    #[case("{", Token::OpenCurlyBracket)]
+    #[case("}", Token::CloseCurlyBracket)]
     #[case("->", Token::Arrow)]
     fn one_token(#[case] line: &str, #[case] expected: Token) {
         assert_eq!(tokenize(line), Ok(vec![expected]));

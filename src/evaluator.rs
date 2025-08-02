@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{errors::Result, models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CondExpr, EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Program, Scope, Term}};
+use crate::{errors::Result, models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CodeBlock, CondExpr, EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Program, Scope, Term}};
 
 /// Execute the statement represented by the AST on the program passed in.
 /// 
@@ -18,10 +18,14 @@ pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Result<Lite
     let owned_tree: AbstractSyntaxTree = tree.clone();
 
     // TODO: integrate result type into helpers below for runtime errors
-    Ok(match owned_tree {
-        AbstractSyntaxTree::Let(node) => eval_let(&mut global_context, node),
-        AbstractSyntaxTree::Expr(node) => eval_expr(&mut global_context, node),
-    })
+    Ok(eval_statement(&mut global_context, owned_tree))
+}
+
+fn eval_statement(context: &mut EvalContext, statement: AbstractSyntaxTree) -> Literal {
+    match statement {
+        AbstractSyntaxTree::Let(node) => eval_let(context, node),
+        AbstractSyntaxTree::Expr(node) => eval_expr(context, node),
+    }
 }
 
 /// Bind an expression to a name
@@ -38,6 +42,7 @@ fn eval_let(context: &mut EvalContext, node: LetNode) -> Literal {
 fn eval_expr(context: &mut EvalContext, expr: Expr) -> Literal {
     match expr {
         Expr::Binary(b) => eval_binary_expr(context, b),
+        Expr::CodeBlock(b) => eval_code_block(context, b),
         Expr::Cond(c) => eval_cond_expr(context, c),
         Expr::Function(f) => eval_function(context, f),
     }
@@ -53,6 +58,21 @@ fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
     }
 
     return result;
+}
+
+fn eval_code_block(context: &mut EvalContext, block: CodeBlock) -> Literal {
+    let mut local_context = EvalContext {
+        output: context.output,
+        scope: Scope {
+            bindings: &mut HashMap::new(),
+            parent: Some(&context.scope)
+        }
+    };
+    block.statements
+        .into_iter()
+        .fold(Literal::Null, |_, statement|
+            eval_statement(&mut local_context, statement)
+        )
 }
 
 fn eval_cond_expr(context: &mut EvalContext, expr: CondExpr) -> Literal {
@@ -388,6 +408,25 @@ mod test_evalutate {
     fn it_evaluates_string_concatenation() {
         let input = make_tree("\"abc\" + \"xyz\";");
         let expected = Literal::String("abcxyz".to_string());
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_evaluates_code_blocks() {
+        let input = make_tree(r#"{
+            let string_a = if (true) {
+                "a" + "A"
+            } else {
+                "ERROR"
+            };
+            let string_b = if (false) {
+                "b" + "B"
+            } else {
+                "ERROR"
+            };
+            string_a + " " + string_b
+        };"#);
+        let expected = Literal::String("aA ERROR".into());
         assert_eq!(evaluate_fresh(input), expected);
     }
 

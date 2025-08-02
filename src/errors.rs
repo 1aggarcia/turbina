@@ -13,6 +13,7 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
     InvalidType { datatype: Type } = "Expression of type '{datatype}' not allowed in this position",
     UnexpectedType { got: Type, expected: Type } = "Expression of type '{got}' cannot be assigned to '{expected}'",
     EmptyTypeList = "Cannot define a function with an empty type parameter list",
+    EmptyCodeBlock = "Code block cannot be empty",
     UndeclaredGeneric { generic: String } =
         "Cannot use generic type '{generic}' without declaring it in the function definition",
 

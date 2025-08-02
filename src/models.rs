@@ -122,6 +122,8 @@ pub enum Token {
     Comma,
     OpenSquareBracket,
     CloseSquareBracket,
+    OpenCurlyBracket,
+    CloseCurlyBracket,
     Arrow,
 
     // keywords
@@ -411,6 +413,7 @@ impl Term {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Binary(BinaryExpr),
+    CodeBlock(CodeBlock),
     Cond(CondExpr),
     Function(Function),
 }
@@ -420,6 +423,11 @@ pub enum Expr {
 pub struct BinaryExpr {
     pub first: Term,
     pub rest: Vec<(BinaryOp, Term)>
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CodeBlock {
+    pub statements: Vec<AbstractSyntaxTree>
 }
 
 /// if/else expressions

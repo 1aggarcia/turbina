@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CondExpr, Expr, Function, FuncBody, FuncCall, LetNode, Literal, Program, Term, Type
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Program, Term, Type
 };
 
 type ValidationResult = MultiResult<TreeType>;
@@ -89,17 +89,22 @@ pub fn validate(
         name_to_bind: None,
         parent: None,
     };
+    validate_statement(&mut global_context, tree)
+}
 
-    match tree {
+fn validate_statement(
+    context: &mut TypeContext, statement: &AbstractSyntaxTree
+) -> ValidationResult {
+    match statement {
         AbstractSyntaxTree::Let(node) => {
-            global_context.name_to_bind = Some(node.id.clone());
-            validate_let(&global_context, node)
+            context.name_to_bind = Some(node.id.clone());
+            validate_let(&context, node)
                 .map(|datatype| TreeType {
                     datatype,
                     name_to_bind: Some(node.id.clone())
                 })
         },
-        AbstractSyntaxTree::Expr(node) => validate_expr(&global_context, node)
+        AbstractSyntaxTree::Expr(node) => validate_expr(&context, node)
             .map(|datatype| TreeType { datatype, name_to_bind: None })
     }
 }
@@ -107,6 +112,7 @@ pub fn validate(
 fn validate_expr(context: &TypeContext, expr: &Expr) -> SubResult {
     match expr {
         Expr::Binary(b) => validate_binary_expr(context, b),
+        Expr::CodeBlock(b) => validate_code_block(context, b),
         Expr::Cond(c) => validate_cond_expr(context, c),
         Expr::Function(f) => validate_function(context, f),
     }
@@ -146,6 +152,28 @@ fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
     } else {
         return Err(errors);
     }
+}
+
+fn validate_code_block(context: &TypeContext, block: &CodeBlock) -> SubResult {
+    let mut variable_types = HashMap::new();
+    let parameter_types = HashMap::new();
+
+    let default_type = Ok(Type::Null);
+    block.statements.iter().fold(default_type, |_, statement| {
+        let mut statement_context = TypeContext {
+            variable_types: &variable_types,
+            parameter_types: &parameter_types,
+            generic_type_parameters: &[],
+            name_to_bind: None,
+            parent: Some(context),
+        };
+        let tree_type = validate_statement(&mut statement_context, &statement)?;
+        
+        if let Some(name) = &tree_type.name_to_bind {
+            variable_types.insert(name.into(), tree_type.datatype.clone());
+        }
+        Ok(tree_type.datatype)
+    })
 }
 
 /// Check that the condition is a boolean type, and the "if" and "else" branches
@@ -660,6 +688,42 @@ mod test_validate {
             );
             assert_eq!(validate(&program, &make_tree("a == b;")), expected_eq);
             assert_eq!(validate(&program, &make_tree("a != b;")), expected_not_eq);
+        }
+    }
+
+    mod code_block {
+        use super::*; 
+
+        #[test]
+        fn it_returns_type_of_final_expression() {
+            let input = make_tree(r#"{
+                let two: int = 2;
+                let one: string = "one";
+                two + 3
+            };"#);
+            assert_eq!(validate_fresh(input), ok_without_binding(Type::Int));
+        }
+
+        #[test]
+        fn it_returns_type_of_final_statement() {
+            let input = make_tree(r#"{
+                let two: int = 2;
+                let one: string = "one";
+                two + 3;
+            };"#);
+            assert_eq!(validate_fresh(input), ok_without_binding(Type::Int));
+        }
+
+        #[test]
+        fn it_finds_errors_in_local_bindings() {
+            let input = make_tree(r#"{
+                let an_int = 0;
+                let a_string = "";
+                an_int + a_string
+            };"#);
+            let expected = error::binary_op_types(
+                BinaryOp::Plus, &Type::Int, &Type::String);
+            assert_eq!(validate_fresh(input), Err(expected.into()));
         }
     }
 
