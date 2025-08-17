@@ -1,6 +1,7 @@
 // The standard library available anywhere in Turbina
 
 use std::io::Write;
+use std::fs;
 use rand::Rng;
 use once_cell::sync::Lazy;
 
@@ -51,6 +52,27 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             };
             Literal::String(text.to_lowercase())
         }),
+    }),
+    ("split", Function {
+        type_params: vec![],
+        params: vec![
+            ("text".into(), Type::String),
+            ("delimiter".into(), Type::String)
+        ],
+        return_type: Some(Type::String.as_list()),
+        body: FuncBody::Native(|args, _| {
+            let [
+                Literal::String(text),
+                Literal::String(delimiter),
+            ] = args.as_slice() else {
+                panic!("bad args");
+            }; 
+            let parts = text
+                .split(delimiter)
+                .map(|part| Literal::String(part.to_string()))
+                .collect::<Vec<Literal>>();
+            Literal::List(parts)
+        })
     }),
     ("printScope", Function {
         type_params: vec![],
@@ -170,7 +192,37 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             }
             Literal::List(list)
         })
-    })
+    }),
+    ("appendFile", Function {
+        type_params: vec![],
+        params: vec![
+            ("filepath".into(), Type::String),
+            ("contents".into(), Type::String),
+        ],
+        // return null on success, error message on error
+        return_type: Some(Type::String.as_nullable()),
+        body: FuncBody::Native(lib_append_file)
+    }),
+    ("readFile", Function {
+        type_params: vec![],
+        params: vec![
+            ("filepath".into(), Type::String),
+            ("handleFile".into() , Type::func(&[Type::String], Type::Null)),
+            ("handleError".into() , Type::func(&[Type::String], Type::Null)),
+        ],
+        return_type: Some(Type::Null),
+        body: FuncBody::Native(lib_read_file)
+    }),
+    ("writeFile", Function {
+        type_params: vec![],
+        params: vec![
+            ("filepath".into(), Type::String),
+            ("contents".into() , Type::String),
+        ],
+        // return null on success, error message on error
+        return_type: Some(Type::String.as_nullable()),
+        body: FuncBody::Native(lib_write_file)
+    }),
 ]});
 
 // TODO: create macro for repeated arg unwrapping
@@ -259,6 +311,60 @@ fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         ))
 }
 
+fn lib_append_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
+    let [
+        Literal::String(filepath),
+        Literal::String(contents),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    let write_result = fs::OpenOptions::new()
+        .append(true)
+        .open(filepath)
+        .map(|mut file| write!(file, "{}", contents));
+
+    match write_result {
+        Ok(_) => Literal::Null,
+        Err(error) => Literal::String(error.to_string())
+    }
+}
+
+fn lib_read_file(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::String(filepath),
+        Literal::Closure(handle_file),
+        Literal::Closure(handle_error),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    match fs::read_to_string(filepath) {
+        Ok(contents) => eval_func_call(
+            context,
+            handle_file.clone(),
+            vec![Literal::String(contents)]
+        ),
+        Err(error) => eval_func_call(
+            context,
+            handle_error.clone(),
+            vec![Literal::String(error.to_string())]
+        )
+    };
+    Literal::Null
+}
+
+fn lib_write_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
+    let [
+        Literal::String(filepath),
+        Literal::String(contents),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    match fs::write(filepath, contents) {
+        Ok(_) => Literal::Null,
+        Err(error) => Literal::String(error.to_string())
+    }
+}
+
 fn generic_type(type_name: &str) -> Type {
     Type::Generic(type_name.to_string())
 }
@@ -300,6 +406,19 @@ mod test_library {
         assert_eq!(
             run_cmd(r#"lowercase("John DOE");"#),
             Literal::String("john doe".into())
+        );
+    }
+
+    #[test]
+    fn test_split() {
+        let expected: Vec<Literal> = vec![1, 2, 3, 4]
+            .iter()
+            .map(|num| Literal::String(num.to_string()))
+            .collect();
+
+        assert_eq!(
+            run_cmd(r#"split("1;2;3;4", ";");"#),
+            Literal::List(expected)
         );
     }
 
