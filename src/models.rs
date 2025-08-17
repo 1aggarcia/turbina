@@ -1,7 +1,7 @@
 use core::fmt;
 use std::collections::HashMap;
 
-use crate::{library::LIBRARY, streams::OutputStreams};
+use crate::{lexer::escape_string, library::LIBRARY, streams::OutputStreams};
 
 /// State of the running program
 #[derive(Debug)]
@@ -160,7 +160,10 @@ impl std::fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int(i) => write!(f, "{i}"),
-            Self::String(s) => write!(f, "\"{s}\""),
+            Self::String(s) => {
+                let escaped_string= escape_string(s).unwrap();
+                write!(f, "{escaped_string}")
+            },
             Self::Bool(s) => write!(f, "{s}"),
             Self::Closure(_) => write!(f, "<function>"),
             Self::List(list) => {

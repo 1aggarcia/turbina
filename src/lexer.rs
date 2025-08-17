@@ -1,6 +1,9 @@
-use regex::Regex;
+use std::ascii::escape_default;
 
-use crate::errors::{InterpreterError, MultiResult};
+use regex::Regex;
+use unescaper::unescape;
+
+use crate::errors::{InterpreterError, MultiResult, Result};
 use crate::models::{
     BinaryOp, Literal, Token, Type, UnaryOp
 };
@@ -59,7 +62,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
                 let bool_value = m.as_str() == "true";
                 Token::Literal(Literal::Bool(bool_value))
             } else if let Some(m) = x.name("string") {
-                let string_value = unwrap_string(m.as_str());
+                let string_value = unescape_string(m.as_str())?;
                 Token::Literal(Literal::String(string_value))
             } else if let Some(m) = x.name("symbol") {
                 symbol_to_token(m.as_str())
@@ -148,12 +151,35 @@ fn symbol_to_token(symbol: &str) -> Token {
     }
 }
 
-/// Removes the first and last character from a string slice
-fn unwrap_string(string: &str) -> String {
+/// Convert raw string data stored by the program into a displayable version
+/// which shows all escape characters. Ex: `"a\nb"` becomes `"\"a\\nb\""` so
+/// that it is shown to the user as `"a\nb"`.
+pub fn escape_string(string: &str) -> Result<String> {
+    let escaped_string_bytes = string
+        .as_bytes()
+        .iter()
+        .flat_map(|byte| escape_default(*byte))
+        .collect();
+
+    match String::from_utf8(escaped_string_bytes) {
+        Ok(escaped_string) => Ok(format!("\"{escaped_string}\"")),
+        Err(err) => Err(
+            InterpreterError::SyntaxError { message: err.to_string() }
+        )
+    }
+}
+
+/// Inverse action of `escape_string`. Converts an input string from the lexer
+/// into raw string data to be stored by the program, applying all escape
+/// characters. Ex: `"\"a\\nb\""` becomes `"a\nb"`
+fn unescape_string(string: &str) -> Result<String> {
     let mut chars = string.chars();
     chars.next();
     chars.next_back();
-    return chars.as_str().to_string();
+    let string_without_quotes = chars.as_str();
+    unescape(string_without_quotes).map_err(|err|
+        InterpreterError::SyntaxError { message: err.to_string() }
+    )
 }
 
 #[cfg(test)]
@@ -173,6 +199,7 @@ mod tests {
     #[case::empty_string("\"\"", string_token(""))]
     #[case::normal_string(r#""hola""#, string_token("hola"))]
     #[case::string_with_spaces(r#""a b c""#, string_token("a b c"))]
+    #[case::string_with_newline(r#""a \n b""#, string_token("a \n b"))]
 
     #[case::symbol("let", Token::Let)]
     #[case::symbol_with_underscore(
@@ -345,5 +372,37 @@ mod tests {
     fn comments() {
         assert_eq!(tokenize("// a comment"), Ok(vec![]));
         assert_eq!(tokenize("x * 3 // another comment"), tokenize("x * 3"));
+    }
+
+    mod escape_string {
+        use super::*;
+
+        #[test]
+        fn it_escapes_escape_characters_and_adds_quotes() {
+            assert_eq!(escape_string("1\n\t23").unwrap(), "\"1\\n\\t23\"")
+        }
+
+        #[test]
+        fn it_performs_inverse_of_unescape_string() {
+            let original = "\"1\\n\\t23\"";
+            let unescaped = unescape_string(original).unwrap();
+           assert_eq!(escape_string(&unescaped).unwrap(), original); 
+        }
+    }
+
+    mod unescape_string {
+        use super::*;
+
+        #[test]
+        fn it_applies_escape_characters_and_removes_quotes() {
+            assert_eq!(unescape_string("\"\\n1\"").unwrap(), "\n1");
+        }
+
+        #[test]
+        fn it_applies_inverse_of_escape_string() {
+            let original = "\n1";
+            let escaped = escape_string(original).unwrap();
+            assert_eq!(unescape_string(&escaped).unwrap(), original);
+        }
     }
 }
