@@ -20,3 +20,4 @@ rstest = "0.24.0"
 wasm-bindgen = "0.2.100"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 js-sys = "0.3.77"
+unescaper = "0.1.6"
