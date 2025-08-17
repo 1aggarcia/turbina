@@ -219,7 +219,8 @@ fn eval_plus(left: Literal, right: Literal) -> Literal {
             literal_as_int(left) + literal_as_int(right)
         ),
         Some(str) => Literal::String(
-            str + &literal_to_string(right).unwrap() 
+            str + &literal_to_string(right.clone()).expect(
+                &format!("right side of + was a non-string literal: {right}"))
         ),
     }
 }

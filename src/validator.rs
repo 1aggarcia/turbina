@@ -159,7 +159,11 @@ fn validate_code_block(context: &TypeContext, block: &CodeBlock) -> SubResult {
     let parameter_types = HashMap::new();
 
     let default_type = Ok(Type::Null);
-    block.statements.iter().fold(default_type, |_, statement| {
+    block.statements.iter().fold(default_type, |last_result, statement| {
+        // propagate the error to the end without checking any more statements
+        if matches!(last_result, Err(_)) {
+            return last_result;
+        }
         let mut statement_context = TypeContext {
             variable_types: &variable_types,
             parameter_types: &parameter_types,
@@ -168,7 +172,7 @@ fn validate_code_block(context: &TypeContext, block: &CodeBlock) -> SubResult {
             parent: Some(context),
         };
         let tree_type = validate_statement(&mut statement_context, &statement)?;
-        
+
         if let Some(name) = &tree_type.name_to_bind {
             variable_types.insert(name.into(), tree_type.datatype.clone());
         }
@@ -724,6 +728,17 @@ mod test_validate {
             let expected = error::binary_op_types(
                 BinaryOp::Plus, &Type::Int, &Type::String);
             assert_eq!(validate_fresh(input), Err(expected.into()));
+        }
+
+        #[test]
+        fn it_stops_validating_statements_after_first_error() {
+            let input = make_tree(r#"{
+                let bad = 1 + "";
+                let good = 1 + 2;
+            }"#);
+            let expected = error::binary_op_types(
+                BinaryOp::Plus, &Type::Int, &Type::String);
+            assert_eq!(validate_fresh(input), Err(expected.into()))
         }
     }
 
