@@ -60,19 +60,16 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             ("delimiter".into(), Type::String)
         ],
         return_type: Some(Type::String.as_list()),
-        body: FuncBody::Native(|args, _| {
-            let [
-                Literal::String(text),
-                Literal::String(delimiter),
-            ] = args.as_slice() else {
-                panic!("bad args");
-            }; 
-            let parts = text
-                .split(delimiter)
-                .map(|part| Literal::String(part.to_string()))
-                .collect::<Vec<Literal>>();
-            Literal::List(parts)
-        })
+        body: FuncBody::Native(|args, _| Literal::List(lib_split(args))),
+    }),
+    ("join", Function {
+        type_params: vec![],
+        params: vec![
+            ("list".into(), Type::String.as_list()),
+            ("separator".into(), Type::String)
+        ],
+        return_type: Some(Type::String),
+        body: FuncBody::Native(|args, _| Literal::String(lib_join(args)))
     }),
     ("printScope", Function {
         type_params: vec![],
@@ -254,6 +251,40 @@ fn lib_to_string(args: Vec<Literal>) -> String {
     }
 }
 
+fn lib_split(args: Vec<Literal>) -> Vec<Literal> {
+    let [
+        Literal::String(text),
+        Literal::String(delimiter),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+
+    text
+        .split(delimiter)
+        .map(|part| Literal::String(part.to_string()))
+        .collect::<Vec<Literal>>()
+}
+
+fn lib_join(args: Vec<Literal>) -> String {
+    let [
+        Literal::List(list),
+        Literal::String(separator),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+
+    list
+        .into_iter()
+        .map(|literal| match literal {
+            Literal::String(s) => s.clone(),
+            // the function should only accept string lists, but just in case
+            // convert other types to string
+            other => other.to_string()
+        })
+        .collect::<Vec<String>>()
+        .join(&separator)
+}
+
 fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
         Literal::List(list_ref),
@@ -419,6 +450,21 @@ mod test_library {
         assert_eq!(
             run_cmd(r#"split("1;2;3;4", ";");"#),
             Literal::List(expected)
+        );
+    }
+
+    #[rstest]
+    #[case(r#"["a", "b", "c"]"#, r#""-""#, "a-b-c")]
+    #[case(r#"["1", "2", "3"]"#, r#""""#, "123")]
+    #[case(r#"["x", "y", "z"]"#, r#"", ""#, "x, y, z")]
+    fn test_join(
+        #[case] input: &str,
+        #[case] separator: &str,
+        #[case] expected: &str
+    ) {
+        assert_eq!(
+            run_cmd(&format!("join({input}, {separator});")),
+            Literal::String(expected.into())
         );
     }
 
