@@ -201,13 +201,19 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         body: FuncBody::Native(lib_append_file)
     }),
     ("readFile", Function {
-        type_params: vec![],
+        type_params: vec!["T".into()],
         params: vec![
             ("filepath".into(), Type::String),
-            ("handleFile".into() , Type::func(&[Type::String], Type::Null)),
-            ("handleError".into() , Type::func(&[Type::String], Type::Null)),
+            (
+                "handleFile".into(),
+                Type::func(&[Type::String], generic_type("T"))
+            ),
+            (
+                "handleError".into(),
+                Type::func(&[Type::String], generic_type("T"))
+            ),
         ],
-        return_type: Some(Type::Null),
+        return_type: Some(generic_type("T")),
         body: FuncBody::Native(lib_read_file)
     }),
     ("writeFile", Function {
@@ -379,8 +385,7 @@ fn lib_read_file(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
             handle_error.clone(),
             vec![Literal::String(error.to_string())]
         )
-    };
-    Literal::Null
+    }
 }
 
 fn lib_write_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
