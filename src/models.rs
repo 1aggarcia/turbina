@@ -329,6 +329,7 @@ pub enum BinaryOp {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+    Pipe,
 }
 
 impl fmt::Debug for BinaryOp {
@@ -347,6 +348,7 @@ impl fmt::Debug for BinaryOp {
             Self::LessThanOrEqual => "<=",
             Self::GreaterThan => ">",
             Self::GreaterThanOrEqual => ">=",
+            Self::Pipe => "|>",
         };
         write!(f, "{string}")?;
         Ok(())

@@ -53,7 +53,13 @@ fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
     let mut result = eval_term(context, expr.first);
 
     for (op, term) in expr.rest {
+        if op == BinaryOp::Pipe {
+            // create a local variable under "_" to pipe into the right side
+            context.scope.bindings.insert("_".into(), result.clone());
+        }
         let new_arg = eval_term(context, term);
+        // cleanup temp variable so that it isn't leaked
+        context.scope.bindings.remove("_");
         result = eval_binary_op(result, &op, new_arg);
     }
 
@@ -207,6 +213,8 @@ fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal
         // these use the derived `PartialEq` trait on enum `Literal`
         Equals => Literal::Bool(left == right),
         NotEq => Literal::Bool(left != right),
+
+        Pipe => right,
     }
 }
 
@@ -335,6 +343,21 @@ mod test_evalutate {
     #[case::pemdas(
         "1 + 2 * 3 - 4 / 5 + 6 % 7;",
         1 + (2 * 3) - (4 / 5) + (6 % 7)
+    )]
+    #[case::function_piping(
+        // start with boolean array
+        // negate all booleans -> [true, false, true]
+        // filter out false -> [true, true]
+        // join to string -> "truetrue"
+        // get string length -> 8
+        r#"
+        [false, true, false]
+            |> map(_, (val: bool) -> !val)
+            |> filter(_, (val: bool) -> val == true)
+            |> join(_, "")
+            |> len(_);
+        "#,
+        8
     )]
     fn it_evaluates_complex_expressions(
         #[case] input: &str, #[case] expected_val: i32

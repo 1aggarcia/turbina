@@ -31,10 +31,10 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;(),\[\]{}]|->)
-        | (?P<binary_op>==|!=|<=|>=|&&|\|\||[+*\-/%<>])
+        | (?P<binary_op>==|!=|<=|>=|&&|\|>|\|\||[+*\-/%<>])
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
-        | (?P<symbol>[a-zA-Z]\w*)
+        | (?P<symbol>[a-zA-Z_]\w*)
         | \d+[a-zA-Z]+ # capture illegal tokens so that remaining numbers are legal
         | (?P<int>\d+)
     "#;
@@ -102,6 +102,7 @@ fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
         "<=" => BinaryOp::LessThanOrEqual,
         ">" => BinaryOp::GreaterThan,
         ">=" => BinaryOp::GreaterThanOrEqual,
+        "|>" => BinaryOp::Pipe,
         _ => return None,
     };
     return Some(op)
@@ -203,7 +204,9 @@ mod tests {
 
     #[case::symbol("let", Token::Let)]
     #[case::symbol_with_underscore(
-        "multi_word_var_name", Token::Id("multi_word_var_name".into()))]
+        "multi_word_var_name", id_token("multi_word_var_name"))]
+    #[case::symbol_starting_with_underscore("_a", id_token("_a"))]
+    #[case::underscore_symbol("_", id_token("_"))]
 
     #[case::linux_newline("\n", Token::Newline)]
     #[case::windows_newline("\r\n", Token::Newline)]
@@ -347,6 +350,7 @@ mod tests {
     #[case("<=", BinaryOp::LessThanOrEqual)]
     #[case(">", BinaryOp::GreaterThan)]
     #[case(">=", BinaryOp::GreaterThanOrEqual)]
+    #[case("|>", BinaryOp::Pipe)]
     fn binary_operators(#[case] token: &str, #[case] op: BinaryOp) {
         assert_eq!(tokenize(token), Ok(vec![op_token(op)]));
     }

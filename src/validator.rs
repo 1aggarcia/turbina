@@ -129,17 +129,33 @@ fn validate_binary_expr(context: &TypeContext, expr: &BinaryExpr) -> SubResult {
     }
 
     for (op, term) in &expr.rest {
-        let new_type = match validate_term(context, &term) {
+        let result_type = match result {
+            Some(ref t) => t.clone(),
+            None => continue,
+        };
+        // TODO: maybe use mutable type contexts instead
+        let operator_context = if *op == BinaryOp::Pipe {
+            // create a local variable under "_" to pipe the left side into
+            // the right side
+            &TypeContext {
+                variable_types: &HashMap::from([
+                    ("_".into(), result_type.clone())
+                ]),
+                parameter_types: &HashMap::new(),
+                generic_type_parameters: &[],
+                name_to_bind: None,
+                parent: Some(context)
+            }
+        } else {
+            context
+        };
+        let new_type = match validate_term(operator_context, &term) {
             Ok(t) => t,
             Err(e) => {
                 errors.extend(e);
                 continue;
             }
         };
-        let result_type = match result {
-            Some(ref t) => t.clone(),
-            None => continue,
-        }; 
 
         match binary_op_return_type(result_type, *op, new_type) {
             Ok(t) => result = Some(t),
@@ -457,13 +473,19 @@ fn binary_op_return_type(left: Type, operator: BinaryOp, right: Type) -> SubResu
             _ => type_error
         },
         Minus | Percent | Slash | Star =>
-            if left == Type::Int { Ok(Type::Int) } else { type_error }, 
+            if left == Type::Int { Ok(Type::Int) } else { type_error },
+
+        Pipe => Ok(right),
     }
 }
 
 /// Check that the expression type does not conflict with the declared type
 /// and that the variable name is unique
 fn validate_let(context: &TypeContext, node: &LetNode) -> SubResult {
+    if node.id == "_" {
+        // reserved for function piping
+        return Err(InterpreterError::ReservedId { id: "_".into() }.into())
+    }
     if let Some(_) = context.lookup(&node.id) {
         return Err(vec![error::already_defined(&node.id)]);
     }
@@ -610,8 +632,8 @@ mod test_validate {
         // left arg undefined
         #[case("1 + c;", vec![error::undefined_id("c")])]
 
-        // both args undefined
-        #[case("x + y - z;", ["x", "y", "z"].map(error::undefined_id).to_vec())]
+        // many args undefined - stop after the first one
+        #[case("x + y - z;", vec![error::undefined_id("x")])]
         fn it_returns_error_for_child_error(
             #[case] input: &str, #[case] errors: Vec<InterpreterError>
         ) {
@@ -623,6 +645,7 @@ mod test_validate {
         #[rstest]
         #[case("2 + 2;", Type::Int)]
         #[case("2 / 2;", Type::Int)]
+        #[case("2 |> toString(_);", Type::String)]
         #[case(r#""a" + "b";"#, Type::String)]
         fn it_returns_ok_for_good_operands(
             #[case] input: &str,
@@ -1117,6 +1140,13 @@ mod test_validate {
             let tree = make_tree("let b = true;");
             let error = error::already_defined("b");
             assert_eq!(validate(&program, &tree), Err(vec![error]));
+        }
+
+        #[test]
+        fn it_returns_error_for_single_underscore_id() {
+            let tree = make_tree("let _ = 0;");
+            let error = InterpreterError::ReservedId { id: "_".into() };
+            assert_eq!(validate_fresh(tree), Err(vec![error]));
         }
     }
 

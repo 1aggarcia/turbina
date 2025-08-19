@@ -19,6 +19,7 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
 
     InvalidNullable { inner_type: Type } = "Type '{inner_type}' cannot be made nullable",
     IOError { message: String } = "IO Error: {message}",
+    ReservedId { id: String } = "Identifier '{id}' is reserved, it cannot be redefined",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",
     UnrecognizedToken { payload: String } = "Unrecognized Token: {payload}",

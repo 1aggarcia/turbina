@@ -65,7 +65,7 @@ fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
     Ok(Expr::Binary(binary_expr))
 }
 
-static MAX_EXPRESSION_PRECEDENCE: u8 = 3;
+static MAX_EXPRESSION_PRECEDENCE: u8 = 4;
 
 /// ```text
 /// <binary_expr> ::= <expr_lvl_1> {(And | Or) <expr_lvl_1>}
@@ -124,14 +124,16 @@ fn get_binary_operator_precedence(operator: BinaryOp) -> u8 {
 
     // pattern matching guarantees that all operators have exactly one precedence level
     match operator {
-        And | Or => 0,
+        Pipe => 0,
+
+        And | Or => 1,
 
         Equals | NotEq | LessThan | LessThanOrEqual
-        | GreaterThan | GreaterThanOrEqual => 1,
+        | GreaterThan | GreaterThanOrEqual => 2,
 
-        Plus | Minus => 2,
+        Plus | Minus => 3,
 
-        Star | Slash | Percent => 3,
+        Star | Slash | Percent => 4,
     }
 }
 
