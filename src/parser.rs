@@ -94,6 +94,7 @@ fn parse_binary_expr(
             Token::BinaryOp(op) => op,
             _ => return Err(error::unexpected_token("binary op", op_token))
         };
+        skip_newlines(tokens);
         let expr = parse_binary_expr(tokens, precedence + 1)?;
         rest.push((operator, expr_as_term(expr)));
     }
@@ -371,6 +372,7 @@ fn parse_let(tokens: &mut TokenStream) -> Result<LetNode> {
         Expr::Function(function)
     } else {
         match_next(tokens, Token::UnaryOp(UnaryOp::Equals))?;
+        skip_newlines(tokens);
         parse_expr(tokens)?
     };
 
@@ -1017,6 +1019,14 @@ mod test_parse {
                     .as_list()
             ),
             value: term_expr(Term::List(vec![])),
+        })]
+        #[case::multiple_lines(r#"
+            let x: string =
+                "some expression too long for one line";
+        "#, LetNode {
+            id: "x".into(),
+            datatype: Some(Type::String), 
+            value: term_expr(str_term("some expression too long for one line"))
         })]
         fn it_parses_var_binding(#[case] input: &str, #[case] expected: LetNode) {
             let input = force_tokenize(input);
