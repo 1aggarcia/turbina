@@ -5,6 +5,7 @@ use std::fs;
 use rand::Rng;
 use once_cell::sync::Lazy;
 
+use crate::library_io::{append_to_file, open_tcp_server};
 use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function, Literal, Type}};
 
 pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
@@ -226,6 +227,23 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         return_type: Some(Type::String.as_nullable()),
         body: FuncBody::Native(lib_write_file)
     }),
+    ("serve", Function {
+        type_params: vec![],
+        params: vec![
+            ("address".into(), Type::String),
+            (
+                "handleRequest".into(),
+                Type::func(&[Type::String], Type::String
+                )
+            ),
+            (
+                "handleError".into(),
+                Type::func(&[Type::String], Type::Null)
+            ),
+        ],
+        return_type: Some(Type::Null),
+        body: FuncBody::Native(lib_serve)
+    })
 ]});
 
 // TODO: create macro for repeated arg unwrapping
@@ -355,12 +373,7 @@ fn lib_append_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     ] = args.as_slice() else {
         panic!("bad args");
     };
-    let write_result = fs::OpenOptions::new()
-        .append(true)
-        .open(filepath)
-        .map(|mut file| write!(file, "{}", contents));
-
-    match write_result {
+    match append_to_file(filepath, contents) {
         Ok(_) => Literal::Null,
         Err(error) => Literal::String(error.to_string())
     }
@@ -400,6 +413,41 @@ fn lib_write_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
         Err(error) => Literal::String(error.to_string())
     }
 }
+
+fn lib_serve(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::String(address),
+        Literal::Closure(handle_request),
+        Literal::Closure(handle_error),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+
+    let handle_tcp_request = |request: String| {
+        let response = eval_func_call(
+            context,
+            handle_request.clone(),
+            vec![Literal::String(request)]
+        );
+        match response {
+            Literal::String(s) => s,
+            other => panic!("bad return type of TCP handler: {}", other),
+        } 
+    };
+
+    match open_tcp_server(address, handle_tcp_request) {
+        Ok(_) => {}
+        Err(err) => {
+            eval_func_call(
+                context,
+                handle_error.clone(),
+                vec![Literal::String(err.to_string())]
+            );
+        }
+    };
+    Literal::Null
+}
+
 
 fn generic_type(type_name: &str) -> Type {
     Type::Generic(type_name.to_string())

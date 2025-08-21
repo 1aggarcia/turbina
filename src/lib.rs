@@ -16,6 +16,7 @@ pub mod validator;
 pub mod evaluator;
 pub mod library;
 pub mod streams;
+pub mod library_io;
 
 /// Executable unit of code.
 /// The type is only needed when a function is printed.
