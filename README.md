@@ -7,7 +7,7 @@ Turbina supports execution via both command-line interface and source code files
 - To execute a source file run `cargo run <filepath>` from the root directory.
 - To run the REPL (read-eval-print loop), run `cargo run` without a filepath.
 
-Below is a draft of the syntax. A formal grammar is in the works.
+Below is a draft of the syntax, a formal grammar is in the works. This is not stable and may change at any time.
 
 **Variables**
 ```rust
@@ -91,4 +91,17 @@ let map(nums: int[], func: ((int) -> int)) {
 
 // function as a return value
 let add(x: int) -> (y: int) -> x + y;
+```
+
+**Pipe Operator**
+```rust
+// Passes the value on the left side to the right side with '_'
+// useful for building complex data pipelines
+
+let result = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    |> map(_, (x: int) -> x * x)  // square every number
+    |> filter(_, (x: int) -> x > 40)  // keep only the ones larger than 40
+    |> reduce(
+        _, (x: int, y: int) -> if (x < y) x else y, 999999);
+        // find the smallest number remaining
 ```

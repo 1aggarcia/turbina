@@ -1,0 +1,32 @@
+// function that returns another function: important concept in functional programming
+let curriedSum(a: int) -> (b: int) -> a + b;
+
+let tripleSum(a: int, b: int, c: int) -> curriedSum(a)(curriedSum(b)(c));
+
+println("3 + 4 + 5 = " + toString(tripleSum(3, 4, 5)));
+
+// complex data structures like pairs can be represented with simple functions
+let makePair = (a: string, b: string) -> (useFirst: bool) ->
+    if (useFirst) a else b;
+
+let pair = makePair("first", "second");
+
+println("\nPAIRS:");
+println(pair(true));
+println(pair(false));
+
+// Turbina does not have loops (yet?), so recursion is your best friend
+let sumHelper(result: int, steps: int): int ->
+    if (steps == 0)
+        result
+    else
+        sumHelper(result + steps,  steps - 1);
+
+// Return the sum of all ints from 1 to n
+let sumOneToN(n: int) -> sumHelper(0, n);
+
+println("\nsum one to ten");
+println(sumOneToN(10));
+
+println("\nsum one to 1000");
+println(sumOneToN(1000));

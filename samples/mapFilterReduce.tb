@@ -1,0 +1,10 @@
+let numbers: int[] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+let squares = map(numbers, (num: int) -> num * num);
+println("squares " + toString(squares));
+
+let evens = filter(numbers, (num: int) -> num % 2 == 0);
+println("evens " + toString(evens));
+
+let sum = reduce(numbers, (acc: int, num: int) -> acc + num, 0);
+println("sum " + toString(sum));

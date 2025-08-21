@@ -1,0 +1,38 @@
+// Simple HTTP server that tracks the number of requests received and responds
+// to requests with that number
+
+let LOG_ID = toString(randInt(0, 1000000));
+let LOG_FILE = "logs_" + LOG_ID + ".txt";
+
+let identity<T>(data: T) -> data;
+
+// helper to create valid HTTP responses
+let httpResponse(statusCode: int, body: string) ->[
+    "HTTP/1.1 " + toString(statusCode),
+    "Content-Length: " + toString(len(body)),
+    "",
+    body
+] |> join(_, "\r\n");
+
+let handleRequest(request: string): string {
+    let currentLogs: string = readFile(
+        LOG_FILE,
+        identity, // return file contents on success
+        () -> ""  // return empty string on failure (e.g. the file doesn't exist)
+    );
+    let newLogs = currentLogs + "New request made\n";
+    writeFile(LOG_FILE, newLogs);
+
+    let logCount = newLogs
+        |> split(_, "\n")
+        |> map(_, () -> ".")
+        |> join(_, "")
+        |> len(_) - 1;
+
+    httpResponse(200, "Total # of requests made: " + toString(logCount))
+};
+
+let handleError(error: string) -> println("Error in server: " + error);
+
+// start the server
+serve("localhost:8080", handleRequest, handleError);

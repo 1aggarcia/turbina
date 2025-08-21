@@ -1,0 +1,20 @@
+// For every integer i from 0 to n,
+// print "fizzbuzz" if i is divisible by 3 and 5
+// print "fizz" if i is divisible by 3
+// print "buzz" if i is divisible by 5
+// otherwise print i
+
+let fizzBuzzHelper(remaining: int, i: int): null ->
+    if (remaining == 0) null
+    else {
+        if (i % 3 == 0 && i % 5 == 0) println("fizzbuzz")
+        else if (i % 3 == 0) println("fizz")
+        else if (i % 5 == 0) println("buzz")
+        else println(i);
+
+        fizzBuzzHelper(remaining - 1, i + 1)
+    };
+
+let fizzBuzz(n: int) -> fizzBuzzHelper(n, 0);
+
+fizzBuzz(100);

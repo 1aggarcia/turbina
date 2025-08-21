@@ -1,0 +1,48 @@
+let numbers: int[] = [1, 2, 3, 4, 5];
+println(numbers);
+
+let twoDimensional: bool[][] = [[false, true], [true, true]];
+println(twoDimensional);
+
+let funcList: (int -> int)[] = [
+    (x: int) -> x % 2,
+    (x: int) -> x * 2
+];
+println(funcList);
+
+let listFunc: (int -> int[]) = (first: int) -> [first];
+println(listFunc);
+
+let identity<T>(x: T) -> x;
+
+let makeNumList(len: int) -> makeList(len, identity);
+
+let makeNumNumList(len: int) -> makeList(len, makeNumList);
+
+let makeNumNumNumList(len: int) -> makeList(len, makeNumNumList);
+
+let makeNumListWithDepth(len: int, depth: int): unknown[] ->
+    if (depth == 0) makeList(len, identity)
+    else if (depth > 0) makeList(
+        len,
+        (x: int) -> makeNumListWithDepth(x, depth - 1)
+    )
+    // depth < 0 - should not happen 
+    else [];
+
+println("makeNumList");
+println(makeNumList(5));
+
+println("makeNumNumList");
+println(makeNumNumList(5));
+
+println("makeNumNumNumList");
+println(makeNumNumNumList(5));
+
+println("");
+
+println("makeNumListWithDepth 1");
+println(makeNumListWithDepth(5, 1));
+
+println("makeNumListWithDepth 5");
+println(makeNumListWithDepth(5, 5));

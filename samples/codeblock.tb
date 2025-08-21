@@ -1,0 +1,50 @@
+let log<T>(name: string, value: T) -> {
+    let x = print(name);
+    let y = print(": ");
+    println(value);
+};
+
+// all code blocks are expressions
+// the last sub-expression is the value it evaluates to
+let five: int = if (true) {
+    let two = 2;
+    let three = 3;
+    two + three
+} else {
+    0
+};
+
+let six: int = {
+    let two = 2;
+    let four = 4;
+    two + four
+};
+
+// no return keyword, function blocks work just like normal code blocks
+let seven() {
+    let three = 3;
+    let four = 4;
+    three + four
+};
+
+let list = makeList(5, (i: int) {
+    let string_a = if (i % 2 == 0) {
+        "a" + "A"
+    } else {
+        "ERROR"
+    };
+    let string_b = if (i % 2 != 0) {
+        "b" + "B"
+    } else {
+        "ERROR"
+    };
+    toString(i) + ": " + string_a + " " + string_b
+});
+
+let main() {
+    log("five", five);
+    log("six", six);
+    log("seven", seven());
+    map(list, println);
+};
+main();
