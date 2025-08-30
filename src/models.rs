@@ -43,6 +43,7 @@ impl Program {
 }
 
 /// A reference to the programs' output streams and current evaluation scope
+#[derive(Debug)]
 pub struct EvalContext<'a> {
     pub output: &'a mut OutputStreams,
     pub scope: Scope<'a>,

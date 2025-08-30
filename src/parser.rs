@@ -68,7 +68,8 @@ fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
 static MAX_EXPRESSION_PRECEDENCE: u8 = 4;
 
 /// ```text
-/// <binary_expr> ::= <expr_lvl_1> {(And | Or) <expr_lvl_1>}
+/// <binary_expr> ::= <expr_lvl_0> {Pipe <expr_lvl_0>}
+/// <expr_lvl_0> ::= <expr_lvl_1> {(And | Or) <expr_lvl_1>}
 /// <expr_lvl_1> :: = <expr_lvl_2> {(== | != | < | <= | > | >=) <expr_lvl_2>}
 /// <expr_lvl_2> :: = <expr_lvl_3> {(+ | -) <expr_lvl_3>}
 /// <expr_lvl_3> :: = <term> {(* | / | %) <term>}
@@ -300,7 +301,9 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
     let callable = if let Token::Id(id) = first {
         Term::Id(id)
     } else if first == Token::OpenParens {
+        skip_newlines(tokens);
         let expr = parse_expr(tokens)?;
+        skip_newlines(tokens);
         match_next(tokens, Token::CloseParens)?;
         Term::Expr(Box::new(expr))
     } else {
@@ -1182,6 +1185,11 @@ mod test_parse {
             1
         else
             0;
+    ")]
+    #[case::expression_in_parens_on_separate_lines("(5 + 4);", "
+        (
+            5 + 4
+        );
     ")]
     #[case::function_on_separate_lines(
         r#"let toString(x: int) -> if (x == 0) "0" else if (x == 1) "1" else "unknown";"#,

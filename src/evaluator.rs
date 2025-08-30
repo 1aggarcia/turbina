@@ -59,7 +59,9 @@ fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
         }
         let new_arg = eval_term(context, term);
         // cleanup temp variable so that it isn't leaked
-        context.scope.bindings.remove("_");
+        if op == BinaryOp::Pipe {
+            context.scope.bindings.remove("_");
+        }
         result = eval_binary_op(result, &op, new_arg);
     }
 
@@ -179,7 +181,7 @@ fn eval_id(context: &mut EvalContext, id: &str) -> Literal {
         Some(literal) => literal,
 
         // TODO: this should never happen, but use result type anyway
-        None => panic!("variable '{}' does not exist", id),
+        None => panic!("variable '{}' does not exist: context {:#?}", id, context),
     }
 }
 
