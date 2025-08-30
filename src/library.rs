@@ -8,6 +8,7 @@ use once_cell::sync::Lazy;
 use crate::library_io::{append_to_file, open_tcp_server};
 use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function, Literal, Type}};
 
+// TODO: split this up for list, string, I/O, etc.
 pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     ("reverse", Function {
         type_params: vec![],
@@ -209,6 +210,30 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         ],
         return_type: Some(generic_type("R")),
         body: FuncBody::Native(lib_reduce)
+    }),
+    ("any", Function {
+        type_params: vec!["T".into()],
+        params: vec![
+            ("list".into(), generic_list("T")),
+            ("predicate".into(), Type::func(
+                &[generic_type("T")],
+                Type::Bool
+            )),
+        ],
+        return_type: Some(Type::Bool),
+        body: FuncBody::Native(lib_any)
+    }),
+    ("every", Function {
+        type_params: vec!["T".into()],
+        params: vec![
+            ("list".into(), generic_list("T")),
+            ("predicate".into(), Type::func(
+                &[generic_type("T")],
+                Type::Bool
+            )),
+        ],
+        return_type: Some(Type::Bool),
+        body: FuncBody::Native(lib_every)
     }),
     ("makeList", Function {
         type_params: vec!["T".into()],
@@ -415,6 +440,44 @@ fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
             reducer.clone(),
             vec![accumulator.to_owned(), elem.clone()]
         ))
+}
+
+fn lib_any(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::List(list),
+        Literal::Closure(predicate),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    let result = list
+        .iter()
+        .any(|elem|
+            eval_func_call(
+                context,
+                predicate.clone(),
+                vec![elem.clone()]
+            ) == Literal::Bool(true)
+        );
+    Literal::Bool(result)
+}
+
+fn lib_every(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::List(list),
+        Literal::Closure(predicate),
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    let result = list
+        .iter()
+        .all(|elem|
+            eval_func_call(
+                context,
+                predicate.clone(),
+                vec![elem.clone()]
+            ) == Literal::Bool(true)
+        );
+    Literal::Bool(result)
 }
 
 fn lib_append_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
@@ -648,6 +711,38 @@ mod test_library {
             assert!(0 <= rand_int);
             assert!(rand_int < 123);
         }
+    }
+
+    #[rstest]
+    #[case::any_returns_true_if_single_match(
+        "any([1, 12, 3], (x: int) -> x > 10);",
+        true,
+    )]
+    #[case::every_returns_false_if_single_match(
+        "every([1, 12, 3], (x: int) -> x > 10);",
+        false,
+    )]
+    #[case::any_returns_false_if_no_matches(
+        "any([-1, -2, -3], (x: int) -> x > 0);",
+        false
+    )]
+    #[case::every_returns_true_if_all_match(
+        "every([-1, -2, -3], (x: int) -> x < 0);",
+        true 
+    )]
+    #[case::any_returns_false_if_empty_list(
+        "any([], (x: string) -> len(x) == 15);",
+        false 
+    )]
+    #[case::every_returns_true_if_empty_list(
+        "every([], (x: string) -> len(x) == 15);",
+        true
+    )]
+    fn test_list_predicates(
+        #[case] input: &str,
+        #[case] expected: bool
+    ) {
+        assert_eq!(run_cmd(input), Literal::Bool(expected))
     }
 
     #[rstest]
