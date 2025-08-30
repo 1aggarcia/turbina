@@ -54,6 +54,57 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             Literal::String(text.to_lowercase())
         }),
     }),
+    ("includes", Function {
+        type_params: vec![],
+        params: vec![
+            ("text".into(), Type::String),
+            ("substring".into(), Type::String),
+        ],
+        return_type: Some(Type::Bool),
+        body: FuncBody::Native(|args, _| {
+            let [
+                Literal::String(text),
+                Literal::String(substring),
+            ] = args.as_slice() else {
+                panic!("bad args");
+            };
+            Literal::Bool(text.contains(substring))
+        }),
+    }),
+    ("startsWith", Function {
+        type_params: vec![],
+        params: vec![
+            ("text".into(), Type::String),
+            ("substring".into(), Type::String),
+        ],
+        return_type: Some(Type::Bool),
+        body: FuncBody::Native(|args, _| {
+            let [
+                Literal::String(text),
+                Literal::String(substring),
+            ] = args.as_slice() else {
+                panic!("bad args");
+            };
+            Literal::Bool(text.starts_with(substring))
+        }),
+    }),
+    ("endsWith", Function {
+        type_params: vec![],
+        params: vec![
+            ("text".into(), Type::String),
+            ("substring".into(), Type::String),
+        ],
+        return_type: Some(Type::Bool),
+        body: FuncBody::Native(|args, _| {
+            let [
+                Literal::String(text),
+                Literal::String(substring),
+            ] = args.as_slice() else {
+                panic!("bad args");
+            };
+            Literal::Bool(text.ends_with(substring))
+        }),
+    }),
     ("split", Function {
         type_params: vec![],
         params: vec![
@@ -491,6 +542,59 @@ mod test_library {
             run_cmd(r#"lowercase("John DOE");"#),
             Literal::String("john doe".into())
         );
+    }
+
+    #[rstest]
+    #[case("racecar", "race", true)]
+    #[case("racecar", "car", true)]
+    #[case("racecar", "ceca", true)]
+    #[case("racecar", "build", false)]
+    fn test_includes(
+        #[case] input: &str,
+        #[case] substring: &str,
+        #[case] expected: bool
+    ) {
+        let formatted_input =
+            format!(r#"includes("{}", "{}");"#, input, substring); 
+        assert_eq!(
+            run_cmd(&formatted_input),
+            Literal::Bool(expected)
+        ); 
+    }
+    
+
+    #[rstest]
+    #[case("racecar", "race", true)]
+    #[case("racecar", "car", false)]
+    #[case("RACECAR", "race", false)]
+    fn test_starts_with(
+        #[case] input: &str,
+        #[case] substring: &str,
+        #[case] expected: bool
+    ) {
+        let formatted_input =
+            format!(r#"startsWith("{}", "{}");"#, input, substring); 
+        assert_eq!(
+            run_cmd(&formatted_input),
+            Literal::Bool(expected)
+        ); 
+    }
+
+    #[rstest]
+    #[case("racecar", "race", false)]
+    #[case("racecar", "car", true)]
+    #[case("RACECAR", "car", false)]
+    fn test_ends_with(
+        #[case] input: &str,
+        #[case] substring: &str,
+        #[case] expected: bool
+    ) {
+        let formatted_input =
+            format!(r#"endsWith("{}", "{}");"#, input, substring); 
+        assert_eq!(
+            run_cmd(&formatted_input),
+            Literal::Bool(expected)
+        ); 
     }
 
     #[test]
