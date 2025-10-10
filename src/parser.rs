@@ -50,9 +50,16 @@ fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
             true
         } else if tokens.lookahead(0)? != Token::OpenParens {
             false
+        } else if tokens.lookahead(1)? == Token::CloseParens {
+            true
         } else {
-            tokens.lookahead(1)? == Token::CloseParens
-            || tokens.lookahead(2)? == Token::Colon 
+            // function with at least one argument
+            matches!(tokens.lookahead(1)?, Token::Id(_))
+            && [
+                Token::CloseParens,
+                Token::Colon,
+                Token::Comma,
+            ].contains(&tokens.lookahead(2)?)
         };
 
     if next_is_function {
@@ -208,7 +215,7 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> Result<CondExpr> {
 /// <function_body> ::= "->" <expr> | <code_block>
 /// 
 /// <type_param_list> ::= "<" [Id] {"," Id} ">"
-/// <param_list> ::= [Id <type_declaration> {"," Id <type_declaration>}]
+/// <param_list> ::= [<param> {"," <param>}]
 /// ```
 fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
     let mut type_params = Vec::<String>::new();
@@ -226,8 +233,7 @@ fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
     }
 
     let params = parse_list(tokens, ListParserConfig {
-        item_parser: |tokens|
-            Ok((parse_id(tokens)?, parse_type_declaration(tokens)?)),
+        item_parser: parse_param,
         opening_token: Some(Token::OpenParens),
         closing_token: Token::CloseParens,
     })?;
@@ -252,6 +258,20 @@ fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
         return_type,
         body: FuncBody::Expr(Box::new(body_expr))
     })
+}
+
+///```text
+/// <param> ::= Id [<type_declaration>]
+/// ```
+fn parse_param(tokens: &mut TokenStream) -> Result<(String, Type)> {
+    let id = parse_id(tokens)?;
+    let datatype = if next_token_matches(tokens, Token::Colon) {
+        parse_type_declaration(tokens)?
+    } else {
+        Type:: Unknown
+    };
+
+    Ok((id, datatype))
 }
 
 /// ```text
@@ -668,10 +688,10 @@ mod test_parse {
         #[rstest]
         #[case::id("x!;", Term::Id("x".into()))]
         #[case::expression(
-            "(x)!;",
+            "(3 + 4)!;",
             Term::Expr(
                 Box::new(
-                    term_expr(Term::Id("x".into()))
+                    bin_expr(int_term(3), vec![(BinaryOp::Plus, int_term(4))])
                 )
             )
         )]
@@ -914,7 +934,13 @@ mod test_parse {
                 ("c", Type::Generic("C".into())),
             ],
             Some(Type::Generic("C".into())),
-            Term::Literal(Literal::Null),
+            Term::Literal(Literal::Null)
+        )]
+        #[case::implicit_param_types("(x, y) -> false;",
+            vec![],
+            vec![("x", Type::Unknown), ("y", Type::Unknown)],
+            None,
+            bool_term(false)
         )]
         fn it_parses_function(
             #[case] input: &str,
@@ -1194,9 +1220,7 @@ mod test_parse {
     #[case::function_on_separate_lines(
         r#"let toString(x: int) -> if (x == 0) "0" else if (x == 1) "1" else "unknown";"#,
         r#"
-        let toString(
-            x: int
-        ) ->
+        let toString(x: int) ->
             if (x == 0) "0"
             else if (x == 1) "1"
             else "unknown";

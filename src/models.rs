@@ -12,7 +12,7 @@ pub struct Program {
 }
 
 impl Program {
-    /// Initialize a `Program` with library functions imported into the enviorment
+    /// Initialize a `Program` with library functions imported into the environment
     pub fn init(output: OutputStreams) -> Program {
         let mut bindings = HashMap::<String, Literal>::new();
         let mut type_context = HashMap::<String, Type>::new();

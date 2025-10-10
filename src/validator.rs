@@ -861,7 +861,18 @@ mod test_validate {
             let param_type = Type::func(&[Type::Int, Type::Bool], Type::Null);
             let program =
                 make_program_with_func("f", &[param_type], Type::Int);
+
             assert_eq!(validate(&program, &tree), ok_without_binding(Type::Int));
+        }
+
+        #[test]
+        fn it_returns_ok_for_function_passed_in_without_declared_input_types() {
+            let tree = make_tree("f((x) -> null);");
+            let param_type = Type::func(&[Type::Int], Type::Null);
+            let program =
+                make_program_with_func("f", &[param_type], Type::String);
+
+            assert_eq!(validate(&program, &tree), ok_without_binding(Type::String));
         }
 
         #[test]
