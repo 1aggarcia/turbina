@@ -575,7 +575,7 @@ fn generic_list(type_name: &str) -> Type {
 mod test_library {
     use rstest::rstest;
 
-    use crate::{evaluator::evaluate, models::{Literal, Program}, parser::test_utils::make_tree, validator::validate};
+    use crate::{evaluator::evaluate, models::{Literal, Program}, parser::test_utils::make_tree, type_resolver::resolve_type};
 
     #[test]
     fn test_reverse() {
@@ -811,7 +811,7 @@ mod test_library {
     fn run_cmd(input: &str) -> Literal {
         let mut program = Program::init_with_std_streams();
         let syntax_tree = make_tree(input);
-        validate(&program, &syntax_tree).unwrap();
+        resolve_type(&program, &syntax_tree).unwrap();
         evaluate(&mut program, &syntax_tree).unwrap()
     }
 }

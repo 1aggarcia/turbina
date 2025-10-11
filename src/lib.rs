@@ -6,14 +6,14 @@ use evaluator::evaluate;
 use models::{AbstractSyntaxTree, Literal, Program, Type};
 use parser::parse_statement;
 use streams::{InputStream, OutputStreams, StdinStream, StringStream, TokenStream};
-use validator::validate;
+use type_resolver::resolve_type;
 use wasm_bindgen::prelude::*;
 
 pub mod errors;
 pub mod models;
 pub mod lexer;
 pub mod parser;
-pub mod validator;
+pub mod type_resolver;
 pub mod evaluator;
 pub mod library;
 pub mod streams;
@@ -175,7 +175,7 @@ fn validate_next_statement(
         return Ok((syntax_tree, None));
     }
 
-    let tree_type = validate(program, &syntax_tree)?;
+    let tree_type = resolve_type(program, &syntax_tree)?;
     if let Some(name) = &tree_type.name_to_bind {
         program.type_context.insert(name.clone(), tree_type.datatype.clone());
     }
