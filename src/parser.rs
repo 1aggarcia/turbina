@@ -341,7 +341,7 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
 /// Try to construct a function call term with the function supplied as a
 /// callable term. If a function call cannot be constructed, the callable term is returned.
 /// 
-/// The `<arg_list>` below is preceeded by the callable term and may be
+/// The `<arg_list>` below is preceded by the callable term and may be
 /// succeeded by the not-null assertion operator "!".
 /// ```text
 /// <arg_list> ::= "(" [<expr> {"," <expr>}] ")"
@@ -1274,7 +1274,10 @@ mod test_parse {
         assert_eq!(parse_tokens(vec![]), Err(InterpreterError::EndOfFile));
     }
 
-    fn force_tokenize(line: &str) -> Vec<Token> {
-        return tokenize(line).unwrap();
+    fn force_tokenize(text: &str) -> Vec<Token> {
+        text
+            .split("\n")
+            .flat_map(|line| tokenize(line).unwrap())
+            .collect()
     }
 }
