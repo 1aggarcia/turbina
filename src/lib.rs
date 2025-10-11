@@ -1,4 +1,5 @@
 use std::io::{Error, Write};
+use clap::Parser;
 
 use errors::InterpreterError;
 use evaluator::evaluate;
@@ -20,7 +21,16 @@ pub mod library_io;
 
 /// Executable unit of code.
 /// The type is only needed when a function is printed.
-type Statement = (AbstractSyntaxTree, Type);
+type Statement = (AbstractSyntaxTree, Option<Type>);
+
+#[derive(Parser)]
+pub struct CliArgs {
+    #[arg(required = false)]
+    pub path: Option<std::path::PathBuf>,
+
+    #[arg(long)]
+    pub disable_type_checker: bool,
+}
 
 /// Writer that passes data to the JavaScript runtime
 struct JavaScriptWriter { write_callback: js_sys::Function }
@@ -64,11 +74,16 @@ pub fn run_turbina_program(
     on_stderr_write: js_sys::Function,
 ) {
     let input_stream = Box::new(StringStream::new(source_code));
-
-    let result = run_as_file(input_stream, OutputStreams {
+    let output_streams = OutputStreams {
         stdout: Box::new(JavaScriptWriter { write_callback: on_stdout_write }),
         stderr: Box::new(JavaScriptWriter { write_callback: on_stderr_write }),
-    });
+    };
+
+    let result = run_as_file(
+        input_stream,
+        output_streams,
+        CliArgs { path: None, disable_type_checker: false },
+    );
 
     if let Err(e) = result {
         // call `console.error`in JavaScript runtime
@@ -80,7 +95,8 @@ pub fn run_turbina_program(
 /// Returns `Ok(())` unless there is an error writing to the streams
 pub fn run_as_file(
     input_stream: Box<dyn InputStream>,
-    out_streams: OutputStreams
+    out_streams: OutputStreams,
+    args: CliArgs
 ) -> std::io::Result<()> {
     let mut token_stream = TokenStream::new(input_stream);
 
@@ -90,7 +106,7 @@ pub fn run_as_file(
 
     // type check the file
     loop {
-        match validate_next_statement(&mut program, &mut token_stream) {
+        match validate_next_statement(&mut program, &mut token_stream, &args) {
             Ok(result) => statements.push(result),
             Err(statement_errors) => {
                 if statement_errors.contains(&InterpreterError::EndOfFile) {
@@ -120,7 +136,7 @@ pub fn run_as_file(
 
 /// Command line interface for using Turbina.
 /// REPL = Read-eval-print loop
-pub fn run_repl() {
+pub fn run_repl(args: CliArgs) {
     let mut token_stream = TokenStream::new(Box::new(StdinStream {}));
     let mut program = Program::init_with_std_streams();
 
@@ -128,7 +144,7 @@ pub fn run_repl() {
 
     loop {
         let eval_result =
-            validate_next_statement(&mut program, &mut token_stream)
+            validate_next_statement(&mut program, &mut token_stream, &args)
                 .and_then(|statement|
                     evaluate_statement(&mut program, &statement)
                         .map_err(|e| vec![e]));
@@ -148,29 +164,34 @@ pub fn run_repl() {
 
 /// Read the next statement from the token stream and validate it.
 /// Returns a validated statement that is safe to execute.
+/// Skip type checking if specified by `args`
 fn validate_next_statement(
     program: &mut Program,
-    token_stream: &mut TokenStream
+    token_stream: &mut TokenStream,
+    args: &CliArgs
 ) -> Result<Statement, Vec<InterpreterError>> {
     let syntax_tree = parse_statement(token_stream)?;
+    if args.disable_type_checker {
+        return Ok((syntax_tree, None));
+    }
 
     let tree_type = validate(program, &syntax_tree)?;
     if let Some(name) = &tree_type.name_to_bind {
         program.type_context.insert(name.clone(), tree_type.datatype.clone());
     }
-    Ok((syntax_tree, tree_type.datatype))
+    Ok((syntax_tree, Some(tree_type.datatype)))
 }
 
-/// Evaluates a statment on the given program.
+/// Evaluates a statement on the given program.
 /// May return a runtime error.
 fn evaluate_statement(
     program: &mut Program,
     (syntax_tree, tree_type): &Statement,
 ) -> Result<String, InterpreterError> {
-    let output = match evaluate(program, &syntax_tree)? {
+    let output = match (evaluate(program, &syntax_tree)?, tree_type) {
         // Function types look nicer to print than any form of the struct
-        Literal::Closure(_) => tree_type.to_string(),
-        literal => literal.to_string(),
+        (Literal::Closure(_), Some(datatype)) => datatype.to_string(),
+        (literal, _) => literal.to_string(),
     };
     Ok(output)
 }
