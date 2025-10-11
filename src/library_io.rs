@@ -1,5 +1,5 @@
 use std::{fs, net::TcpListener};
-use std::io::{BufRead, BufReader, Result, Write};
+use std::io::{BufRead, BufReader, Error, Result, Write};
 
 /// Append the text contents passed in to the file pointed at by `filepath`
 pub fn append_to_file(filepath: &str, contents: &str) -> Result<()> {
@@ -7,6 +7,19 @@ pub fn append_to_file(filepath: &str, contents: &str) -> Result<()> {
         .append(true)
         .open(filepath)
         .map(|mut file| write!(file, "{}", contents))?
+}
+
+pub fn get_filenames_in_directory(path: &str) -> Result<Vec<String>> {
+    let read_dir = fs::read_dir(path)?;
+    let filenames: Vec<String> = read_dir.map(|entry| {
+        let name = entry?
+            .file_name()
+            .into_string()
+            .map_err(|_| Error::last_os_error())?;
+        Ok(name)
+    }).collect::<Result<_>>()?;
+
+    Ok(filenames)
 }
 
 /// Start a TCP server listening on `address`. Whenever a request is received,
