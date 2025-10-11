@@ -1,1 +1,6 @@
 /target
+/scripts
+/notes
+/syntax
+.vscode
+.DS_Store
