@@ -6,7 +6,7 @@ use rand::Rng;
 use once_cell::sync::Lazy;
 
 use crate::library::result_type_utils::{create_result_from_error, create_result_from_success};
-use crate::library_io::{append_to_file, get_filenames_in_directory, open_tcp_server};
+use crate::library_io::{append_to_file, call_exec, get_filenames_in_directory, open_tcp_server};
 use crate::models::{BinaryExpr, Closure, Expr, FuncCall, Term};
 use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function, Literal, Type}};
 
@@ -23,6 +23,25 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         params: vec![("code".into(), Type::Int)],
         return_type: Some(Type::Null),
         body: FuncBody::Native(lib_exit),
+    }),
+    ("exec", Function {
+        type_params: vec![],
+        params: vec![
+            ("command".into(), Type::String),
+            ("args".into(), Type::String.as_list())
+        ],
+        return_type: Some(
+            Type::func(
+                &[
+                    // success handler: stdout and stderr streams
+                    Type::func(&EXEC_SUCCESS_TYPES, generic_type("T")),
+                    // error handler
+                    Type::func(&[Type::String], generic_type("T")),
+                ],
+                generic_type("T")
+            )
+        ),
+        body: FuncBody::Native(lib_exec),
     }),
     ("len", Function {
         type_params: vec![],
@@ -355,6 +374,40 @@ fn lib_exit(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
         std::process::exit(*code);
     } else {
         panic!("bad args");
+    }
+}
+
+static EXEC_SUCCESS_TYPES: [Type; 2] = [Type::String, Type::String];
+
+fn lib_exec(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::String(command),
+        Literal::List(args),
+        ..
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    let parsed_args: Vec<&String> = args.into_iter().map(|arg|
+        match arg {
+            Literal::String(s) => s,
+            other => panic!("bad arg: {}", other),
+        }
+    ).collect();
+
+    match call_exec(&command, &parsed_args) {
+        Ok(output) => create_result_from_success(
+            vec![
+                Literal::String(output.stdout),
+                Literal::String(output.stderr)
+            ],
+            &EXEC_SUCCESS_TYPES,
+            context
+        ),
+        Err(err) => create_result_from_error(
+            Literal::String(err.to_string()),
+            &EXEC_SUCCESS_TYPES,
+            context
+        )
     }
 }
 
