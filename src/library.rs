@@ -48,7 +48,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::Int),
         body: FuncBody::Native(|args, _| {
-            let [Literal::String(text)] = args.as_slice() else {
+            let [Literal::String(text), ..] = args.as_slice() else {
                 panic!("bad args");
             };
             Literal::Int(text.len().try_into().expect("Integer overflow"))
@@ -59,7 +59,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
-            let [Literal::String(text)] = args.as_slice() else {
+            let [Literal::String(text), ..] = args.as_slice() else {
                 panic!("bad args");
             };
             Literal::String(text.to_uppercase())
@@ -70,7 +70,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         params: vec![("text".into(), Type::String)],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
-            let [Literal::String(text)] = args.as_slice() else {
+            let [Literal::String(text), ..] = args.as_slice() else {
                 panic!("bad args");
             };
             Literal::String(text.to_lowercase())
@@ -87,6 +87,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             let [
                 Literal::String(text),
                 Literal::String(substring),
+                ..
             ] = args.as_slice() else {
                 panic!("bad args");
             };
@@ -104,6 +105,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             let [
                 Literal::String(text),
                 Literal::String(substring),
+                ..
             ] = args.as_slice() else {
                 panic!("bad args");
             };
@@ -121,6 +123,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
             let [
                 Literal::String(text),
                 Literal::String(substring),
+                ..
             ] = args.as_slice() else {
                 panic!("bad args");
             };
@@ -187,7 +190,8 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         body: FuncBody::Native(|args, _| {
             let [
                 Literal::Int(min_arg),
-                Literal::Int(max_arg)
+                Literal::Int(max_arg),
+                ..
             ] = args.as_slice() else {
                 panic!("bad args");
             };
@@ -269,7 +273,8 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         body: FuncBody::Native(|args, context| {
             let [
                 Literal::Int(length),
-                Literal::Closure(elem_func)
+                Literal::Closure(elem_func),
+                ..
             ] = args.as_slice() else {
                 panic!("bad args");
             };
@@ -362,7 +367,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
 // TODO: create macro for repeated arg unwrapping
 
 fn lib_reverse(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
-    if let [Literal::String(text)] = args.as_slice() {
+    if let [Literal::String(text), ..] = args.as_slice() {
         Literal::String(text.chars().rev().collect())
     } else {
         panic!("bad args");
@@ -370,7 +375,7 @@ fn lib_reverse(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
 }
 
 fn lib_exit(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
-    if let [Literal::Int(code)] = args.as_slice() {
+    if let [Literal::Int(code), ..] = args.as_slice() {
         std::process::exit(*code);
     } else {
         panic!("bad args");
@@ -412,7 +417,10 @@ fn lib_exec(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_to_string(args: Vec<Literal>) -> String {
-    let [data] = args.as_slice() else {
+    let [
+        data,
+        ..
+    ] = args.as_slice() else {
         panic!("bad args");
     };
     match data {
@@ -426,6 +434,7 @@ fn lib_split(args: Vec<Literal>) -> Vec<Literal> {
     let [
         Literal::String(text),
         Literal::String(delimiter),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -440,6 +449,7 @@ fn lib_join(args: Vec<Literal>) -> String {
     let [
         Literal::List(list),
         Literal::String(separator),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -459,7 +469,8 @@ fn lib_join(args: Vec<Literal>) -> String {
 fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
         Literal::List(list_ref),
-        Literal::Closure(map_func_ref), 
+        Literal::Closure(map_func_ref),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -479,7 +490,8 @@ fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 fn lib_filter(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
         Literal::List(list_ref),
-        Literal::Closure(predicate_ref), 
+        Literal::Closure(predicate_ref),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -501,6 +513,7 @@ fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         Literal::List(list),
         Literal::Closure(reducer),
         init_value,
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -517,6 +530,7 @@ fn lib_any(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
         Literal::List(list),
         Literal::Closure(predicate),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -536,6 +550,7 @@ fn lib_every(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
         Literal::List(list),
         Literal::Closure(predicate),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -555,6 +570,7 @@ fn lib_append_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     let [
         Literal::String(filepath),
         Literal::String(contents),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -569,6 +585,7 @@ fn lib_read_file(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         Literal::String(filepath),
         Literal::Closure(handle_file),
         Literal::Closure(handle_error),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -591,6 +608,7 @@ static READ_DIR_SUCCESS_TYPES: Lazy<[Type; 1]> = Lazy::new(|| [Type::String.as_l
 fn lib_read_dir(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
         Literal::String(path),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -621,6 +639,7 @@ fn lib_write_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     let [
         Literal::String(filepath),
         Literal::String(contents),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
@@ -635,6 +654,7 @@ fn lib_serve(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         Literal::String(address),
         Literal::Closure(handle_request),
         Literal::Closure(handle_error),
+        ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
