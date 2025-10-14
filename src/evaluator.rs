@@ -69,10 +69,17 @@ fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
 }
 
 fn eval_code_block(context: &mut EvalContext, block: CodeBlock) -> Literal {
+    let mut local_scope = if context.scope.is_local_scope() {
+        // clone the current scope so that closures can use it
+        // TODO: rethink closures and eliminate need to cloning
+        context.scope.bindings.clone()
+    } else {
+        HashMap::new()
+    };
     let mut local_context = EvalContext {
         output: context.output,
         scope: Scope {
-            bindings: &mut HashMap::new(),
+            bindings: &mut local_scope,
             parent: Some(&context.scope)
         }
     };
@@ -115,7 +122,16 @@ pub fn eval_func_call(
 ) -> Literal {
     let Closure { function, mut parent_scope } = closure;
     let function_body = match function.body {
-        FuncBody::Native(native_func) => return native_func(args, context),
+        FuncBody::Native(native_func) => {
+            let mut function_context = EvalContext {
+                output: context.output,
+                scope: Scope {
+                    bindings: &mut parent_scope,
+                    parent: Some(&context.scope.get_global_scope()),
+                }
+            };
+            return native_func(args, &mut function_context);
+        },
         FuncBody::Expr(expr) => expr,
     };
 
@@ -128,7 +144,7 @@ pub fn eval_func_call(
         output: context.output,
         scope: Scope {
             bindings: &mut parent_scope,
-            parent: Some(&context.scope),
+            parent: Some(&context.scope.get_global_scope()),
         }
     };
     eval_expr(&mut function_context, *function_body)
@@ -453,6 +469,36 @@ mod test_evalutate {
             string_a + " " + string_b
         };"#);
         let expected = Literal::String("aA ERROR".into());
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_captures_closure_environment_correctly_in_global_scope() {
+        let mut program = Program::init_with_std_streams();
+
+        let define_y = make_tree("let y = 5;");
+        let define_closure = make_tree("let closure = () -> y;");
+        let define_override_y = make_tree(
+            "let overrideY = (y: string) -> closure();");
+
+        force_evaluate(&mut program, &define_y);
+        force_evaluate(&mut program, &define_closure);
+        force_evaluate(&mut program, &define_override_y);
+
+        let call_override_y = make_tree(r#"overrideY("should not be returned");"#);
+        let expected = Literal::Int(5);
+        assert_eq!(force_evaluate(&mut program, &call_override_y), expected);
+    }
+
+    #[test]
+    fn it_captures_closure_environment_correctly_in_code_blocks() {
+        let input = make_tree(r#"{
+            let y: string = "not an int";
+            let overrideY = (y: int) -> { () -> y * 2 };
+            overrideY(5)()
+        };"#);
+        let expected = Literal::Int(10);
+
         assert_eq!(evaluate_fresh(input), expected);
     }
 

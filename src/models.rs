@@ -75,6 +75,13 @@ impl Scope<'_> {
     pub fn is_local_scope(&self) -> bool {
         self.parent.is_some()
     }
+
+    pub fn get_global_scope(&self) -> &Self {
+        match self.parent {
+            None => self,
+            Some(p) => p.get_global_scope(),
+        }
+    }
 }
 
 
@@ -275,6 +282,9 @@ impl Type {
         }
         Type::Nullable(Box::new(self))
     }
+
+    // if no generic type assigned, is assignable is ok
+    // is generic type assigned, assignability check should be done on references type
 
     /// Returns true if and only if this type is a valid member of the supertype
     pub fn is_assignable_to(&self, supertype: &Type) -> bool {
