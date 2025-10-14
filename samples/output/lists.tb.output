@@ -1,0 +1,15 @@
+[1, 2, 3, 4, 5]
+[[false, true], [true, true]]
+[<function>, <function>]
+<function>
+makeNumList
+[0, 1, 2, 3, 4]
+makeNumNumList
+[[], [0], [0, 1], [0, 1, 2], [0, 1, 2, 3]]
+makeNumNumNumList
+[[], [[]], [[], [0]], [[], [0], [0, 1]], [[], [0], [0, 1], [0, 1, 2]]]
+
+makeNumListWithDepth 1
+[[], [0], [0, 1], [0, 1, 2], [0, 1, 2, 3]]
+makeNumListWithDepth 5
+[[], [[]], [[], [[]]], [[], [[]], [[], [[]]]], [[], [[]], [[], [[]]], [[], [[]], [[], [[]]]]]]
