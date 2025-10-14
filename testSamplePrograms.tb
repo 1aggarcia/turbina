@@ -1,0 +1,75 @@
+// Turbina program that tests Turbina by executing programs in the "samples"
+// folder and comparing the output to the expected output in the
+// "samples/output" folder
+
+let SAMPLES_DIRECTORY = "./samples";
+let OUTPUT_DIRECTORY = "./samples/output";
+let OUTPUT_EXTENSION = ".output";
+
+let getProgramsToTest(samplePrograms: string[], programOutputs: string[]) ->
+    filter(
+        samplePrograms,
+        (filename: string) -> any(
+            programOutputs,
+            (outputFilename) -> outputFilename == filename + OUTPUT_EXTENSION
+        )
+    );
+
+let getTestResult(testName: string, expected: string, actual: string) ->
+    if (expected == actual)
+        "PASSED: " + testName
+    else
+        // TODO: create line-level diff and return instead of complete output
+        "FAILED: " + testName
+        + "\nExpected output"
+        + "\n-------------------------------------------"
+        + "\n" + expected
+        + "\nGot output"
+        + "\n-------------------------------------------"
+        + "\n" + actual;
+
+let handleError(message: string) -> (details: string) ->
+    println(message + ": " + details);
+
+let testProgram(filepath: string) {
+    let fullPath = SAMPLES_DIRECTORY + "/" + filepath;
+    let outputPath = OUTPUT_DIRECTORY + "/" + filepath + OUTPUT_EXTENSION;
+
+    readFile(
+        outputPath,
+        (expectedOutput: string) -> {
+            exec("cargo", ["run", fullPath])(
+                (stdout: string, stderr: string) -> println(
+                    getTestResult(filepath, expectedOutput, stdout)
+                ),
+                handleError("Error executing program " + fullPath)
+            );
+        },
+        handleError("Error reading test file " + outputPath)
+    );
+}
+
+let main() {
+    readDir(SAMPLES_DIRECTORY)(
+        (samplePrograms: string[]) ->
+            readDir(OUTPUT_DIRECTORY)(
+                (programOutputs: string[]) -> {
+                    let programsToTest =
+                        getProgramsToTest(samplePrograms, programOutputs);
+
+                    println("Programs to test:");
+                    map(
+                        programsToTest,
+                        (program: string) -> println("- " + program)
+                    );
+                    println("");
+
+                    map(programsToTest, testProgram);
+                },
+                handleError("Error opening directory"),
+            ),
+        handleError("Error opening directory")
+    );
+}
+
+main();

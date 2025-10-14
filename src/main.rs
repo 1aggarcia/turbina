@@ -7,7 +7,6 @@ use turbina::streams::{FileStream, OutputStreams};
 
 fn main() {
     let args = CliArgs::parse();
-    // TODO: end-to-end tests reading and checking stdout results
     let Some(filename) = args.path.clone() else {
         run_repl(args);
         return;

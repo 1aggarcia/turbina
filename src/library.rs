@@ -319,6 +319,7 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         ),
         body: FuncBody::Native(lib_read_dir),
     }),
+    // TODO: change to return result type like readDir and exec
     ("readFile", Function {
         type_params: vec!["T".into()],
         params: vec![
