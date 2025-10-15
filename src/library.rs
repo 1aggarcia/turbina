@@ -319,21 +319,18 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         ),
         body: FuncBody::Native(lib_read_dir),
     }),
-    // TODO: change to return result type like readDir and exec
     ("readFile", Function {
-        type_params: vec!["T".into()],
-        params: vec![
-            ("filepath".into(), Type::String),
-            (
-                "handleFile".into(),
-                Type::func(&[Type::String], generic_type("T"))
-            ),
-            (
-                "handleError".into(),
-                Type::func(&[Type::String], generic_type("T"))
-            ),
-        ],
-        return_type: Some(generic_type("T")),
+        type_params: vec![],
+        params: vec![("filepath".into(), Type::String)],
+        return_type: Some(
+            Type::func(
+                &[
+                    Type::func(&READ_FILE_SUCCESS_TYPES, generic_type("T")),
+                    Type::func(&[Type::String], generic_type("T")),
+                ],
+                generic_type("T")
+            )
+        ),
         body: FuncBody::Native(lib_read_file)
     }),
     ("writeFile", Function {
@@ -581,25 +578,26 @@ fn lib_append_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     }
 }
 
+static READ_FILE_SUCCESS_TYPES: [Type; 1] = [Type::String];
+
 fn lib_read_file(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let [
         Literal::String(filepath),
-        Literal::Closure(handle_file),
-        Literal::Closure(handle_error),
         ..
     ] = args.as_slice() else {
         panic!("bad args");
     };
+
     match fs::read_to_string(filepath) {
-        Ok(contents) => eval_func_call(
-            context,
-            handle_file.clone(),
-            vec![Literal::String(contents)]
+        Ok(contents) => create_result_from_success(
+            vec![Literal::String(contents)],
+            &READ_FILE_SUCCESS_TYPES,
+            context
         ),
-        Err(error) => eval_func_call(
-            context,
-            handle_error.clone(),
-            vec![Literal::String(error.to_string())]
+        Err(error) => create_result_from_error(
+            Literal::String(error.to_string()),
+            &READ_FILE_SUCCESS_TYPES,
+            context
         )
     }
 }

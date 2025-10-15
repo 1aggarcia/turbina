@@ -15,8 +15,7 @@ let httpResponse(statusCode: int, body: string) ->[
 ] |> join(_, "\r\n");
 
 let handleRequest(request: string): string {
-    let currentLogs: string = readFile(
-        LOG_FILE,
+    let currentLogs: string = readFile(LOG_FILE)(
         identity, // return file contents on success
         () -> ""  // return empty string on failure (e.g. the file doesn't exist)
     );

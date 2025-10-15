@@ -35,8 +35,7 @@ let testProgram(filepath: string) {
     let fullPath = SAMPLES_DIRECTORY + "/" + filepath;
     let outputPath = OUTPUT_DIRECTORY + "/" + filepath + OUTPUT_EXTENSION;
 
-    readFile(
-        outputPath,
+    readFile(outputPath)(
         (expectedOutput: string) -> {
             exec("cargo", ["run", fullPath])(
                 (stdout: string, stderr: string) -> println(
