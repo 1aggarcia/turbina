@@ -43,6 +43,12 @@ pub static LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
         ),
         body: FuncBody::Native(lib_exec),
     }),
+    ("help", Function {
+        type_params: vec![],
+        params: vec![("libraryFunctionName".into(), Type::String)],
+        return_type: Some(Type::Null),
+        body: FuncBody::Native(lib_help),
+    }),
     ("len", Function {
         type_params: vec![],
         params: vec![("text".into(), Type::String)],
@@ -414,6 +420,25 @@ fn lib_exec(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     }
 }
 
+fn lib_help(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let [
+        Literal::String(library_function_name),
+        ..
+    ] = args.as_slice() else {
+        panic!("bad args");
+    };
+    match get_function_signature(&library_function_name) {
+        Some(signature) => writeln!(context.output.stdout, "{signature}"),
+        None => writeln!(
+            context.output.stdout,
+            "No library function exists with name '{}'",
+            library_function_name
+        )
+    }.expect("stdout stream is broken");
+
+    Literal::Null
+}
+
 fn lib_to_string(args: Vec<Literal>) -> String {
     let [
         data,
@@ -683,6 +708,29 @@ fn lib_serve(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     Literal::Null
 }
 
+fn get_function_signature(function_name: &str) -> Option<String> {
+    let (name, func) = LIBRARY.iter().find(|(n, _)| *n == function_name)?;
+
+    let type_param_list = if func.type_params.is_empty() {
+        String::new()
+    } else {
+        format!("<{}>", func.type_params.join(", "))
+    };
+
+    let param_list = func.params
+        .iter()
+        .map(|(param, datatype)| format!("{param}: {datatype}"))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    let return_type = match &func.return_type {
+        Some(datatype) => datatype.to_string(),
+        None => "unknown".into(),
+    };
+
+    format!("{name}{type_param_list}({param_list}): {return_type}").into()
+}
+
 fn generic_type(type_name: &str) -> Type {
     Type::Generic(type_name.to_string())
 }
@@ -781,6 +829,8 @@ mod result_type_utils {
 
 #[cfg(test)]
 mod test_library {
+    use super::*;
+
     use rstest::rstest;
 
     use crate::{evaluator::evaluate, models::{Literal, Program}, parser::test_utils::make_tree, type_resolver::resolve_type};
@@ -1014,6 +1064,16 @@ mod test_library {
             run_cmd(r#"makeList(9, () -> "");"#),
             Literal::List(expected)
         )
+    }
+
+    #[test]
+    fn test_get_function_signature() {        
+        let expected = "map<T, R>(list: T[], mapFunc: T -> R): R[]";
+
+        assert_eq!(
+            get_function_signature("map"),
+            Some(expected.to_string())
+        );
     }
 
     fn run_cmd(input: &str) -> Literal {
