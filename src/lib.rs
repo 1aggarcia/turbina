@@ -5,7 +5,7 @@ use errors::InterpreterError;
 use evaluator::evaluate;
 use models::{AbstractSyntaxTree, Literal, Program, Type};
 use parser::parse_statement;
-use streams::{InputStream, OutputStreams, StdinStream, StringStream, TokenStream};
+use streams::{InputStream, OutputStreams, RustylineStream, StringStream, TokenStream};
 use type_resolver::resolve_type;
 use wasm_bindgen::prelude::*;
 
@@ -137,7 +137,10 @@ pub fn run_as_file(
 /// Command line interface for using Turbina.
 /// REPL = Read-eval-print loop
 pub fn run_repl(args: CliArgs) {
-    let mut token_stream = TokenStream::new(Box::new(StdinStream {}));
+    let input_stream = RustylineStream::new()
+        .expect("Failed to open input stream");
+
+    let mut token_stream = TokenStream::new(Box::new(input_stream));
     let mut program = Program::init_with_std_streams();
 
     println!("Welcome to Turbina");

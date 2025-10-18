@@ -1,5 +1,6 @@
 extern crate custom_error;
 use custom_error::custom_error;
+use rustyline::error::ReadlineError;
 
 use crate::models::{Term, Token, Type};
 
@@ -50,6 +51,12 @@ impl InterpreterError {
 // allows implicit conversion using ? operator
 impl From<std::io::Error> for InterpreterError {
     fn from(value: std::io::Error) -> Self {
+        Self::IOError { message: value.to_string() }
+    }
+}
+
+impl From<ReadlineError> for InterpreterError {
+    fn from(value: ReadlineError) -> Self {
         Self::IOError { message: value.to_string() }
     }
 }

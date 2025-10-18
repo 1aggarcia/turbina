@@ -1,6 +1,11 @@
 use std::fmt::Debug;
 use std::io::{stderr, stdin, stdout, BufRead, BufReader, Write};
 use std::fs::File;
+use std::process::exit;
+
+use rustyline::config::Configurer;
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 
 use crate::errors::{InterpreterError, error};
 use crate::lexer::tokenize;
@@ -51,6 +56,35 @@ impl InputStream for FileStream {
     }
 }
 
+pub struct RustylineStream {
+    editor: DefaultEditor,
+}
+
+impl RustylineStream {
+    pub fn new() -> rustyline::Result<Self> {
+        let mut editor = DefaultEditor::new()?;
+        editor.set_auto_add_history(true);
+
+        Ok(Self { editor })
+    }
+}
+
+impl InputStream for RustylineStream {
+    fn next_line(&mut self) -> Result<String, InterpreterError> {
+        match self.editor.readline("> ") {
+            // rustyline does not include newline character
+            Ok(input) => Ok(input + "\n"),
+
+            Err(ReadlineError::Interrupted | ReadlineError::Eof) => exit(0),
+            Err(err) => {
+                println!("--- got error {}", &err);
+                Err(err.into())
+            }
+        }
+    }
+}
+
+// Currently not in use, replaced by RustylineStream
 pub struct StdinStream;
 impl InputStream for StdinStream {
     fn next_line(&mut self) -> Result<String, InterpreterError> {
