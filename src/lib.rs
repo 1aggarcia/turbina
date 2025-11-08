@@ -198,17 +198,3 @@ fn evaluate_statement(
     };
     Ok(output)
 }
-
-// Currently not possible to test without mocking JS functions
-// #[cfg(test)]
-// mod test_wasm {
-//     use super::*;
-
-//     #[test]
-//     fn test_run_turbina_program() {
-//         let source_code = "let x = 5\nx";
-//         let expected = vec!["5".to_string(), "5".to_string()];
-
-//         assert_eq!(run_turbina_program(source_code), expected)
-//     }
-// }
