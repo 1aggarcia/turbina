@@ -30,7 +30,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
-        | (?P<fmt>[:;(),\[\]{}]|->)
+        | (?P<fmt>[:;\.(),\[\]{}]|->)
         | (?P<binary_op>==|!=|<=|>=|&&|\|>|\|\||[+*\-/%<>])
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
@@ -122,6 +122,7 @@ fn formatter_to_token(text: &str) -> MultiResult<Token> {
     let token = match text {
         ":" => Token::Colon,
         ";" => Token::Semicolon,
+        "." => Token::Dot,
         "(" => Token::OpenParens,
         ")" => Token::CloseParens,
         "," => Token::Comma,
@@ -141,6 +142,7 @@ fn formatter_to_token(text: &str) -> MultiResult<Token> {
 fn symbol_to_token(symbol: &str) -> Token {
     match symbol {
         "let" => Token::Let,
+        "import" => Token::Import,
         "if" => Token::If,
         "else" => Token::Else,
         "string" => Token::Type(Type::String),
@@ -203,6 +205,7 @@ mod tests {
     #[case::string_with_newline(r#""a \n b""#, string_token("a \n b"))]
 
     #[case::symbol("let", Token::Let)]
+    #[case::symbol("import", Token::Import)]
     #[case::symbol_with_underscore(
         "multi_word_var_name", id_token("multi_word_var_name"))]
     #[case::symbol_starting_with_underscore("_a", id_token("_a"))]
@@ -219,6 +222,7 @@ mod tests {
     #[case(")", Token::CloseParens)]
     #[case(";", Token::Semicolon)]
     #[case(",", Token::Comma)]
+    #[case(".", Token::Dot)]
     #[case("[", Token::OpenSquareBracket)]
     #[case("]", Token::CloseSquareBracket)]
     #[case("{", Token::OpenCurlyBracket)]
@@ -315,6 +319,15 @@ mod tests {
         Token::Type(Type::Int),
         Token::UnaryOp(UnaryOp::Nullable)])
     ]
+    #[case::import_statement("import root.dir.module;", &[
+        Token::Import,
+        id_token("root"),
+        Token::Dot,
+        id_token("dir"),
+        Token::Dot,
+        id_token("module"),
+        Token::Semicolon,
+    ])]
     fn many_tokens(#[case] line: &str, #[case] expected: &[Token]) {
         assert_eq!(tokenize(line), Ok(expected.to_vec()));
     }

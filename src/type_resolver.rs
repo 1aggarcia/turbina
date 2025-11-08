@@ -104,6 +104,7 @@ fn resolve_statement_type(
                     name_to_bind: Some(node.id.clone())
                 })
         },
+        AbstractSyntaxTree::Import(_) => todo!("import type resolution"), // Should look up the file and add members to type context. Evaluate to null
         AbstractSyntaxTree::Expr(node) => resolve_expr_type(&context, node)
             .map(|datatype| TreeType { datatype, name_to_bind: None })
     }

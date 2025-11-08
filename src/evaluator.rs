@@ -24,6 +24,7 @@ pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Result<Lite
 fn eval_statement(context: &mut EvalContext, statement: AbstractSyntaxTree) -> Literal {
     match statement {
         AbstractSyntaxTree::Let(node) => eval_let(context, node),
+        AbstractSyntaxTree::Import(_) => todo!("import evaluation"),
         AbstractSyntaxTree::Expr(node) => eval_expr(context, node),
     }
 }

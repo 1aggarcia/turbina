@@ -1,5 +1,5 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Term, Token, Type, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, Import, LetNode, Literal, Term, Token, Type, UnaryOp
 };
 
 use crate::errors::{error, InterpreterError, Result};
@@ -21,6 +21,9 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
     };
     let statement = match first {
         Token::Let => AbstractSyntaxTree::Let(parse_let(token_stream)?),
+        Token::Import => AbstractSyntaxTree::Import(
+            parse_import(token_stream)?
+        ),
         _ => AbstractSyntaxTree::Expr(parse_expr(token_stream)?),
     };
 
@@ -30,6 +33,22 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
         _ => return Err(InterpreterError::end_of_statement(statement_end)),
     }
     return Ok(statement);
+}
+
+/// ```text
+/// <import> ::= Import {<id> Dot} <id>
+/// ```
+fn parse_import(tokens: &mut TokenStream) -> Result<Import> {
+    match_next(tokens, Token::Import)?;
+
+    let mut import = Import { path_elements: vec![] };
+    import.path_elements.push(parse_id(tokens)?);
+    while next_token_matches(tokens, Token::Dot) {
+        tokens.pop()?; 
+        import.path_elements.push(parse_id(tokens)?);
+    }
+
+    Ok(import)
 }
 
 /// ```text
@@ -1137,8 +1156,46 @@ mod test_parse {
         }
     }
 
+    mod import_statement {
+        use super::*;
+
+        #[test]
+        fn it_returns_error_for_missing_path() {
+            let input = force_tokenize("import;");
+            let error =
+                error::unexpected_token("identifier", Token::Semicolon);
+            assert_eq!(parse_tokens(input), Err(error));
+        }
+
+        #[test]
+        fn it_returns_correct_path_for_one_path_element() {
+            let input = force_tokenize("import someLibrary;");
+            let expected = Import { path_elements: vec!["someLibrary".into()] };
+            assert_eq!(
+                parse_tokens(input),
+                Ok(AbstractSyntaxTree::Import(expected))
+            );
+        }
+
+        #[test]
+        fn it_returns_correct_path_for_many_path_elements() {
+            let input = force_tokenize("import src.directory.utils;");
+            let expected = Import {
+                path_elements: vec![
+                    "src".into(),
+                    "directory".into(),
+                    "utils".into(),
+                ]
+            };
+            assert_eq!(
+                parse_tokens(input),
+                Ok(AbstractSyntaxTree::Import(expected))
+            );
+        }
+    }
+
     mod list {
-        use super::*; 
+        use super::*;
 
         #[rstest]
         #[case::empty("[];", &[])]

@@ -125,6 +125,7 @@ pub enum Token {
     Newline,
     Colon,
     Semicolon,
+    Dot,
     OpenParens,
     CloseParens,
     Comma,
@@ -138,6 +139,7 @@ pub enum Token {
     Let,
     If,
     Else,
+    Import,
     Type(Type),
 
     // null token for lexing needed since type vs literal "null" is ambiguous
@@ -388,7 +390,13 @@ impl fmt::Debug for UnaryOp {
 #[derive(PartialEq, Debug, Clone)]
 pub enum AbstractSyntaxTree {
     Let(LetNode),
+    Import(Import),
     Expr(Expr),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Import {
+    pub path_elements: Vec<String>,
 }
 
 #[derive(PartialEq, Debug, Clone)]
