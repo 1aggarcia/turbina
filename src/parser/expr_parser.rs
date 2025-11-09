@@ -348,3 +348,376 @@ fn get_binary_operator_precedence(operator: BinaryOp) -> u8 {
         Star | Slash | Percent => 4,
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rstest::rstest;
+    use crate::models::test_utils::*;
+    use crate::parser::test_utils::*;
+
+    mod expr {
+        use super::*;
+
+        #[test]
+        fn it_parses_string_plus_string() {
+            let input = force_tokenize("\"a\" + \"b\";");
+
+            let expr = bin_expr(
+                str_term("a"),
+                vec![(BinaryOp::Plus, str_term("b"))]
+            );
+            let expected = AbstractSyntaxTree::Expr(expr);
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_expression_in_parens() {
+            let input = force_tokenize("3 * (2 - 5);");
+
+            let inner_expr = bin_expr(
+                int_term(2),
+                vec![(BinaryOp::Minus, int_term(5))]
+            );
+            let expr = bin_expr(
+                int_term(3),
+                vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))]
+            );
+            let expected = AbstractSyntaxTree::Expr(expr);
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_respects_boolean_operator_precedence() {
+            let input = force_tokenize("1 == 0 || 1 != 0;");
+
+            let left = bin_expr(int_term(1), vec![(BinaryOp::Equals, int_term(0))]); 
+            let right = bin_expr(int_term(1), vec![(BinaryOp::NotEq, int_term(0))]);
+            
+            let expr = bin_expr(
+                Term::Expr(Box::new(left)),
+                vec![(BinaryOp::Or, Term::Expr(Box::new(right)))]
+            );
+            let expected = AbstractSyntaxTree::Expr(expr);
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_if_else_expression() {
+            let input = force_tokenize("if (cond) \"abc\" else \"def\";");
+
+            let expr = Expr::Cond(CondExpr {
+                cond: Box::new(term_expr(Term::Id("cond".into()))),
+                if_true: Box::new(term_expr(str_term("abc"))),
+                if_false: Box::new(term_expr(str_term("def"))),
+            });
+            let expected = Ok(AbstractSyntaxTree::Expr(expr));
+
+            assert_eq!(parse_tokens(input), expected);
+        }
+
+        #[test]
+        fn it_parses_expression_with_multiple_functions() {
+            let input = force_tokenize("x() + y();");
+
+            let x_call = FuncCall {
+                func: Box::new(Term::Id("x".into())),
+                args: vec![],
+            };
+            let y_call = FuncCall {
+                func: Box::new(Term::Id("y".into())),
+                args: vec![],
+            }; 
+            let expr = BinaryExpr {
+                first: Term::FuncCall(x_call),
+                rest: vec![(BinaryOp::Plus, Term::FuncCall(y_call))]
+            };
+            let expected = AbstractSyntaxTree::Expr(Expr::Binary(expr));
+
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[rstest]
+        #[case(force_tokenize("3 + 2;"), BinaryOp::Plus, 3, 2)]
+        #[case(force_tokenize("1 % 4;"), BinaryOp::Percent, 1, 4)]
+        #[case(force_tokenize("1 - 8;"), BinaryOp::Minus, 1, 8)]
+        #[case(force_tokenize("0 == 1;"), BinaryOp::Equals, 0, 1)]
+        #[case(force_tokenize("2 != 3;"), BinaryOp::NotEq, 2, 3)]
+        fn it_parses_binary_expressions(
+            #[case] input: Vec<Token>,
+            #[case] operator: BinaryOp,
+            #[case] left_val: i32,
+            #[case] right_val: i32,
+        ) {
+            let left = int_term(left_val);
+            let right = int_term(right_val);
+            let expected = AbstractSyntaxTree::Expr(
+                bin_expr(left, vec![(operator, right)])
+            );
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_code_block_with_no_result_value() {
+            let tokens = force_tokenize("{
+                println(1);
+                println(2);
+            };");
+            let expected_block = CodeBlock {
+                statements: vec![
+                    parse_tokens(force_tokenize("println(1);")).unwrap(),
+                    parse_tokens(force_tokenize("println(2);")).unwrap(),
+                ]
+            };
+            let expected =
+                AbstractSyntaxTree::Expr(Expr::CodeBlock(expected_block));
+            assert_eq!(parse_tokens(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_code_block_with_binding() {
+            let tokens = force_tokenize("{
+                let two = 2;
+                two
+            };");
+            let expected_block = CodeBlock {
+                statements: vec![
+                    parse_tokens(force_tokenize("let two = 2;")).unwrap(),
+                    parse_tokens(force_tokenize("two;")).unwrap(),
+                ],
+            };
+            let expected =
+                AbstractSyntaxTree::Expr(Expr::CodeBlock(expected_block));
+            assert_eq!(parse_tokens(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_empty_code_block() {
+            let tokens = force_tokenize("{};");
+            assert_eq!(parse_tokens(tokens), Err(InterpreterError::EmptyCodeBlock))
+        }
+    }
+
+    mod function {
+        use super::*;
+
+        #[rstest]
+        #[case::thunk("() -> 3;", vec![], vec![], None, int_term(3))]
+        #[case::many_params("(x: int, y: string) -> 3;",
+            vec![],
+            vec![("x", Type::Int), ("y".into(), Type::String)],
+            None,
+            int_term(3)
+        )]
+        #[case::declared_return_type("(): bool -> true;",
+            vec![],
+            vec![],
+            Some(Type::Bool),
+            Term::Literal(Literal::Bool(true))
+        )]
+        #[case::one_generic_type("<T>(x: T) -> x;",
+            vec!["T"],
+            vec![("x", Type::Generic("T".into()))],
+            None,
+            Term::Id("x".into())
+        )]
+        #[case::many_generic_types("<A, B, C> (a: A, b: B, c: C): C -> null;",
+            vec!["A", "B", "C"],
+            vec![
+                ("a", Type::Generic("A".into())),
+                ("b", Type::Generic("B".into())),
+                ("c", Type::Generic("C".into())),
+            ],
+            Some(Type::Generic("C".into())),
+            Term::Literal(Literal::Null)
+        )]
+        #[case::implicit_param_types("(x, y) -> false;",
+            vec![],
+            vec![("x", Type::Unknown), ("y", Type::Unknown)],
+            None,
+            bool_term(false)
+        )]
+        fn it_parses_function(
+            #[case] input: &str,
+            #[case] type_params: Vec<&str>,
+            #[case] params: Vec<(&str, Type)>,
+            #[case] return_type: Option<Type>,
+            #[case] body_term: Term,
+        ) {
+            let tokens = force_tokenize(input);
+            let function = Function {
+                type_params: type_params
+                    .into_iter()
+                    .map(|t| t.to_owned())
+                    .collect(),
+                params: params
+                    .into_iter()
+                    .map(|(p, t)|(p.to_owned(), t))
+                    .collect(),
+                return_type,
+                body: FuncBody::Expr(Box::new(term_expr(body_term))),
+            };
+            let expr = Expr::Function(function);
+            let expected = AbstractSyntaxTree::Expr(expr);
+            assert_eq!(parse_tokens(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_non_id_param() {
+            let input = force_tokenize("(x: int, 3: int) => x;");
+            let err = error::unexpected_token("identifier", int_token(3));
+            assert_eq!(parse_tokens(input), Err(err));
+        }
+
+        #[test]
+        fn it_returns_error_for_empty_type_param_list() {
+            let input = force_tokenize("<>() -> null;");
+            let err = InterpreterError::EmptyTypeList;
+            assert_eq!(parse_tokens(input), Err(err));
+        }
+    }
+
+    mod term {
+        use super::*;
+
+        #[rstest]
+        #[case(int_token(2), term_tree(int_term(2)))]
+        #[case(string_token("prueba test"), term_tree(str_term("prueba test")))]
+        #[case(id_token("name"), term_tree(Term::Id("name".into())))]
+        fn it_parses_one_token_to_one_node(
+            #[case] token: Token,
+            #[case] node: AbstractSyntaxTree
+        ) {
+            let input = vec![token.clone(), Token::Semicolon];
+            assert_eq!(parse_tokens(input), Ok(node));
+        }
+
+        #[rstest]
+        #[case(op_token(BinaryOp::Plus))]
+        #[case(op_token(BinaryOp::Percent))]
+        #[case(unary_op_token(UnaryOp::Equals))]
+        fn it_returns_error_for_one_operator(#[case] op: Token) {
+            let error = error::unexpected_token("identifier or expression", op.clone());
+            assert_eq!(parse_tokens(vec![op, Token::Newline]), Err(error));
+        }
+
+        #[rstest]
+        #[case(force_tokenize("-9;"), -9)]
+        #[case(force_tokenize("- 123;"), -123)]
+        fn it_parses_negative_numbers(
+            #[case] input: Vec<Token>,
+            #[case] negative_num: i32
+        ) {
+            let inner_term = int_term(negative_num * -1);
+            let term = Term::negative_int(inner_term);
+            let expected = term_tree(term);
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_negative_num_in_parens() {
+            let input = force_tokenize("-(9);");
+
+            // the parentheses creates this unfortunate indirection in the AST
+            let nine = term_expr(int_term(9));
+            let nine_as_term = Term::Expr(Box::new(nine));
+            let negative_nine = Term::negative_int(nine_as_term);
+            let expected_tree = term_tree(negative_nine);
+
+            assert_eq!(parse_tokens(input), Ok(expected_tree)); 
+        }
+
+        #[test]
+        fn it_parses_negated_boolean() {
+            let term = Term::negated_bool(Term::Id("someVariable".into()));
+            let expected = term_tree(term);
+            assert_eq!(parse_tokens(force_tokenize("!someVariable;")), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_many_negations() {
+            let term = Term::negated_bool(
+                Term::negated_bool(
+                    Term::negated_bool(Term::Id("x".into()))
+                )
+            );
+            let expected = term_tree(term);
+            assert_eq!(parse_tokens(force_tokenize("!!!x;")), Ok(expected));
+        }
+
+        #[rstest]
+        #[case::id("x!;", Term::Id("x".into()))]
+        #[case::expression(
+            "(3 + 4)!;",
+            Term::Expr(
+                Box::new(
+                    bin_expr(int_term(3), vec![(BinaryOp::Plus, int_term(4))])
+                )
+            )
+        )]
+        #[case::function_call(
+            "f!()!;",
+            Term::FuncCall(FuncCall {
+                func: Box::new(Term::Id("f".into()).as_not_null()),
+                args: vec![]
+            })
+        )]
+        fn it_parses_not_null_assertion(
+            #[case] input: &str, #[case] not_null: Term
+        ) {
+            let tokens = force_tokenize(input);
+            let expected = term_tree(not_null.as_not_null());
+
+            assert_eq!(parse_tokens(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_not_null_literal() {
+            let tokens = force_tokenize("null!;");
+            let expected =
+                InterpreterError::end_of_statement(Token::UnaryOp(UnaryOp::Not));
+            assert_eq!(parse_tokens(tokens), Err(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_many_negative_symbols() {
+            let error = error::unexpected_token(
+                "identifier or expression",
+                Token::BinaryOp(BinaryOp::Minus)
+            );
+            assert_eq!(parse_tokens(force_tokenize("---9;")), Err(error));
+        }
+
+        #[test]
+        fn it_returns_error_for_multiple_ints() {
+            let input = force_tokenize("3 2;");
+            let error = InterpreterError::end_of_statement(int_token(2));
+            assert_eq!(parse_tokens(input), Err(error));
+        }
+
+        #[rstest]
+        #[case::empty("doSomething();", FuncCall {
+            func: Box::new(Term::Id("doSomething".into())), args: vec![]
+        })]
+        #[case::one_arg("print(3);", FuncCall {
+            func: Box::new(Term::Id("print".into())), args: vec![term_expr(int_term(3))]
+        })]
+        #[case::many_args("list(1, 2, 3);", FuncCall {
+            func: Box::new(Term::Id("list".into())),
+            args: [1, 2, 3].iter().map(|i| term_expr(int_term(*i))).collect()
+        })]
+        #[case::curried_function("x(1)(2);", FuncCall {
+            func: Box::new(Term::FuncCall(FuncCall {
+                func: Box::new(Term::Id("x".into())),
+                args: vec![term_expr(int_term(1))],
+            })),
+            args: vec![term_expr(int_term(2))],
+        })]
+        fn it_parses_function_call(#[case] input: &str, #[case] call: FuncCall) {
+            let tree = force_tokenize(input);
+            let expr = term_expr(Term::FuncCall(call));
+            let expected = Ok(AbstractSyntaxTree::Expr(expr));
+            assert_eq!(parse_tokens(tree), expected);
+        }
+    }
+}
