@@ -51,11 +51,19 @@ mod test {
     mod let_binding {
         use super::*;
 
+        fn test_parse_let(tokens: Vec<Token>) -> Result<LetNode> {
+            let ast = parse_tokens(tokens)?;
+            match ast {
+                AbstractSyntaxTree::Let(let_node) => Ok(let_node),
+                other => panic!("Not a binding: {:?}", other),
+            }
+        }
+
         #[test]
         fn it_returns_error_for_bad_var_id() {
             let input = force_tokenize("let 3 = 3;");
             let error = error::unexpected_token("identifier", int_token(3));
-            assert_eq!(parse_tokens(input), Err(error));
+            assert_eq!(test_parse_let(input), Err(error));
         }
 
         #[test]
@@ -64,7 +72,7 @@ mod test {
             let error = InterpreterError::end_of_statement(
                 Token::UnaryOp(UnaryOp::Equals)
             );
-            assert_eq!(parse_tokens(input), Err(error)); 
+            assert_eq!(test_parse_let(input), Err(error)); 
         }
 
         #[rstest]
@@ -127,8 +135,7 @@ mod test {
         })]
         fn it_parses_var_binding(#[case] input: &str, #[case] expected: LetNode) {
             let input = force_tokenize(input);
-            let syntax_tree = AbstractSyntaxTree::Let(expected);
-            assert_eq!(parse_tokens(input), Ok(syntax_tree));
+            assert_eq!(test_parse_let(input), Ok(expected));
         }
 
         #[rstest]
@@ -159,13 +166,13 @@ mod test {
             #[case] function_type: Type
         ) {
             let tokens = force_tokenize(&format!("let f: {} = null;", type_string));
-            let syntax_tree = AbstractSyntaxTree::Let(LetNode {
+            let expected = LetNode {
                 id: "f".into(),
                 datatype: Some(function_type),
                 value: bin_expr(Term::Literal(Literal::Null), vec![]),
-            });
+            };
 
-            assert_eq!(parse_tokens(tokens), Ok(syntax_tree));
+            assert_eq!(test_parse_let(tokens), Ok(expected));
         }
 
         #[test]
@@ -175,7 +182,7 @@ mod test {
                 &format!("{:?}", Token::UnaryOp(UnaryOp::Equals)),
                 Token::UnaryOp(UnaryOp::Nullable)
             );
-            assert_eq!(parse_tokens(input), Err(expected));
+            assert_eq!(test_parse_let(input), Err(expected));
         }
 
         #[test]
@@ -185,21 +192,21 @@ mod test {
                 &format!("{:?}", Token::UnaryOp(UnaryOp::Equals)),
                 Token::UnaryOp(UnaryOp::Nullable)
             );
-            assert_eq!(parse_tokens(input), Err(expected));
+            assert_eq!(test_parse_let(input), Err(expected));
         }
 
         #[test]
         fn it_returns_error_for_invalid_let_type() {
             let input = force_tokenize("let x: 5 = z;");
             let error = error::not_a_type(int_token(5));
-            assert_eq!(parse_tokens(input), Err(error)); 
+            assert_eq!(test_parse_let(input), Err(error)); 
         }
 
         #[test]
         fn it_returns_error_for_unexpected_let() {
             let input = force_tokenize("let x = let y = 2;");
             let error = error::unexpected_token("identifier or expression", Token::Let);
-            assert_eq!(parse_tokens(input), Err(error));
+            assert_eq!(test_parse_let(input), Err(error));
         }
     }
 }

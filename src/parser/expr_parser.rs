@@ -354,7 +354,15 @@ mod test {
     use super::*;
     use rstest::rstest;
     use crate::models::test_utils::*;
-    use crate::parser::test_utils::*;
+    use crate::parser::test_utils::{force_tokenize, parse_tokens};
+
+    fn test_parse_expr(tokens: Vec<Token>) -> Result<Expr> {
+        let ast = parse_tokens(tokens)?;
+        match ast {
+            AbstractSyntaxTree::Expr(expr) => Ok(expr),
+            other => panic!("Not an expression: {:?}", other),
+        }
+    }
 
     mod expr {
         use super::*;
@@ -363,12 +371,11 @@ mod test {
         fn it_parses_string_plus_string() {
             let input = force_tokenize("\"a\" + \"b\";");
 
-            let expr = bin_expr(
+            let expected = bin_expr(
                 str_term("a"),
                 vec![(BinaryOp::Plus, str_term("b"))]
             );
-            let expected = AbstractSyntaxTree::Expr(expr);
-            assert_eq!(parse_tokens(input), Ok(expected));
+            assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
         #[test]
@@ -379,12 +386,11 @@ mod test {
                 int_term(2),
                 vec![(BinaryOp::Minus, int_term(5))]
             );
-            let expr = bin_expr(
+            let expected = bin_expr(
                 int_term(3),
                 vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))]
             );
-            let expected = AbstractSyntaxTree::Expr(expr);
-            assert_eq!(parse_tokens(input), Ok(expected));
+            assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
         #[test]
@@ -394,26 +400,24 @@ mod test {
             let left = bin_expr(int_term(1), vec![(BinaryOp::Equals, int_term(0))]); 
             let right = bin_expr(int_term(1), vec![(BinaryOp::NotEq, int_term(0))]);
             
-            let expr = bin_expr(
+            let expected = bin_expr(
                 Term::Expr(Box::new(left)),
                 vec![(BinaryOp::Or, Term::Expr(Box::new(right)))]
             );
-            let expected = AbstractSyntaxTree::Expr(expr);
-            assert_eq!(parse_tokens(input), Ok(expected));
+            assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
         #[test]
         fn it_parses_if_else_expression() {
             let input = force_tokenize("if (cond) \"abc\" else \"def\";");
 
-            let expr = Expr::Cond(CondExpr {
+            let expected = Expr::Cond(CondExpr {
                 cond: Box::new(term_expr(Term::Id("cond".into()))),
                 if_true: Box::new(term_expr(str_term("abc"))),
                 if_false: Box::new(term_expr(str_term("def"))),
             });
-            let expected = Ok(AbstractSyntaxTree::Expr(expr));
 
-            assert_eq!(parse_tokens(input), expected);
+            assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
         #[test]
@@ -432,9 +436,9 @@ mod test {
                 first: Term::FuncCall(x_call),
                 rest: vec![(BinaryOp::Plus, Term::FuncCall(y_call))]
             };
-            let expected = AbstractSyntaxTree::Expr(Expr::Binary(expr));
+            let expected = Expr::Binary(expr);
 
-            assert_eq!(parse_tokens(input), Ok(expected));
+            assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
         #[rstest]
@@ -451,10 +455,8 @@ mod test {
         ) {
             let left = int_term(left_val);
             let right = int_term(right_val);
-            let expected = AbstractSyntaxTree::Expr(
-                bin_expr(left, vec![(operator, right)])
-            );
-            assert_eq!(parse_tokens(input), Ok(expected));
+            let expected = bin_expr(left, vec![(operator, right)]);
+            assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
         #[test]
@@ -469,9 +471,8 @@ mod test {
                     parse_tokens(force_tokenize("println(2);")).unwrap(),
                 ]
             };
-            let expected =
-                AbstractSyntaxTree::Expr(Expr::CodeBlock(expected_block));
-            assert_eq!(parse_tokens(tokens), Ok(expected));
+            let expected = Expr::CodeBlock(expected_block);
+            assert_eq!(test_parse_expr(tokens), Ok(expected));
         }
 
         #[test]
@@ -486,20 +487,27 @@ mod test {
                     parse_tokens(force_tokenize("two;")).unwrap(),
                 ],
             };
-            let expected =
-                AbstractSyntaxTree::Expr(Expr::CodeBlock(expected_block));
-            assert_eq!(parse_tokens(tokens), Ok(expected));
+            let expected = Expr::CodeBlock(expected_block);
+            assert_eq!(test_parse_expr(tokens), Ok(expected));
         }
 
         #[test]
         fn it_returns_error_for_empty_code_block() {
             let tokens = force_tokenize("{};");
-            assert_eq!(parse_tokens(tokens), Err(InterpreterError::EmptyCodeBlock))
+            assert_eq!(test_parse_expr(tokens), Err(InterpreterError::EmptyCodeBlock))
         }
     }
 
     mod function {
         use super::*;
+
+        pub fn test_parse_function(tokens: Vec<Token>) -> Result<Function> {
+            let expr = test_parse_expr(tokens)?;
+            match expr {
+                Expr::Function(func) => Ok(func),
+                other => panic!("Not a function: {:?}", other),
+            }
+        }
 
         #[rstest]
         #[case::thunk("() -> 3;", vec![], vec![], None, int_term(3))]
@@ -545,7 +553,7 @@ mod test {
             #[case] body_term: Term,
         ) {
             let tokens = force_tokenize(input);
-            let function = Function {
+            let expected = Function {
                 type_params: type_params
                     .into_iter()
                     .map(|t| t.to_owned())
@@ -557,27 +565,27 @@ mod test {
                 return_type,
                 body: FuncBody::Expr(Box::new(term_expr(body_term))),
             };
-            let expr = Expr::Function(function);
-            let expected = AbstractSyntaxTree::Expr(expr);
-            assert_eq!(parse_tokens(tokens), Ok(expected));
+            assert_eq!(test_parse_function(tokens), Ok(expected));
         }
 
         #[test]
         fn it_returns_error_for_non_id_param() {
             let input = force_tokenize("(x: int, 3: int) => x;");
             let err = error::unexpected_token("identifier", int_token(3));
-            assert_eq!(parse_tokens(input), Err(err));
+            assert_eq!(test_parse_function(input), Err(err));
         }
 
         #[test]
         fn it_returns_error_for_empty_type_param_list() {
             let input = force_tokenize("<>() -> null;");
             let err = InterpreterError::EmptyTypeList;
-            assert_eq!(parse_tokens(input), Err(err));
+            assert_eq!(test_parse_function(input), Err(err));
         }
     }
 
     mod term {
+        use crate::parser::test_utils::parse_tokens;
+
         use super::*;
 
         #[rstest]

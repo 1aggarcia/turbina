@@ -28,25 +28,29 @@ mod test {
     use crate::models::AbstractSyntaxTree;
 
     mod import_statement {
-
         use super::*;
+
+        fn test_parse_import(tokens: Vec<Token>) -> Result<Import> {
+            let ast = parse_tokens(tokens)?;
+            match ast {
+                AbstractSyntaxTree::Import(import) => Ok(import),
+                other => panic!("Not an import: {:?}", other),
+            }
+        }
 
         #[test]
         fn it_returns_error_for_missing_path() {
             let input = force_tokenize("import;");
             let error =
                 error::unexpected_token("identifier", Token::Semicolon);
-            assert_eq!(parse_tokens(input), Err(error));
+            assert_eq!(test_parse_import(input), Err(error));
         }
 
         #[test]
         fn it_returns_correct_path_for_one_path_element() {
             let input = force_tokenize("import someLibrary;");
             let expected = Import { path_elements: vec!["someLibrary".into()] };
-            assert_eq!(
-                parse_tokens(input),
-                Ok(AbstractSyntaxTree::Import(expected))
-            );
+            assert_eq!(test_parse_import(input), Ok(expected));
         }
 
         #[test]
@@ -59,10 +63,7 @@ mod test {
                     "utils".into(),
                 ]
             };
-            assert_eq!(
-                parse_tokens(input),
-                Ok(AbstractSyntaxTree::Import(expected))
-            );
+            assert_eq!(test_parse_import(input), Ok(expected));
         }
     }
 }
