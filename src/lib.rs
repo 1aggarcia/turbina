@@ -15,9 +15,8 @@ pub mod lexer;
 pub mod parser;
 pub mod type_resolver;
 pub mod evaluator;
-pub mod library;
+pub mod libraries;
 pub mod streams;
-pub mod library_io;
 
 /// Executable unit of code.
 /// The type is only needed when a function is printed.

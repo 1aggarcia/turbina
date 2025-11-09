@@ -1,7 +1,7 @@
 use core::fmt;
 use std::collections::HashMap;
 
-use crate::{lexer::escape_string, library::LIBRARY, streams::OutputStreams};
+use crate::{lexer::escape_string, libraries::STANDARD_LIBRARY, streams::OutputStreams};
 
 /// State of the running program
 #[derive(Debug)]
@@ -18,7 +18,7 @@ impl Program {
         let mut type_context = HashMap::<String, Type>::new();
 
         // cloning here is needed to insert into the hashmap
-        for (name, func) in LIBRARY.clone() {
+        for (name, func) in STANDARD_LIBRARY.clone() {
             let Some(return_type) = &func.return_type else {
                 eprintln!("WARNING: Cannot resolve return type for library function {}", name);
                 continue;
