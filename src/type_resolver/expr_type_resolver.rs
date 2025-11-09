@@ -1,116 +1,11 @@
 use std::collections::HashMap;
 
 use crate::errors::{error, InterpreterError, MultiResult};
-use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Program, Term, Type
-};
+use crate::models::{BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, Literal, Term, Type};
+use crate::type_resolver::shared::{SubResult, TypeContext};
+use crate::type_resolver::resolve_statement_type;
 
-type ValidationResult = MultiResult<TreeType>;
-type SubResult = MultiResult<Type>;
-
-#[derive(PartialEq, Debug)]
-pub struct TreeType {
-    pub datatype: Type,
-
-    /// if present, datatype should be bound to this name in the global scope
-    pub name_to_bind: Option<String>,
-}
-
-/// The types associated to all bindings in a typing scope.
-/// Gives access to parent scope with the `parent` field
-struct TypeContext<'a> {
-    /// bindings created with with the `let` keyword
-    variable_types: &'a HashMap<String, Type>,
-
-    /// bindings created as function parameters
-    parameter_types: &'a HashMap<String, Type>,
-
-    /// the names of type parameters declared in function definitions
-    generic_type_parameters: &'a [String],
-
-    /// The name being bound in a statement, if any. This allows recursive
-    /// functions to reference themselves in their own definition.
-    name_to_bind: Option<String>,
-
-    parent: Option<&'a TypeContext<'a>>
-}
-
-impl TypeContext<'_> {
-    /// Find the type associated to an ID, if any, in the local scope and
-    /// all parent scopes.
-    pub fn lookup(&self, id: &str) -> Option<Type> {
-        if let Some(t) = self.variable_types.get(id) {
-            debug_assert!(!self.parameter_types.contains_key(id),
-                "binding should not be defined twice in the same scope");
-            return Some(t.clone());
-        }
-        if let Some(t) = self.parameter_types.get(id) {
-            return Some(t.clone());
-        }
-        self.parent.and_then(|parent_context| parent_context.lookup(id))
-    }
-
-    /// Recursively search through all type contexts and determine if the
-    /// given ID is associated to a parameter
-    pub fn contains_parameter(&self, id: &str) -> bool {
-        if self.parameter_types.contains_key(id) {
-            return true;
-        }
-        self.parent
-            .map(|parent_context| parent_context.contains_parameter(id))
-            .unwrap_or(false)  // base case
-    }
-
-    /// Recursively search through all type contexts and determine if the
-    /// given generic type has been declared
-    pub fn contains_type_parameter(&self, type_parameter: &String) -> bool {
-        if self.generic_type_parameters.contains(type_parameter) {
-            return true;
-        }
-        self.parent
-            .map(|parent_context|
-                parent_context.contains_type_parameter(type_parameter))
-            .unwrap_or(false)  // base case
-    }
-}
-
-/// Find syntax errors not caught while parsing
-/// - Check that all symbols exist in the program
-/// - Type-check all nodes
-/// 
-/// Return the type of the tree, and optionally a name to bind it to
-pub fn resolve_type(
-    program: &Program, tree: &AbstractSyntaxTree
-) -> ValidationResult {
-    let mut global_context = TypeContext {
-        variable_types: &program.type_context,
-        parameter_types: &HashMap::new(),
-        generic_type_parameters: &[],
-        name_to_bind: None,
-        parent: None,
-    };
-    resolve_statement_type(&mut global_context, tree)
-}
-
-fn resolve_statement_type(
-    context: &mut TypeContext, statement: &AbstractSyntaxTree
-) -> ValidationResult {
-    match statement {
-        AbstractSyntaxTree::Let(node) => {
-            context.name_to_bind = Some(node.id.clone());
-            resolve_let_type(&context, node)
-                .map(|datatype| TreeType {
-                    datatype,
-                    name_to_bind: Some(node.id.clone())
-                })
-        },
-        AbstractSyntaxTree::Import(_) => todo!("import type resolution"), // Should look up the file and add members to type context. Evaluate to null
-        AbstractSyntaxTree::Expr(node) => resolve_expr_type(&context, node)
-            .map(|datatype| TreeType { datatype, name_to_bind: None })
-    }
-}
-
-fn resolve_expr_type(context: &TypeContext, expr: &Expr) -> SubResult {
+pub fn resolve_expr_type(context: &TypeContext, expr: &Expr) -> SubResult {
     match expr {
         Expr::Binary(b) => resolve_binary_expr_type(context, b),
         Expr::CodeBlock(b) => resolve_code_block_type(context, b),
@@ -212,119 +107,6 @@ fn resolve_cond_expr_type(context: &TypeContext, expr: &CondExpr) -> SubResult {
     Ok(union_type)
 }
 
-/// Check that the function being called is defined and the input types match
-/// the argument list
-fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
-    let (param_types, output_type) = match resolve_term_type(context, &call.func)? {
-        Type::Func { input, output } => (input, output),
-        _ => {
-            let err = InterpreterError::not_a_function(&call.func); 
-            return Err(vec![err]);
-        }
-    };
-    if call.args.len() != param_types.len() {
-        let err = InterpreterError::ArgCount {
-            got: call.args.len(),
-            expected: param_types.len()
-        };
-        return Err(vec![err]);
-    }
-
-    let mut errors = vec![];
-    for (arg, param_type) in call.args.iter().zip(param_types.iter()) {
-        let arg_type = resolve_expr_type(context, arg)?;
-        if arg_type.is_assignable_to(param_type) {
-            continue;
-        }
-        errors.push(InterpreterError::UnexpectedType {
-            got: arg_type,
-            expected: param_type.clone()
-        });
-    }
-
-    if errors.is_empty() { Ok(*output_type) } else { Err(errors) }
-}
-
-/// Determines the strictest type that applies to all elements in the list
-fn resolve_list_type(context: &TypeContext, list: &Vec<Expr>) -> SubResult {
-    let list_type = list
-        .iter()
-        .map(|element| resolve_expr_type(context, element))  
-        .collect::<MultiResult<Vec<Type>>>()?
-        .into_iter()
-        .reduce(find_union_type)
-        .map(|union_type| union_type.as_list())
-        .unwrap_or(Type::EmptyList);
-
-    Ok(list_type)
-}
-
-/// Returns the strictest type possible that includes both input types
-fn find_union_type(type1: Type, type2: Type) -> Type {
-    if type1 == type2 {
-        type1
-    } else if type1.is_assignable_to(&type2) {
-        type2
-    } else if type2.is_assignable_to(&type1) {
-        type1
-    } else if type1 == Type::Null {
-        type2.as_nullable()
-    } else if type2 == Type::Null {
-        type1.as_nullable()
-    } else {
-        match (type1, type2) {
-            (Type::List(inner_type1), Type::List(inner_type2)) =>
-                find_union_type(*inner_type1, *inner_type2).as_list(),
-
-            (Type::Nullable(inner_type_1), outer_type2) =>
-                find_union_type(*inner_type_1, outer_type2).as_nullable(),
-
-            (outer_type1, Type::Nullable(inner_type2)) =>
-                find_union_type(outer_type1, *inner_type2).as_nullable(),
-
-            _ => Type::Unknown
-        }
-    }
-}
-
-/// For literals, check that the type matches any unary operators.
-/// 
-/// For non-literals, check that they exist and their type matches any
-/// unary operators applied (! and -).
-fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
-    match term {
-        Term::Literal(lit) => get_literal_type(lit),
-        Term::Id(id) => resolve_id_type(context, &id),
-        Term::Not(term) => resolve_negated_bool_type(context, term),
-        Term::Minus(term) => validated_negated_int(context, term),
-        Term::Expr(expr) => resolve_expr_type(context, expr),
-        Term::FuncCall(call) => resolve_func_call_type(context, call),
-        Term::List(list) => resolve_list_type(context, list),
-        Term::NotNull(term) => {
-            let datatype = resolve_term_type(context, term)?;
-            if let Type::Nullable(inner_type) = datatype {
-                return Ok(*inner_type);
-            }
-            Ok(datatype)
-        },
-    }
-}
-
-/// Should not be called with closures, closures are only created at runtime.
-fn get_literal_type(literal: &Literal) -> SubResult {
-    let datatype = match literal {
-        Literal::Bool(_) => Type::Bool,
-        Literal::Int(_) => Type::Int,
-        Literal::String(_) => Type::String,
-        Literal::Null => Type::Null,
-        Literal::List(list) =>
-            panic!("Literal list created before evaluation: {:?}", list), 
-        Literal::Closure(closure) =>
-            panic!("Closure created before evaluation: {:?}", closure),
-    };
-    Ok(datatype)
-}
-
 /// Check two assertions:
 /// - That the return type can be resolved with global bindings and new
 ///     bindings introduced by the input parameters
@@ -420,6 +202,44 @@ fn resolve_function_type(context: &TypeContext, function: &Function) -> SubResul
     }
 }
 
+/// For literals, check that the type matches any unary operators.
+/// 
+/// For non-literals, check that they exist and their type matches any
+/// unary operators applied (! and -).
+fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
+    match term {
+        Term::Literal(lit) => get_literal_type(lit),
+        Term::Id(id) => resolve_id_type(context, &id),
+        Term::Not(term) => resolve_negated_bool_type(context, term),
+        Term::Minus(term) => validated_negated_int(context, term),
+        Term::Expr(expr) => resolve_expr_type(context, expr),
+        Term::FuncCall(call) => resolve_func_call_type(context, call),
+        Term::List(list) => resolve_list_type(context, list),
+        Term::NotNull(term) => {
+            let datatype = resolve_term_type(context, term)?;
+            if let Type::Nullable(inner_type) = datatype {
+                return Ok(*inner_type);
+            }
+            Ok(datatype)
+        },
+    }
+}
+
+/// Should not be called with closures, closures are only created at runtime.
+fn get_literal_type(literal: &Literal) -> SubResult {
+    let datatype = match literal {
+        Literal::Bool(_) => Type::Bool,
+        Literal::Int(_) => Type::Int,
+        Literal::String(_) => Type::String,
+        Literal::Null => Type::Null,
+        Literal::List(list) =>
+            panic!("Literal list created before evaluation: {:?}", list), 
+        Literal::Closure(closure) =>
+            panic!("Closure created before evaluation: {:?}", closure),
+    };
+    Ok(datatype)
+}
+
 /// Check that the id exists in the program's type environment
 /// The id may not have an associated value until evaluation
 fn resolve_id_type(context: &TypeContext, id: &String) -> SubResult {
@@ -444,6 +264,82 @@ fn validated_negated_int(context: &TypeContext, inner_term: &Term) -> SubResult 
     }
 }
 
+
+
+/// Check that the function being called is defined and the input types match
+/// the argument list
+fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
+    let (param_types, output_type) = match resolve_term_type(context, &call.func)? {
+        Type::Func { input, output } => (input, output),
+        _ => {
+            let err = InterpreterError::not_a_function(&call.func); 
+            return Err(vec![err]);
+        }
+    };
+    if call.args.len() != param_types.len() {
+        let err = InterpreterError::ArgCount {
+            got: call.args.len(),
+            expected: param_types.len()
+        };
+        return Err(vec![err]);
+    }
+
+    let mut errors = vec![];
+    for (arg, param_type) in call.args.iter().zip(param_types.iter()) {
+        let arg_type = resolve_expr_type(context, arg)?;
+        if arg_type.is_assignable_to(param_type) {
+            continue;
+        }
+        errors.push(InterpreterError::UnexpectedType {
+            got: arg_type,
+            expected: param_type.clone()
+        });
+    }
+
+    if errors.is_empty() { Ok(*output_type) } else { Err(errors) }
+}
+
+/// Determines the strictest type that applies to all elements in the list
+fn resolve_list_type(context: &TypeContext, list: &Vec<Expr>) -> SubResult {
+    let list_type = list
+        .iter()
+        .map(|element| resolve_expr_type(context, element))  
+        .collect::<MultiResult<Vec<Type>>>()?
+        .into_iter()
+        .reduce(find_union_type)
+        .map(|union_type| union_type.as_list())
+        .unwrap_or(Type::EmptyList);
+
+    Ok(list_type)
+}
+
+/// Returns the strictest type possible that includes both input types
+fn find_union_type(type1: Type, type2: Type) -> Type {
+    if type1 == type2 {
+        type1
+    } else if type1.is_assignable_to(&type2) {
+        type2
+    } else if type2.is_assignable_to(&type1) {
+        type1
+    } else if type1 == Type::Null {
+        type2.as_nullable()
+    } else if type2 == Type::Null {
+        type1.as_nullable()
+    } else {
+        match (type1, type2) {
+            (Type::List(inner_type1), Type::List(inner_type2)) =>
+                find_union_type(*inner_type1, *inner_type2).as_list(),
+
+            (Type::Nullable(inner_type_1), outer_type2) =>
+                find_union_type(*inner_type_1, outer_type2).as_nullable(),
+
+            (outer_type1, Type::Nullable(inner_type2)) =>
+                find_union_type(outer_type1, *inner_type2).as_nullable(),
+
+            _ => Type::Unknown
+        }
+    }
+}
 
 /// Get the return type of a binary operator if the left and right operand
 /// types are valid, otherwise return a validation error
@@ -480,40 +376,15 @@ fn binary_op_return_type(left: Type, operator: BinaryOp, right: Type) -> SubResu
     }
 }
 
-/// Check that the expression type does not conflict with the declared type
-/// and that the variable name is unique
-fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
-    if node.id == "_" {
-        // reserved for function piping
-        return Err(InterpreterError::ReservedId { id: "_".into() }.into())
-    }
-    if let Some(_) = context.lookup(&node.id) {
-        return Err(vec![error::already_defined(&node.id)]);
-    }
-
-    let expr_type = resolve_expr_type(context, &node.value)?;
-    let declared_type = match node.datatype.clone() {
-        Some(t) => t,
-        None => return Ok(expr_type),
-    };
-
-    if !expr_type.is_assignable_to(&declared_type) {
-        let err = InterpreterError::UnexpectedType {
-            got: expr_type,
-            expected: declared_type
-        };
-        return Err(vec![err]);
-    }
-    // declared takes precedence if present
-    return Ok(declared_type);
-}
-
 #[cfg(test)]
-mod test_validate {
+mod test {
     use rstest::rstest;
     use crate::models::test_utils::term_tree;
     use crate::parser::test_utils::make_tree;
-    use crate::{models::*, type_resolver::*};
+    use crate::errors::{error, InterpreterError};
+    use crate::models::{BinaryOp, Literal, Program, Term, Type};
+    use crate::type_resolver::resolve_type;
+    use crate::type_resolver::shared::test_utils::*;
 
     mod term {
         use super::*;
@@ -1032,145 +903,5 @@ mod test_validate {
         fn generic_t() -> Type {
             Type::Generic("T".into())
         }
-    }
-
-    mod bindings {
-        use crate::parser::test_utils::make_tree;
-
-        use super::*;
-
-        #[rstest]
-        #[case::literal_with_declared_type("let x: int = 3;", "x", Type::Int)]
-        #[case::math_expr("let something = 5 + 2;", "something", Type::Int)]
-        #[case::string_expr(
-            "let something = \"a\" + \"b\";", "something", Type::String)]
-
-        #[case::int_as_unknown(
-            "let x: unknown = 5;", "x", Type::Unknown)]
-        #[case::string_as_unknown(
-            "let y: unknown = \"\";", "y", Type::Unknown)]
-        #[case::function_as_unknown(
-            "let f: unknown = () -> 3;", "f", Type::Unknown)]
-
-        #[case::int_as_nullable_type(
-            "let n: int? = 3;", "n", Type::Int.as_nullable())]
-        #[case::null_as_nullable_type(
-                "let n: int? = null;", "n", Type::Int.as_nullable())]
-        #[case::int_as_nullable_unknown(
-            "let x: unknown? = 5;", "x", Type::Unknown.as_nullable())]
-        #[case::null_as_nullable_unknown(
-            "let x: unknown? = null;", "x", Type::Unknown.as_nullable())]
-
-        #[case::func_with_explicit_type(
-            "let f: (int -> unknown) = (x: unknown): int -> 0;",
-            "f",
-            Type::func(&[Type::Int], Type::Unknown)
-        )]
-        #[case::list_with_explicit_type(
-            "let x: int[] = [1];",
-            "x",
-            Type::Int.as_list(),
-        )]
-        #[case::empty_list(
-            "let x: string[] = [];",
-            "x",
-            Type::String.as_list(),
-        )]
-        #[case::nullable_list_with_only_null(
-            "let x: string?[] = [null, null];",
-            "x",
-            Type::String.as_nullable().as_list(),
-        )]
-        fn it_returns_correct_type(
-            #[case] input: &str,
-            #[case] symbol: &str,
-            #[case] datatype: Type,
-        ) {
-            let tree = make_tree(input);
-            assert_eq!(resolve_type_fresh(tree), ok_with_binding(symbol, datatype));
-        }
-
-        #[test]
-        fn it_allows_casted_nullable_value_to_be_assigned_as_not_null() {
-            let mut program = Program::init_with_std_streams();
-            program.type_context.insert("nullString".into(), Type::String.as_nullable());
-    
-            let input = make_tree("let validString: string = nullString!;");
-            let expected = ok_with_binding("validString", Type::String);
-            assert_eq!(resolve_type(&mut program, &input), expected);
-        }
-
-        #[rstest]
-        #[case("let x: int = \"string\";", Type::Int, Type::String)]
-        #[case(
-            "let f: (unknown -> int) = (x: int): unknown -> null;",
-            Type::func(&[Type::Unknown], Type::Int),
-            Type::func(&[Type::Int], Type::Unknown),
-        )]
-        #[case::empty_list(
-            "let x: string = [];",
-            Type::String,
-            Type::EmptyList,
-        )]
-        fn it_returns_type_error_for_conflicting_types(
-            #[case] input: &str,
-            #[case] declared: Type,
-            #[case] actual: Type,
-        ) {
-            let tree = make_tree(input);
-            let error = InterpreterError::UnexpectedType {
-                got: actual,
-                expected: declared,
-            };
-            assert_eq!(resolve_type_fresh(tree), Err(vec![error]));
-        }
-
-        #[test]
-        fn it_returns_error_for_assigning_unknown_to_int() {
-            let mut program = Program::init_with_std_streams();
-            program.type_context.insert("a".to_string(), Type::Unknown);
-
-            let tree = make_tree("let b: int = a;");
-            let error = InterpreterError::UnexpectedType {
-                got: Type::Unknown,
-                expected: Type::Int
-            };
-            assert_eq!(resolve_type(&program, &tree), Err(vec![error]));
-        }
-
-        #[test]
-        fn it_propagates_error_in_expression() {
-            let tree = make_tree("let y: string = undefined;");
-            let error = error::undefined_id("undefined");
-            assert_eq!(resolve_type_fresh(tree), Err(vec![error]));
-        }
-
-        #[test]
-        fn it_returns_err_for_duplicate_id() {
-            let mut program = Program::init_with_std_streams();
-            program.type_context.insert("b".to_string(), Type::Bool);
-            let tree = make_tree("let b = true;");
-            let error = error::already_defined("b");
-            assert_eq!(resolve_type(&program, &tree), Err(vec![error]));
-        }
-
-        #[test]
-        fn it_returns_error_for_single_underscore_id() {
-            let tree = make_tree("let _ = 0;");
-            let error = InterpreterError::ReservedId { id: "_".into() };
-            assert_eq!(resolve_type_fresh(tree), Err(vec![error]));
-        }
-    }
-
-    fn resolve_type_fresh(input: AbstractSyntaxTree) -> ValidationResult {
-        resolve_type(&Program::init_with_std_streams(), &input)
-    }
-
-    fn ok_without_binding(datatype: Type) -> ValidationResult {
-        Ok(TreeType { datatype, name_to_bind: None })
-    }
-
-    fn ok_with_binding(id: &str, datatype: Type) -> ValidationResult {
-        Ok(TreeType { datatype, name_to_bind: Some(id.into()) })
     }
 }
