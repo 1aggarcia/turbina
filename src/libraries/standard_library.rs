@@ -13,21 +13,21 @@ use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function,
 pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     ("reverse", Function {
         type_params: vec![],
-        params: vec![("text".into(), Type::String)],
+        params: define_params![text = Type::String],
         return_type: Some(Type::String),
         body: FuncBody::Native(lib_reverse),
     }),
     ("exit", Function {
         type_params: vec![],
-        params: vec![("code".into(), Type::Int)],
+        params: define_params![code = Type::Int],
         return_type: Some(Type::Null),
         body: FuncBody::Native(lib_exit),
     }),
     ("exec", Function {
         type_params: vec![],
-        params: vec![
-            ("command".into(), Type::String),
-            ("args".into(), Type::String.as_list())
+        params: define_params![
+            command = Type::String,
+            args = Type::String.as_list(),
         ],
         return_type: Some(
             Type::func(
@@ -44,13 +44,13 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("help", Function {
         type_params: vec![],
-        params: vec![("libraryFunctionName".into(), Type::String)],
+        params: define_params![libraryFunctionName = Type::String],
         return_type: Some(Type::Null),
         body: FuncBody::Native(lib_help),
     }),
     ("len", Function {
         type_params: vec![],
-        params: vec![("text".into(), Type::String)],
+        params: define_params![text = Type::String],
         return_type: Some(Type::Int),
         body: FuncBody::Native(|args, _| {
             let [Literal::String(text), ..] = args.as_slice() else {
@@ -61,7 +61,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("uppercase", Function {
         type_params: vec![],
-        params: vec![("text".into(), Type::String)],
+        params: define_params![text = Type::String],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
             let [Literal::String(text), ..] = args.as_slice() else {
@@ -72,7 +72,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("lowercase", Function {
         type_params: vec![],
-        params: vec![("text".into(), Type::String)],
+        params: define_params![text = Type::String], 
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
             let [Literal::String(text), ..] = args.as_slice() else {
@@ -83,9 +83,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("includes", Function {
         type_params: vec![],
-        params: vec![
-            ("text".into(), Type::String),
-            ("substring".into(), Type::String),
+        params: define_params![
+            text = Type::String,
+            substring = Type::String,
         ],
         return_type: Some(Type::Bool),
         body: FuncBody::Native(|args, _| {
@@ -101,9 +101,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("startsWith", Function {
         type_params: vec![],
-        params: vec![
-            ("text".into(), Type::String),
-            ("substring".into(), Type::String),
+        params: define_params![
+            text = Type::String,
+            substring = Type::String
         ],
         return_type: Some(Type::Bool),
         body: FuncBody::Native(|args, _| {
@@ -119,9 +119,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("endsWith", Function {
         type_params: vec![],
-        params: vec![
-            ("text".into(), Type::String),
-            ("substring".into(), Type::String),
+        params: define_params![
+            text = Type::String,
+            substring = Type::String,
         ],
         return_type: Some(Type::Bool),
         body: FuncBody::Native(|args, _| {
@@ -137,18 +137,18 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("split", Function {
         type_params: vec![],
-        params: vec![
-            ("text".into(), Type::String),
-            ("delimiter".into(), Type::String)
+        params: define_params![
+            text =Type::String,
+            delimiter = Type::String,
         ],
         return_type: Some(Type::String.as_list()),
         body: FuncBody::Native(|args, _| Literal::List(lib_split(args))),
     }),
     ("join", Function {
         type_params: vec![],
-        params: vec![
-            ("list".into(), Type::String.as_list()),
-            ("separator".into(), Type::String)
+        params: define_params![
+            list = Type::String.as_list(),
+            separator = Type::String,
         ],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| Literal::String(lib_join(args)))
@@ -164,7 +164,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("toString", Function {
         type_params: vec![],
-        params: vec![("data".into(), Type::Unknown)],
+        params: define_params![data = Type::Unknown],
         return_type: Some(Type::String),
         body: FuncBody::Native(|args, _| {
             Literal::String(lib_to_string(args))
@@ -172,7 +172,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("print", Function {
         type_params: vec![],
-        params: vec![("data".into(), Type::Unknown)],
+        params: define_params![data = Type::Unknown],
         return_type: Some(Type::Null),
         body: FuncBody::Native(|args, context| {
             write!(context.output.stdout, "{}", lib_to_string(args)).unwrap();
@@ -181,7 +181,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("println", Function {
         type_params: vec![],
-        params: vec![("data".into(), Type::Unknown)],
+        params: define_params![data = Type::Unknown],
         return_type: Some(Type::Null),
         body: FuncBody::Native(|args, context| {
             writeln!(context.output.stdout, "{}", lib_to_string(args)).unwrap();
@@ -190,7 +190,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("randInt", Function {
         type_params: vec![],
-        params: vec![("min".into(), Type::Int), ("max".into(), Type::Int)],
+        params: define_params![min = Type::Int, max = Type::Int],
         return_type: Some(Type::Int),
         body: FuncBody::Native(|args, _| {
             let [
@@ -206,73 +206,73 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("map", Function {
         type_params: vec!["T".into(), "R".into()],
-        params: vec![
-            ("list".into(), generic_list("T")),
-            ("mapFunc".into(), Type::func(
+        params: define_params![
+            list = generic_list("T"),
+            mapFunc = Type::func(
                 &[generic_type("T")],
                 generic_type("R")
-            ))
+            )
         ],
         return_type: Some(generic_list("R")),
         body: FuncBody::Native(lib_map)
     }),
     ("filter", Function {
         type_params: vec!["T".into()],
-        params: vec![
-            ("list".into(), generic_list("T")),
-            ("predicate".into(), Type::func(
+        params: define_params![
+            list = generic_list("T"),
+            predicate = Type::func(
                 &[generic_type("T")],
                 Type::Bool
-            ))
+            )
         ],
         return_type: Some(generic_list("T")),
         body: FuncBody::Native(lib_filter)
     }),
     ("reduce", Function {
         type_params: vec!["T".into(), "R".into()],
-        params: vec![
-            ("list".into(), generic_list("T")),
-            ("reducer".into(), Type::func(
+        params: define_params![
+            list = generic_list("T"),
+            reducer = Type::func(
                 &[generic_type("R"), generic_type("T")],
                 generic_type("R")
-            )),
-            ("initValue".into(), Type::Generic("R".into())),
+            ),
+            initValue = Type::Generic("R".into()),
         ],
         return_type: Some(generic_type("R")),
         body: FuncBody::Native(lib_reduce)
     }),
     ("any", Function {
         type_params: vec!["T".into()],
-        params: vec![
-            ("list".into(), generic_list("T")),
-            ("predicate".into(), Type::func(
+        params: define_params![
+            list = generic_list("T"),
+            predicate = Type::func(
                 &[generic_type("T")],
                 Type::Bool
-            )),
+            ),
         ],
         return_type: Some(Type::Bool),
         body: FuncBody::Native(lib_any)
     }),
     ("every", Function {
         type_params: vec!["T".into()],
-        params: vec![
-            ("list".into(), generic_list("T")),
-            ("predicate".into(), Type::func(
+        params: define_params![
+            list = generic_list("T"),
+            predicate = Type::func(
                 &[generic_type("T")],
                 Type::Bool
-            )),
+            ),
         ],
         return_type: Some(Type::Bool),
         body: FuncBody::Native(lib_every)
     }),
     ("makeList", Function {
         type_params: vec!["T".into()],
-        params: vec![
-            ("length".into(), Type::Int),
-            ("elemFunc".into(), Type::func(
+        params: define_params![
+            length = Type::Int,
+            elemFunc = Type::func(
                 &[Type::Int],
                 generic_type("T")
-            ))
+            )
         ],
         return_type: Some(generic_list("T")),
         body: FuncBody::Native(|args, context| {
@@ -300,9 +300,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("appendFile", Function {
         type_params: vec![],
-        params: vec![
-            ("filepath".into(), Type::String),
-            ("contents".into(), Type::String),
+        params: define_params![
+            filepath = Type::String,
+            contents = Type::String,
         ],
         // return null on success, error message on error
         return_type: Some(Type::String.as_nullable()),
@@ -310,7 +310,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("readDir", Function {
         type_params: vec![],
-        params: vec![("directoryPath".into(), Type::String)],
+        params: define_params![directoryPath = Type::String],
         return_type: Some(
             Type::func(
                 &[
@@ -326,7 +326,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("readFile", Function {
         type_params: vec![],
-        params: vec![("filepath".into(), Type::String)],
+        params: define_params![filepath = Type::String],
         return_type: Some(
             Type::func(
                 &[
@@ -340,9 +340,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("writeFile", Function {
         type_params: vec![],
-        params: vec![
-            ("filepath".into(), Type::String),
-            ("contents".into() , Type::String),
+        params: define_params![
+            filepath = Type::String,
+            contents = Type::String,
         ],
         // return null on success, error message on error
         return_type: Some(Type::String.as_nullable()),
@@ -350,17 +350,10 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     }),
     ("serve", Function {
         type_params: vec![],
-        params: vec![
-            ("address".into(), Type::String),
-            (
-                "handleRequest".into(),
-                Type::func(&[Type::String], Type::String
-                )
-            ),
-            (
-                "handleError".into(),
-                Type::func(&[Type::String], Type::Null)
-            ),
+        params: define_params![
+            address = Type::String,
+            handleRequest = Type::func(&[Type::String], Type::String),
+            handleError = Type::func(&[Type::String], Type::Null),
         ],
         return_type: Some(Type::Null),
         body: FuncBody::Native(lib_serve)

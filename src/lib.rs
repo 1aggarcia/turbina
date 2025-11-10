@@ -9,6 +9,15 @@ use streams::{InputStream, OutputStreams, RustylineStream, StringStream, TokenSt
 use type_resolver::resolve_type;
 use wasm_bindgen::prelude::*;
 
+// put the macros before the modules so that they can use the macros
+
+#[macro_export]
+macro_rules! define_params {
+    ( $( $name:ident = $type:expr ),* $(,)? ) => {
+        vec![ $( (stringify!($name).into(), $type) ),* ]
+    }
+}
+
 pub mod errors;
 pub mod models;
 pub mod lexer;
