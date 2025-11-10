@@ -360,34 +360,23 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {vec![
     })
 ]});
 
-// TODO: create macro for repeated arg unwrapping
-
 fn lib_reverse(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
-    if let [Literal::String(text), ..] = args.as_slice() {
-        Literal::String(text.chars().rev().collect())
-    } else {
-        panic!("bad args");
-    }
+    unwrap_args! { args => Literal::String(text) }
+    Literal::String(text.chars().rev().collect())
 }
 
 fn lib_exit(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
-    if let [Literal::Int(code), ..] = args.as_slice() {
-        std::process::exit(*code);
-    } else {
-        panic!("bad args");
-    }
+    unwrap_args! { args => Literal::Int(code) }
+    std::process::exit(*code);
 }
 
 static EXEC_SUCCESS_TYPES: [Type; 2] = [Type::String, Type::String];
 
 fn lib_exec(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::String(command),
-        Literal::List(args),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+        Literal::List(args)
+    }
     let parsed_args: Vec<&String> = args.into_iter().map(|arg|
         match arg {
             Literal::String(s) => s,
@@ -413,12 +402,8 @@ fn lib_exec(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_help(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
-        Literal::String(library_function_name),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    unwrap_args! { args => Literal::String(library_function_name) }
+
     match get_function_signature(&library_function_name) {
         Some(signature) => writeln!(context.output.stdout, "{signature}"),
         None => writeln!(
@@ -432,12 +417,8 @@ fn lib_help(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_to_string(args: Vec<Literal>) -> String {
-    let [
-        data,
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    unwrap_args! { args => data } 
+
     match data {
         // to_string() on string literals adds unwanted quotes
         Literal::String(s) => s.clone(),
@@ -446,14 +427,10 @@ fn lib_to_string(args: Vec<Literal>) -> String {
 }
 
 fn lib_split(args: Vec<Literal>) -> Vec<Literal> {
-    let [
+    unwrap_args! { args =>
         Literal::String(text),
         Literal::String(delimiter),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
-
+    }
     text
         .split(delimiter)
         .map(|part| Literal::String(part.to_string()))
@@ -461,14 +438,10 @@ fn lib_split(args: Vec<Literal>) -> Vec<Literal> {
 }
 
 fn lib_join(args: Vec<Literal>) -> String {
-    let [
+    unwrap_args! { args =>
         Literal::List(list),
         Literal::String(separator),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
-
+    }
     list
         .into_iter()
         .map(|literal| match literal {
@@ -482,13 +455,10 @@ fn lib_join(args: Vec<Literal>) -> String {
 }
 
 fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::List(list_ref),
         Literal::Closure(map_func_ref),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    }
     let list = list_ref.clone();
     let map_func = map_func_ref.clone();
     let transformed = list
@@ -503,13 +473,10 @@ fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_filter(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::List(list_ref),
         Literal::Closure(predicate_ref),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    }
     let list = list_ref.clone();
     let predicate = predicate_ref.clone();
     let mut transformed = Vec::with_capacity(list.len());
@@ -524,14 +491,11 @@ fn lib_filter(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::List(list),
         Literal::Closure(reducer),
         init_value,
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    }
     list
         .iter()
         .fold(init_value.clone(), |accumulator, elem| eval_func_call(
@@ -542,13 +506,10 @@ fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_any(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::List(list),
         Literal::Closure(predicate),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    }
     let result = list
         .iter()
         .any(|elem|
@@ -562,13 +523,10 @@ fn lib_any(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_every(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::List(list),
         Literal::Closure(predicate),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    }
     let result = list
         .iter()
         .all(|elem|
@@ -582,13 +540,10 @@ fn lib_every(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_append_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::String(filepath),
         Literal::String(contents),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    }
     match append_to_file(filepath, contents) {
         Ok(_) => Literal::Null,
         Err(error) => Literal::String(error.to_string())
@@ -598,12 +553,7 @@ fn lib_append_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
 static READ_FILE_SUCCESS_TYPES: [Type; 1] = [Type::String];
 
 fn lib_read_file(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
-        Literal::String(filepath),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    unwrap_args! { args => Literal::String(filepath) }
 
     match fs::read_to_string(filepath) {
         Ok(contents) => create_result_from_success(
@@ -622,12 +572,7 @@ fn lib_read_file(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 static READ_DIR_SUCCESS_TYPES: Lazy<[Type; 1]> = Lazy::new(|| [Type::String.as_list()]);
 
 fn lib_read_dir(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
-        Literal::String(path),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    unwrap_args! { args => Literal::String(path) }
 
     let read_dir_result = get_filenames_in_directory(path)
         .map(|filepaths|
@@ -652,13 +597,10 @@ fn lib_read_dir(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 }
 
 fn lib_write_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::String(filepath),
         Literal::String(contents),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
+    }
     match fs::write(filepath, contents) {
         Ok(_) => Literal::Null,
         Err(error) => Literal::String(error.to_string())
@@ -666,15 +608,11 @@ fn lib_write_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
 }
 
 fn lib_serve(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    let [
+    unwrap_args! { args =>
         Literal::String(address),
         Literal::Closure(handle_request),
         Literal::Closure(handle_error),
-        ..
-    ] = args.as_slice() else {
-        panic!("bad args");
-    };
-
+    }
     let handle_tcp_request = |request: String| {
         let response = eval_func_call(
             context,

@@ -18,6 +18,18 @@ macro_rules! define_params {
     }
 }
 
+#[macro_export]
+macro_rules! unwrap_args {
+    ( $args:expr => $( $arg:pat ),* $(,)? ) => {
+        let [ $( $arg ),* , .. ] = $args.as_slice() else {
+            panic!(
+                "Unexpected argument type(s) passed to function: {:?}",
+                $args
+            );
+        };
+    };
+}
+
 pub mod errors;
 pub mod models;
 pub mod lexer;
