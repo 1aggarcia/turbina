@@ -1,5 +1,5 @@
 use crate::errors::Result;
-use crate::models::{Import, Token};
+use crate::models::{Import, Literal, Token};
 use crate::parser::shared_parsers::parse_id;
 use crate::parser::utils::{match_next, next_token_matches};
 use crate::streams::TokenStream;
@@ -11,13 +11,26 @@ pub fn parse_import(tokens: &mut TokenStream) -> Result<Import> {
     match_next(tokens, Token::Import)?;
 
     let mut import = Import { path_elements: vec![] };
-    import.path_elements.push(parse_id(tokens)?);
+    import.path_elements.push(parse_path_element(tokens)?);
     while next_token_matches(tokens, Token::Dot) {
-        tokens.pop()?; 
-        import.path_elements.push(parse_id(tokens)?);
+        tokens.pop()?;
+        import.path_elements.push(parse_path_element(tokens)?);
     }
 
     Ok(import)
+}
+
+/// ```text
+/// <path_element> ::= <id> | LiteralString
+/// ```
+fn parse_path_element(tokens: &mut TokenStream) -> Result<String> {
+    match tokens.peek()? {
+        Token::Literal(Literal::String(str)) => {
+            tokens.pop()?;
+            Ok(str)
+        },
+        _ => parse_id(tokens)
+    }
 }
 
 #[cfg(test)]
@@ -61,6 +74,20 @@ mod test {
                     "src".into(),
                     "directory".into(),
                     "utils".into(),
+                ]
+            };
+            assert_eq!(test_parse_import(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_returns_path_elements_with_spaces_when_using_strings() {
+            let input = force_tokenize(
+                r#"import src."path with spaces".main;"#);
+            let expected = Import {
+                path_elements: vec![
+                    "src".into(),
+                    "path with spaces".into(),
+                     "main".into(),
                 ]
             };
             assert_eq!(test_parse_import(input), Ok(expected));
