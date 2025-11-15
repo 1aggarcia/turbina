@@ -1,13 +1,15 @@
 use std::io::{Error, Write};
-use clap::Parser;
 
 use errors::InterpreterError;
 use evaluator::evaluate;
 use models::{AbstractSyntaxTree, Literal, Program, Type};
 use parser::parse_statement;
-use streams::{InputStream, OutputStreams, RustylineStream, StringStream, TokenStream};
+use streams::{InputStream, OutputStreams, StringStream, TokenStream};
 use type_resolver::resolve_type;
 use wasm_bindgen::prelude::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+use rustyline::RustylineStream;
 
 // put the macros before the modules so that they can use the macros
 
@@ -39,16 +41,15 @@ pub mod evaluator;
 pub mod libraries;
 pub mod streams;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod rustyline; // only for the CLI, breaks WASM compilation
+
 /// Executable unit of code.
 /// The type is only needed when a function is printed.
 type Statement = (AbstractSyntaxTree, Option<Type>);
 
-#[derive(Parser)]
 pub struct CliArgs {
-    #[arg(required = false)]
     pub path: Option<std::path::PathBuf>,
-
-    #[arg(long)]
     pub disable_type_checker: bool,
 }
 
@@ -156,6 +157,9 @@ pub fn run_as_file(
 
 /// Command line interface for using Turbina.
 /// REPL = Read-eval-print loop
+/// 
+/// Excluded when compiling for WASM since Rustyline is not supported in WASM
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_repl(args: CliArgs) {
     let input_stream = RustylineStream::new()
         .expect("Failed to open input stream");
