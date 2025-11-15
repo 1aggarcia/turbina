@@ -19,6 +19,8 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
 
     InvalidNullable { inner_type: Type } = "Type '{inner_type}' cannot be made nullable",
     IOError { message: String } = "IO Error: {message}",
+    ImportError { filepath: String } = "Module '{filepath}' not found",
+    ModuleError { module: String, error: Box<InterpreterError> } = "Error in module '{module}': {error}",
     ReservedId { id: String } = "Identifier '{id}' is reserved, it cannot be redefined",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Idenfitier '{id}' cannot be redefined",
@@ -65,6 +67,8 @@ impl From<InterpreterError> for Vec<InterpreterError> {
 /// This was more necessary when I had plain string errors, but over the
 /// functions should be removed in favor of the enum impl above. 
 pub mod error {
+    use std::path::PathBuf;
+
     use super::InterpreterError;
     use super::InterpreterError::*;
     use crate::models::{BinaryOp, Token, Type};
@@ -106,5 +110,15 @@ pub mod error {
 
     pub fn already_defined(id: &str) -> InterpreterError {
         ReassignError { id: id.into() }
+    }
+
+    pub fn import_error(path: &PathBuf) -> InterpreterError {
+        ImportError {
+            filepath: path.to_str().unwrap_or("unknown filepath").into()
+        }
+    }
+
+    pub fn module_error(module: &str, error: InterpreterError) -> InterpreterError {
+        ModuleError { module: module.into(), error: Box::new(error) }
     }
 }

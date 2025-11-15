@@ -1,0 +1,3 @@
+// For unit tests to test import of a real file with invalid types
+
+let invalidAssignment: int = "not an int";

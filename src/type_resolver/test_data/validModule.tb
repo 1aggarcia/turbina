@@ -1,0 +1,9 @@
+// For unit tests to test imports with valid types
+
+let validConstant: int = 5;
+
+let validFunction(x: bool) -> !x;
+
+let functionReferencingValidConstant(y: int) ->
+    validConstant * y;
+

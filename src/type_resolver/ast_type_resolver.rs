@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::models::{AbstractSyntaxTree, Program};
 use crate::type_resolver::expr_type_resolver::resolve_expr_type;
+use crate::type_resolver::import_type_resolver::resolve_import_type;
 use crate::type_resolver::let_type_resolver::resolve_let_type;
 use crate::type_resolver::shared::{TreeType, TypeContext, ValidationResult};
 
@@ -35,7 +36,7 @@ pub fn resolve_statement_type(
                     name_to_bind: Some(node.id.clone())
                 })
         },
-        AbstractSyntaxTree::Import(_) => todo!("import type resolution"), // Should look up the file and add members to type context. Evaluate to null
+        AbstractSyntaxTree::Import(import) => resolve_import_type(context, import),
         AbstractSyntaxTree::Expr(node) => resolve_expr_type(&context, node)
             .map(|datatype| TreeType { datatype, name_to_bind: None })
     }
