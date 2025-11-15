@@ -91,7 +91,7 @@ impl std::fmt::Display for Scope<'_> {
     }
 }
 
-static INDENT_SPACES: usize = 2;
+static INDENT_SPACES: usize = 4;
 
 /// For the Display trait of Scope.
 /// Recursively format the scope and parent scopes as string
@@ -202,7 +202,7 @@ pub enum FuncBody {
     Native(fn(Vec<Literal>, &mut EvalContext) -> Literal)
 }
 
-#[derive(PartialEq, Debug, Clone, Hash, Eq)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub enum Type {
     // primitives
     Int,
@@ -215,6 +215,7 @@ pub enum Type {
     Nullable(Box<Type>),
     Func { input: Vec<Type>, output: Box<Type> },
     List(Box<Type>),
+    Struct(HashMap<String, Type>),
 
     // type variable
     Generic(String),
@@ -239,6 +240,10 @@ impl fmt::Display for Type {
                     write!(f, "{}[]", element_type)
                 }
             },
+            Type::Struct(fields) => {
+                let formatted= format_struct(fields, 1);
+                write!(f, "{}", formatted)
+            },
             Type::Func { input, output } => {
                 // don't show parentheses for functions with one argument
                 if input.len() == 1 {
@@ -262,6 +267,28 @@ impl fmt::Display for Type {
             },
         }
     }
+}
+
+fn format_struct(
+    fields: &HashMap<String, Type>,
+    indent_level: usize
+) -> String {
+    let base_indent = " ".repeat((indent_level - 1) * INDENT_SPACES);
+    let indent = " ".repeat(indent_level * INDENT_SPACES);
+
+    let formatted_fields = fields.into_iter()
+        .map(|(field, datatype)| {
+            let type_string = match datatype {
+                Type::Struct(nested_fields) =>
+                    format_struct(nested_fields, indent_level + 1),
+                other => other.to_string()
+            };
+            format!("{}{}: {}", indent, field, type_string)
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+
+    format!("{{\n{}\n{}}}", formatted_fields, base_indent)
 }
 
 impl Type {
@@ -555,5 +582,62 @@ mod test_type {
             output: Box::new(Type::Int.as_nullable())
         };
         assert_eq!(format!("{}", func), "() -> int?");
+    }
+
+    #[test]
+    fn test_display_formats_simple_struct_readably() {
+        let fields = HashMap::from([
+            ("names".into(), Type::String.as_list()),
+            ("square".into(), Type::func(&[Type::Int], Type::Int)),
+        ]);
+        let struct_type = Type::Struct(fields);
+
+        let accepted1 =
+// Unindented to match the indentation of the output
+r#"{
+    names: string[],
+    square: int -> int
+}"#;
+
+        let accepted2 =
+// Fields in reverse order
+r#"{
+    square: int -> int,
+    names: string[]
+}"#;
+        let result = format!("{}", struct_type);
+        assert!(
+            result == accepted1
+            || result == accepted2,
+            "Actual result did not match accepted results: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_display_formats_nested_struct_readably() {
+        let fields = HashMap::from([
+            ("parent".into(), Type::Struct(
+                HashMap::from([
+                    ("middle".into(), Type::Struct(
+                        HashMap::from([
+                            ("child".into(), Type::Unknown)
+                        ])
+                    ))
+                ])
+            )),
+        ]);
+        let struct_type = Type::Struct(fields);
+        assert_eq!(
+            format!("{}", struct_type),
+// Unindented to match the indentation of the output
+r#"{
+    parent: {
+        middle: {
+            child: unknown
+        }
+    }
+}"#
+        );  
     }
 }
