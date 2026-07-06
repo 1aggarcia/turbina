@@ -26,7 +26,13 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
     let newline_regex = Regex::new("[\r\n]+$").unwrap();
     let ends_with_newline = newline_regex.is_match(line);
 
-    let line_without_comments = line.trim().split("//").next().unwrap_or("");
+    let escaped_line = escape_string_inputs(line);
+    let line_without_comments = escaped_line
+        .trim()
+        .split("//")
+        .next()
+        .unwrap_or("");
+
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
@@ -154,6 +160,13 @@ fn symbol_to_token(symbol: &str) -> Token {
     }
 }
 
+/// Escape characters that are not automatically escaped by the input stream
+/// (i.e. //) before matching against the lexer regex pattern.
+fn escape_string_inputs(line: &str) -> String {
+    let regex = Regex::new(r#"(".*)\/\/(.*")"#).unwrap();
+    regex.replace_all(line, "$1\\/\\/$2").to_string()
+}
+
 /// Convert raw string data stored by the program into a displayable version
 /// which shows all escape characters. Ex: `"a\nb"` becomes `"\"a\\nb\""` so
 /// that it is shown to the user as `"a\nb"`.
@@ -203,6 +216,10 @@ mod tests {
     #[case::normal_string(r#""hola""#, string_token("hola"))]
     #[case::string_with_spaces(r#""a b c""#, string_token("a b c"))]
     #[case::string_with_newline(r#""a \n b""#, string_token("a \n b"))]
+    #[case::url_string(
+        r#""https://www.example.com""#,
+        string_token("https://www.example.com")
+    )]
 
     #[case::symbol("let", Token::Let)]
     #[case::symbol("import", Token::Import)]
@@ -309,6 +326,15 @@ mod tests {
         "5 // this comment should not produce tokens\n",
         &[int_token(5), Token::Newline]
     )]
+
+    #[ignore = "TODO: Fix 'incomplete str' error"]
+    #[case::bind_backslash_string( r#"let x = "\""#, &[
+        Token::Let,
+        id_token("x"),
+        unary_op_token(UnaryOp::Equals),
+        string_token("\\")
+    ])]
+
     #[case::tokens_surrounding_newlines("x \n \r\n \r \n 9 \n", &[
         id_token("x"),
         Token::Newline,
@@ -405,6 +431,11 @@ mod tests {
             let unescaped = unescape_string(original).unwrap();
            assert_eq!(escape_string(&unescaped).unwrap(), original); 
         }
+
+        #[test]
+        fn it_does_not_escape_forward_slash() {
+            assert_eq!(escape_string("https://").unwrap(), "\"https://\"");
+        }
     }
 
     mod unescape_string {
@@ -420,6 +451,11 @@ mod tests {
             let original = "\n1";
             let escaped = escape_string(original).unwrap();
             assert_eq!(unescape_string(&escaped).unwrap(), original);
+        }
+
+        #[test]
+        fn it_applies_forward_slash_escape() {
+            assert_eq!(unescape_string("\"https:\\/\\/\"").unwrap(), "https://");
         }
     }
 }
