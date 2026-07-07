@@ -73,10 +73,6 @@ pub mod error {
     use super::InterpreterError::*;
     use crate::models::{BinaryOp, Token, Type};
 
-    pub fn unexpected_end_of_input() -> InterpreterError {
-        SyntaxError { message: "Unexpected end of input".into() }
-    }
-
     pub fn unexpected_token(expected: &str, got: Token) -> InterpreterError {
         SyntaxError { message: format!("Expected {}, got {:?}", expected, got) }
     }

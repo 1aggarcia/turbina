@@ -17,14 +17,16 @@ use crate::streams::TokenStream;
 pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxTree> {
     skip_newlines(token_stream);
 
-    let Ok(first) = token_stream.peek() else {
-        return Err(InterpreterError::EndOfFile);
+    let first = match token_stream.peek() {
+        Ok(token) => token,
+        Err(err) => return Err(err),
     };
     let statement = match first {
         Token::Let => AbstractSyntaxTree::Let(parse_let(token_stream)?),
         Token::Import => AbstractSyntaxTree::Import(
             parse_import(token_stream)?
         ),
+        Token::EndOfFile => return Err(InterpreterError::EndOfFile),
         _ => AbstractSyntaxTree::Expr(parse_expr(token_stream)?),
     };
 
@@ -56,7 +58,7 @@ pub mod test_utils {
 
     pub fn force_tokenize(text: &str) -> Vec<Token> {
         text
-            .split("\n")
+            .split_inclusive("\n") // split and preserve newline
             .flat_map(|line| tokenize(line).unwrap())
             .collect()
     }
@@ -71,9 +73,21 @@ mod test {
     use rstest::rstest;
 
     #[rstest]
-    #[case(force_tokenize("let"), error::unexpected_end_of_input())]
-    #[case(force_tokenize("let x"), error::unexpected_end_of_input())]
-    #[case(force_tokenize("3 +"), error::unexpected_end_of_input())]
+    #[case(
+        force_tokenize("let"),
+        error::unexpected_token("identifier", Token::EndOfFile)
+    )]
+    #[case(
+        force_tokenize("let x"),
+        error::unexpected_token(
+            format!("{:?}", Token::UnaryOp(UnaryOp::Equals)).as_str(),
+            Token::EndOfFile
+        )
+    )]
+    #[case(
+        force_tokenize("3 +"),
+        error::unexpected_token("identifier or expression", Token::EndOfFile)
+    )]
     fn it_returns_error_for_incomplete_statements(
         #[case] tokens: Vec<Token>,
         #[case] error: InterpreterError
@@ -84,7 +98,9 @@ mod test {
     #[test]
     fn it_returns_error_for_statement_without_newline_or_semicolon() {
         let input = force_tokenize("2 + 2");
-        let expected = error::unexpected_end_of_input();
+        let expected = InterpreterError::end_of_statement(
+            Token::EndOfFile
+        );
         assert_eq!(parse_tokens(input), Err(expected));
     }
 
@@ -168,7 +184,10 @@ mod test {
     }
 
     #[test]
-    fn it_returns_end_of_file_error_for_empty_stream() {
-        assert_eq!(parse_tokens(vec![]), Err(InterpreterError::EndOfFile));
+    fn it_returns_eof_error_for_eof_token() {
+        assert_eq!(
+            parse_tokens(vec![Token::EndOfFile]),
+            Err(InterpreterError::EndOfFile)
+        );
     }
 }

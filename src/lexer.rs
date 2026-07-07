@@ -21,6 +21,10 @@ use crate::models::{
 /// 
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
 pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
+    if line.is_empty() {
+        return Ok(vec![Token::EndOfFile])
+    }
+
     // removing comments will remove a trailing newline,
     // so we have to check for it first
     let newline_regex = Regex::new("[\r\n]+$").unwrap();
@@ -245,6 +249,7 @@ mod tests {
     #[case("{", Token::OpenCurlyBracket)]
     #[case("}", Token::CloseCurlyBracket)]
     #[case("->", Token::Arrow)]
+    #[case("", Token::EndOfFile)]
     fn one_token(#[case] line: &str, #[case] expected: Token) {
         assert_eq!(tokenize(line), Ok(vec![expected]));
     }
@@ -328,6 +333,7 @@ mod tests {
     )]
 
     #[ignore = "TODO: Fix 'incomplete str' error"]
+    // Reproduce with unescape("\\");
     #[case::bind_backslash_string( r#"let x = "\""#, &[
         Token::Let,
         id_token("x"),

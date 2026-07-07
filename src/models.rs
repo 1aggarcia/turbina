@@ -142,8 +142,9 @@ pub enum Token {
     Import,
     Type(Type),
 
-    // null token for lexing needed since type vs literal "null" is ambiguous
-    Null,
+    // non-standard
+    Null,  // null token for lexing needed since type vs literal "null" is ambiguous
+    EndOfFile,
 }
 
 impl Token {
