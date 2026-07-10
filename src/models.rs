@@ -160,6 +160,7 @@ impl Token {
 #[derive(PartialEq, Debug, Clone)]
 pub enum Literal {
     Int(i32),
+    Byte(u8),
     String(String),
     Bool(bool),
     Closure(Closure),
@@ -171,6 +172,7 @@ impl std::fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int(i) => write!(f, "{i}"),
+            Self::Byte(b) => write!(f, "0x{b:02X}"),
             Self::String(s) => {
                 let escaped_string= escape_string(s).unwrap();
                 write!(f, "{escaped_string}")
@@ -207,6 +209,7 @@ pub enum FuncBody {
 pub enum Type {
     // primitives
     Int,
+    Byte,
     String,
     Bool,
     Null,
@@ -229,6 +232,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Int => write!(f, "int"),
+            Type::Byte => write!(f, "byte"),
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
             Type::Unknown => write!(f, "unknown"),
@@ -521,6 +525,10 @@ pub mod test_utils {
         Token::Literal(Literal::Int(data))
     }
 
+    pub fn byte_token(data: u8) -> Token {
+        Token::Literal(Literal::Byte(data))
+    }
+
     pub fn op_token(operator: BinaryOp) -> Token {
         Token::BinaryOp(operator)
     }
@@ -640,5 +648,23 @@ r#"{
     }
 }"#
         );  
+    }
+}
+
+#[cfg(test)]
+mod test_literal {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(2, "0x02")]
+    #[case(124, "0x7C")]
+    #[case(255, "0xFF")]
+    fn it_should_display_byte_as_hexadecimal(
+        #[case] input: u8,
+        #[case] expected: &str
+    ) {
+        let actual = format!("{}", Literal::Byte(input));
+        assert_eq!(actual, expected);
     }
 }

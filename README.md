@@ -24,10 +24,12 @@ let y = "a string";  // type is inferred
 let a: int = 1;
 let b: bool = true;
 let c: string = "a string";
+let d: byte = 0xBBb;
 
 // lists
-let d: int[] = [1, 2, 3];
-let e: bool[] = [true, false];
+let e: int[] = [1, 2, 3];
+let f: bool[] = [true, false];
+let g: byte[] = b"Sequence of char bytes";
 
 // functions
 type predicate = (int) -> bool;  // int arg, returns bool

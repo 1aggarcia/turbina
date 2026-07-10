@@ -45,6 +45,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z_]\w*)
+        | (?P<byte>\d{1,3}b)
         | \d+[a-zA-Z]+ # capture illegal tokens so that remaining numbers are legal
         | (?P<int>\d+)
     "#;
@@ -58,6 +59,8 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
             if let Some(m) = x.name("int") {
                 let int_value = m.as_str().parse::<i32>().unwrap();
                 Token::Literal(Literal::Int(int_value))
+            } else if let Some(m) = x.name("byte") {
+                parse_byte_from_string(m.as_str())?
             } else if let Some(_) = x.name("newline") {
                 Token::Newline
             } else if let Some(m) = x.name("binary_op") {
@@ -158,10 +161,23 @@ fn symbol_to_token(symbol: &str) -> Token {
         "string" => Token::Type(Type::String),
         "int" => Token::Type(Type::Int),
         "bool" => Token::Type(Type::Bool),
+        "byte" => Token::Type(Type::Byte),
         "unknown" => Token::Type(Type::Unknown),
         "null" => Token::Null,
         _ => Token::Id(symbol.to_string()),
     }
+}
+
+fn parse_byte_from_string(text: &str) -> MultiResult<Token> {
+    // Remove the "b" suffix
+    let mut chars = text.chars();
+    chars.next_back();
+
+    let byte_value = chars.as_str().parse::<u8>().map_err(|err|
+        InterpreterError::SyntaxError { message: err.to_string() }
+    )?;
+
+    Ok(Token::Literal(Literal::Byte(byte_value)))
 }
 
 /// Escape characters that are not automatically escaped by the input stream
@@ -215,6 +231,8 @@ mod tests {
 
     #[case::null("unknown", Token::Type(Type::Unknown))]
     #[case::null("null", Token::Null)]
+
+    #[case::base_10_byte_literal("123b", byte_token(123))]
 
     #[case::empty_string("\"\"", string_token(""))]
     #[case::normal_string(r#""hola""#, string_token("hola"))]
@@ -415,6 +433,17 @@ mod tests {
             InterpreterError::UnrecognizedToken { payload: "5l".into() }
         ];
         assert_eq!(tokenize("23sdf 5l"), Err(errors));
+    }
+
+    #[test]
+    fn it_returns_error_for_invalid_byte_literals() {
+        assert!(matches!(tokenize("999b"), Err(_)));
+        assert_eq!(
+            tokenize("123456789b"),
+            Err(vec![InterpreterError::UnrecognizedToken {
+                payload: "123456789b".into()
+            }])
+        )
     }
 
     #[test]

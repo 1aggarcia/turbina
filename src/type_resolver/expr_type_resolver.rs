@@ -230,6 +230,7 @@ fn get_literal_type(literal: &Literal) -> SubResult {
     let datatype = match literal {
         Literal::Bool(_) => Type::Bool,
         Literal::Int(_) => Type::Int,
+        Literal::Byte(_) => Type::Byte,
         Literal::String(_) => Type::String,
         Literal::Null => Type::Null,
         Literal::List(list) =>
