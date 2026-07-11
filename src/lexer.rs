@@ -41,7 +41,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;\.(),\[\]{}]|->)
-        | (?P<binary_op>==|!=|<=|>=|&&|\|>|\|\||[+*\-/%<>])
+        | (?P<binary_op>==|!=|<=|>=|&&|\|>|\|\||>>|<<|[+*\-/%<>&\|\^])
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z_]\w*)
@@ -110,6 +110,11 @@ fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
         "==" => BinaryOp::Equals,
         "&&" => BinaryOp::And,
         "||" => BinaryOp::Or,
+        "&" => BinaryOp::BitwiseAnd,
+        "|" => BinaryOp::BitwiseOr,
+        "^" => BinaryOp::BitwiseXor,
+        ">>" => BinaryOp::RightShift,
+        "<<" => BinaryOp::LeftShift,
         "!=" => BinaryOp::NotEq,
         "<" => BinaryOp::LessThan,
         "<=" => BinaryOp::LessThanOrEqual,
@@ -169,11 +174,11 @@ fn symbol_to_token(symbol: &str) -> Token {
 }
 
 fn parse_byte_from_string(text: &str) -> MultiResult<Token> {
-    // Remove the "b" suffix
-    let mut chars = text.chars();
-    chars.next_back();
+    // Remove "b" suffix
+    let mut text_without_suffix = text.to_owned();
+    text_without_suffix.pop();
 
-    let byte_value = chars.as_str().parse::<u8>().map_err(|err|
+    let byte_value = text_without_suffix.parse::<u8>().map_err(|err|
         InterpreterError::SyntaxError { message: err.to_string() }
     )?;
 
@@ -408,6 +413,11 @@ mod tests {
     #[case("==", BinaryOp::Equals)]
     #[case("&&", BinaryOp::And)]
     #[case("||", BinaryOp::Or)]
+    #[case("&", BinaryOp::BitwiseAnd)]
+    #[case("|", BinaryOp::BitwiseOr)]
+    #[case("^", BinaryOp::BitwiseXor)]
+    #[case(">>", BinaryOp::RightShift)]
+    #[case("<<", BinaryOp::LeftShift)]
     #[case("!=", BinaryOp::NotEq)]
     #[case("<", BinaryOp::LessThan)]
     #[case("<=", BinaryOp::LessThanOrEqual)]

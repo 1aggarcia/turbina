@@ -373,6 +373,20 @@ fn binary_op_return_type(left: Type, operator: BinaryOp, right: Type) -> SubResu
         Minus | Percent | Slash | Star =>
             if left == Type::Int { Ok(Type::Int) } else { type_error },
 
+        // bitwise operators
+        BitwiseAnd | BitwiseOr | BitwiseXor => match (&left, right) {
+            (Type::Byte, Type::Byte)
+            | (Type::Int, Type::Int) => Ok(left),
+            _ => type_error
+        },
+
+        // bit shifts
+        RightShift | LeftShift => match (&left, right) {
+            (Type::Int, Type::Int) => Ok(left),
+            (Type::Byte, Type::Int) => Ok(left),
+            _ => type_error,
+        }
+
         Pipe => Ok(right),
     }
 }
@@ -482,6 +496,8 @@ mod test {
         #[case("true % false;", BinaryOp::Percent, Type::Bool, Type::Bool)]
         #[case("0 == false;", BinaryOp::Equals, Type::Int, Type::Bool)]
         #[case("\"\" != 1;", BinaryOp::NotEq, Type::String, Type::Int)]
+        #[case("2 & 2b;", BinaryOp::BitwiseAnd, Type::Int, Type::Byte)]
+        #[case("2 << 2b;", BinaryOp::LeftShift, Type::Int, Type::Byte)]
 
         #[case("2 >  false;", BinaryOp::GreaterThan, Type::Int, Type::Bool)]
         #[case("2 >= \"\";", BinaryOp::GreaterThanOrEqual, Type::Int, Type::String)]
@@ -518,6 +534,10 @@ mod test {
         #[rstest]
         #[case("2 + 2;", Type::Int)]
         #[case("2 / 2;", Type::Int)]
+        #[case("2 | 2;", Type::Int)]
+        #[case("2b | 2b;", Type::Byte)]
+        #[case("2b << 2;", Type::Byte)]
+        #[case("2 >> 2;", Type::Int)]
         #[case("2 |> toString(_);", Type::String)]
         #[case(r#""a" + "b";"#, Type::String)]
         fn it_returns_ok_for_good_operands(

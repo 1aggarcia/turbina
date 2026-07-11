@@ -205,7 +205,17 @@ fn eval_id(context: &mut EvalContext, id: &str) -> Literal {
 /// Helper to compute the result of the binary operation
 fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal {
     use BinaryOp::*;
+    macro_rules! eval_bitwise_op {
+        ($left:expr, $right:expr, $operator:tt) => {
+            match ($left, $right) {
+                (Literal::Byte(a), Literal::Byte(b)) => Literal::Byte(a $operator b),
+                (Literal::Int(a), Literal::Int(b)) => Literal::Int(a $operator b),
+                (a, b) => panic!("unsupported arguments for operator: {a}, {b}"),
+            }
+        };
+    }
 
+    // TODO: return error for invalid combos instead of panicking
     match operator {
         Plus => eval_plus(left, right),
         Minus =>
@@ -229,6 +239,12 @@ fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal
         And => Literal::Bool(literal_as_bool(left) && literal_as_bool(right)),
         Or => Literal::Bool(literal_as_bool(left) || literal_as_bool(right)),
 
+        BitwiseAnd => eval_bitwise_op!(left, right, &),
+        BitwiseOr => eval_bitwise_op!(left, right, |),
+        BitwiseXor => eval_bitwise_op!(left, right, ^),
+        RightShift => eval_right_shift(left, right),
+        LeftShift => eval_left_shift(left, right),
+
         // these use the derived `PartialEq` trait on enum `Literal`
         Equals => Literal::Bool(left == right),
         NotEq => Literal::Bool(left != right),
@@ -249,6 +265,42 @@ fn eval_plus(left: Literal, right: Literal) -> Literal {
             str + &literal_to_string(right.clone()).expect(
                 &format!("right side of + was a non-string literal: {right}"))
         ),
+    }
+}
+
+fn eval_right_shift(left: Literal, right: Literal) -> Literal {
+    use Literal::*;
+
+    let Int(b) = right else {
+        panic!("right side of >> was a non-int literal: {right}")
+    };
+    // Rust panics on overflow by default, so we use the unbounded_shr method
+    // to truncate bits that don't fit
+    let unsigned_b: u32 = b.try_into().expect(
+        "failed to used right side of >> as unsigned int"
+    );
+    match left {
+        Byte(a) => Byte(a.unbounded_shr(unsigned_b)),
+        Int(a) => Int(a.unbounded_shr(unsigned_b)),
+        _ => panic!("left side of >> was of an invalid type: {left}"),
+    }
+}
+
+fn eval_left_shift(left: Literal, right: Literal) -> Literal {
+    use Literal::*;
+
+    let Int(b) = right else {
+        panic!("right side of << was a non-int literal: {right}")
+    };
+    // Rust panics on overflow by default, so we use the unbounded_shl method
+    // to truncate bits that don't fit
+    let unsigned_b: u32 = b.try_into().expect(
+        "failed to used right side of << as unsigned int"
+    );
+    match left {
+        Byte(a) => Byte(a.unbounded_shl(unsigned_b)),
+        Int(a) => Int(a.unbounded_shl(unsigned_b)),
+        _ => panic!("left side of << was of an invalid type: {left}"),
     }
 }
 
@@ -346,6 +398,11 @@ mod test_evalutate {
     #[case("3 * 5;", 3 * 5)]
     #[case("3 / 5;", 3 / 5)]
     #[case("3 % 5;", 3 % 5)]
+    #[case("3 | 5;", 3 | 5)]
+    #[case("3 ^ 5;", 3 ^ 5)]
+    #[case("3 & 5;", 3 & 5)]
+    #[case("3 << 5;", 3 << 5)]
+    #[case("3 >> 5;", 3 >> 5)]
     fn it_evaluates_binary_math_operators(
         #[case] input: &str, #[case] expected_val: i32
     ) {
@@ -383,6 +440,22 @@ mod test_evalutate {
     ) {
         let input = make_tree(input);
         let expected = Literal::Int(expected_val);
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[rstest]
+    #[case("2b | 1b;", 2 | 1)]
+    #[case("2b & 1b;", 2 & 1)]
+    #[case("195b >> 2;", 48)]
+    #[case::truncation("195b << 2;", 12)]
+    #[case::right_shift_overflow("1b >> 8;", 0)]
+    #[case::left_shift_overflow("1b << 8;", 0)]
+    #[case("(25b ^ 16b & 3b) | (10b & 4b);", 25)]
+    fn it_evaluates_bitwise_operators_on_bytes(
+        #[case] input: &str, #[case] expected_val: u8
+    ) {
+        let input = make_tree(input);
+        let expected = Literal::Byte(expected_val);
         assert_eq!(evaluate_fresh(input), expected);
     }
 

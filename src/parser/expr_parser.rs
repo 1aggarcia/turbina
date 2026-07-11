@@ -160,8 +160,8 @@ static MAX_EXPRESSION_PRECEDENCE: u8 = 4;
 /// <binary_expr> ::= <expr_lvl_0> {Pipe <expr_lvl_0>}
 /// <expr_lvl_0> ::= <expr_lvl_1> {(And | Or) <expr_lvl_1>}
 /// <expr_lvl_1> :: = <expr_lvl_2> {(== | != | < | <= | > | >=) <expr_lvl_2>}
-/// <expr_lvl_2> :: = <expr_lvl_3> {(+ | -) <expr_lvl_3>}
-/// <expr_lvl_3> :: = <term> {(* | / | %) <term>}
+/// <expr_lvl_2> :: = <expr_lvl_3> {(+ | - | "|" | ^) <expr_lvl_3>}
+/// <expr_lvl_3> :: = <term> {(* | / | % | & | >> | <<) <term>}
 /// ```
 /// Operator precedence is expressed by giving levels to each expression; e.g.
 /// `<expr_lvl_2>` has precedence above `<expr_lvl_3>` but not `<expr_lvl_1>`.
@@ -343,9 +343,10 @@ fn get_binary_operator_precedence(operator: BinaryOp) -> u8 {
         Equals | NotEq | LessThan | LessThanOrEqual
         | GreaterThan | GreaterThanOrEqual => 2,
 
-        Plus | Minus => 3,
+        Plus | Minus | BitwiseOr | BitwiseXor => 3,
 
-        Star | Slash | Percent => 4,
+        Star | Slash | Percent | BitwiseAnd
+        | RightShift | LeftShift => 4,
     }
 }
 
