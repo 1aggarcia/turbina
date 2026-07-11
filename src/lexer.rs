@@ -37,11 +37,19 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
         .next()
         .unwrap_or("");
 
+    // (?x) enables verbose mode to ignore comments and whitespace
     let pattern = r#"(?x)
         (?P<string>\"[^"]*\")
         | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;\.(),\[\]{}]|->)
-        | (?P<binary_op>==|!=|<=|>=|&&|\|>|\|\||>>|<<|[+*\-/%<>&\|\^])
+        | (?P<binary_op>
+            # multi-character operators
+            # matched first to prevent greedily matching single char operators
+            == | != | <= | >= | && | \|> | \|\| | >> | <<
+            |
+            # single character operators
+            [+*\-/%<>&\|\^]
+            )
         | (?P<unary_op>[=!?])
         | (?P<bool>true|false)
         | (?P<symbol>[a-zA-Z_]\w*)
