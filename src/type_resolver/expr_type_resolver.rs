@@ -265,10 +265,9 @@ fn validated_negated_int(context: &TypeContext, inner_term: &Term) -> SubResult 
     }
 }
 
-
-
-/// Check that the function being called is defined and the input types match
+/// - Check that the function being called is defined and the input types match
 /// the argument list
+/// - Determine the literal types to assign to generics in the return type
 fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
     let (param_types, output_type) = match resolve_term_type(context, &call.func)? {
         Type::Func { input, output } => (input, output),
@@ -286,18 +285,86 @@ fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
     }
 
     let mut errors = vec![];
+    let mut generic_to_literal_types = HashMap::<String, Type>::new();
     for (arg, param_type) in call.args.iter().zip(param_types.iter()) {
         let arg_type = resolve_expr_type(context, arg)?;
-        if arg_type.is_assignable_to(param_type) {
+        if !arg_type.is_assignable_to(param_type) {
+            errors.push(InterpreterError::UnexpectedType {
+                got: arg_type,
+                expected: param_type.clone()
+            });
             continue;
         }
-        errors.push(InterpreterError::UnexpectedType {
-            got: arg_type,
-            expected: param_type.clone()
-        });
+        if let Type::Generic(generic_name) = param_type {
+            let resolved = match generic_to_literal_types.get(generic_name) {
+                None => arg_type,
+                Some(prev_resolved) =>
+                    find_union_type(arg_type, prev_resolved.clone()),
+            };
+            generic_to_literal_types.insert(generic_name.clone(), resolved);
+        };
     }
 
-    if errors.is_empty() { Ok(*output_type) } else { Err(errors) }
+    if errors.is_empty() {
+        Ok(replace_generic_types(
+            *output_type,
+            &generic_to_literal_types
+        ))
+    } else {
+        Err(errors)
+    }
+}
+
+/// Recursively replace all generic types in the input datatype with literal
+/// types defined in the passed in mapping. If no literal type is found, the
+/// generic is left in place.
+fn replace_generic_types(
+    datatype: Type,
+    generic_to_literal_types: &HashMap<String, Type>
+) -> Type {
+    match datatype {
+        Type::Generic(name) => {
+            match generic_to_literal_types.get(&name) {
+                Some(t) => t.clone(),
+                None => Type::Generic(name), // do nothing rather than erroring
+            }
+        },
+        Type::Func { input, output } => {
+            let new_inputs: Vec<Type> = input.into_iter()
+                .map(|t|
+                    replace_generic_types(t, generic_to_literal_types)
+                )
+                .collect();
+
+            let new_output =
+                replace_generic_types(*output, generic_to_literal_types);
+
+            Type::Func { input: new_inputs, output: Box::new(new_output) }
+        },
+        Type::List(list) => {
+            let converted =
+                replace_generic_types(*list, generic_to_literal_types);
+            Type::List(Box::new(converted))
+        },
+        Type::Nullable(nullable) => {
+            let converted =
+                replace_generic_types(*nullable, generic_to_literal_types);
+            Type::Nullable(Box::new(converted))
+        },
+        Type::Struct(struct_map) => {
+            let converted: HashMap<String, Type> = struct_map.into_iter()
+                .map(|(key, datatype)| (
+                    key,
+                    replace_generic_types(
+                        datatype,
+                        generic_to_literal_types
+                    )
+                ))
+                .collect();
+            Type::Struct(converted)
+        },
+        _ => datatype,
+    }
 }
 
 /// Determines the strictest type that applies to all elements in the list
@@ -702,6 +769,7 @@ mod test {
     }
 
     mod func_call {
+        use std::collections::HashMap;
         use super::*;
 
         #[test]
@@ -783,14 +851,45 @@ mod test {
             assert_eq!(resolve_type(&program, &tree), ok_without_binding(Type::Int));
         }
 
-        #[ignore = "TODO: Make resolve to bool instead of generic T"]
+        #[rstest]
+        #[case(generic_t(), Type::Bool)]
+        #[case::list(generic_t().as_list(), Type::Bool.as_list())]
+        #[case::nullable(generic_t().as_nullable(), Type::Bool.as_nullable())]
+        #[case::recursive(
+            Type::Struct(HashMap::from([
+                ("x".to_string(), generic_t()),
+                ("y".to_string(), generic_t().as_list()),
+            ])),
+            Type::Struct(HashMap::from([
+                ("x".to_string(), Type::Bool),
+                ("y".to_string(), Type::Bool.as_list()),
+            ])),
+        )]
+        fn it_infers_correct_return_type_from_generic_function_arguments(
+            #[case] generic_return_type: Type,
+            #[case] expected_return_type: Type
+        ) {
+            let program = make_program_with_func(
+                "f", &[generic_t()], generic_return_type);
+            let tree = make_tree("f(false);",);
+            assert_eq!(
+                resolve_type(&program, &tree),
+                ok_without_binding(expected_return_type)
+            );
+        }
+
         #[test]
-        fn it_infers_correct_return_type_from_generic_function_arguments() {
+        fn it_uses_union_type_for_multiple_types_with_same_generic() {
             let generic_t = || Type::Generic("T".into());
             let program = make_program_with_func(
-                "f", &[generic_t()], generic_t());
-            let tree = make_tree("f(false);",);
-            assert_eq!(resolve_type(&program, &tree), ok_without_binding(Type::Bool));
+                "f", &[generic_t(), generic_t()], generic_t());
+
+            // byte literal and null both assigned to generic type T
+            let tree = make_tree("f(123b, null);");
+            // T should resolve to nullable byte
+            let expected = ok_without_binding(Type::Byte.as_nullable());
+            let actual = resolve_type(&program, &tree);
+            assert_eq!(actual, expected);
         }
 
         /// Create a `Program` with a function of name `name`, input types
@@ -921,9 +1020,10 @@ mod test {
             assert_eq!(resolve_type_fresh(input), ok_with_binding("f", func_type));
         }
 
-        /// shorthand for a generic type 'T'
-        fn generic_t() -> Type {
-            Type::Generic("T".into())
-        }
+    }
+
+    /// shorthand for a generic type 'T'
+    fn generic_t() -> Type {
+        Type::Generic("T".into())
     }
 }

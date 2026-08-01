@@ -89,7 +89,6 @@ fn validate_next_statement(
 mod test_resolve_import_type {
     use super::*;
     use std::collections::HashMap;
-    use std::path::Path;
 
     use crate::models::Program;
     use crate::parser::test_utils::*;

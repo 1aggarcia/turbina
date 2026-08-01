@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::io::{stderr, stdin, stdout, BufRead, BufReader, Write};
 use std::fs::File;
 
-use crate::errors::{InterpreterError, error};
+use crate::errors::{InterpreterError};
 use crate::lexer::tokenize;
 use crate::models::Token;
 
