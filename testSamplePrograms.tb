@@ -15,7 +15,14 @@ let getProgramsToTest(samplePrograms: string[], programOutputs: string[]) ->
         )
     );
 
-let getTestResult(testName: string, expected: string, actual: string) ->
+// Replace Windows "\r\n" newlines with standard "\n" so that string
+// comparisons ignore differences in newlines
+let normalize_newlines(text: string) -> split(text, "\r\n") |> join(_, "\n");
+
+let getTestResult(testName: string, raw_expected: string, raw_actual: string) {
+    let expected = normalize_newlines(raw_expected);
+    let actual = normalize_newlines(raw_actual);
+
     if (expected == actual)
         "PASSED: " + testName
     else
@@ -27,6 +34,7 @@ let getTestResult(testName: string, expected: string, actual: string) ->
         + "\nGot output"
         + "\n-------------------------------------------"
         + "\n" + actual;
+}
 
 let handleError(message: string) -> (details: string) ->
     println(message + ": " + details);

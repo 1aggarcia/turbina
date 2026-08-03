@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::io::{stderr, stdin, stdout, BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Lines, Write, stderr, stdin, stdout};
 use std::fs::File;
 
 use crate::errors::{InterpreterError};
@@ -33,7 +33,14 @@ pub trait InputStream {
 }
 
 pub struct FileStream {
-    pub reader: BufReader<File>
+    pub lines: Lines<BufReader<File>>
+}
+
+impl FileStream {
+    pub fn from_file(file: File) -> Self {
+        let lines = BufReader::new(file).lines();
+        Self { lines }
+    }
 }
 
 impl InputStream for FileStream {
@@ -42,13 +49,13 @@ impl InputStream for FileStream {
 
         // re-read if the last line is empty or a comment
         while buf.trim().is_empty() || buf.starts_with("//") {
-            buf.clear();
-            if self.reader.read_line(&mut buf)? == 0 {
-                // 0 bytes read indicates end of file
+            let Some(line) = self.lines.next() else {
+                // If the iterator returns None, we are at the end of file
                 return Ok("".to_string());
-            }
+            };
+            buf = line? + "\n";
         }
-        Ok(buf.to_string())
+        Ok(buf)
     }
 }
 
@@ -161,8 +168,7 @@ mod test_file_stream {
         let file = File::open(TEST_FILE_PATH).expect(
             "Test file should exist"
         );
-        let reader = BufReader::new(file);
-        let mut file_stream = FileStream { reader };
+        let mut file_stream = FileStream::from_file(file);
 
         assert_eq!(file_stream.next_line(), Ok("Text before blank line\n".to_string()));
         assert_eq!(file_stream.next_line(), Ok("Text after blank line\n".to_string()));

@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader, path::PathBuf};
+use std::{fs::File, path::PathBuf};
 
 static TURBINA_FILE_EXTENSION: &str = "tb";
 
@@ -25,8 +25,7 @@ pub fn resolve_import_type(
     match File::open(path.clone()) {
         Ok(file) => {
             // TODO: refactor duplicated logic from main
-            let reader = BufReader::new(file);
-            let file_stream = Box::new(FileStream { reader });
+            let file_stream = Box::new(FileStream::from_file(file));
 
             // TODO: refactor duplicated logic from run_as_file
             let mut token_stream = TokenStream::new(file_stream);
@@ -113,10 +112,13 @@ mod test_resolve_import_type {
     fn it_returns_error_if_module_in_directory_does_not_exist() {
         let input = make_tree("import src.fake.path;");
 
-        // Path::new should handle the file separators correctly on all OSes
-        let expected_path = Path::new("src/fake/path.tb").to_str().unwrap();
+        let expected_path = PathBuf::new()
+            .join("src")
+            .join("fake")
+            .join("path.tb");
+        let expected_path_str = expected_path.to_str().unwrap();
         let expected =
-            InterpreterError::ImportError{ filepath: expected_path.into() };
+            InterpreterError::ImportError{ filepath: expected_path_str.into() };
         assert_eq!(resolve_type_fresh(input), Err(vec![expected]))
     }
 

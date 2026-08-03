@@ -200,6 +200,7 @@ pub struct Closure {
 }
 
 #[derive(PartialEq, Debug, Clone)]
+#[allow(unpredictable_function_pointer_comparisons)]
 pub enum FuncBody {
     Expr(Box<Expr>),
     Native(fn(Vec<Literal>, &mut EvalContext) -> Literal)
