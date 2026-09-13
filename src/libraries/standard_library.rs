@@ -7,6 +7,7 @@ use once_cell::sync::Lazy;
 
 use crate::libraries::io::{append_to_file, call_exec, get_filenames_in_directory, open_tcp_server};
 use crate::libraries::factories::{create_result_from_error, create_result_from_success, generic_list, generic_type};
+use crate::libraries::http::{HTTP_REQUEST_SUCCESS_TYPES, lib_http_get};
 use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function, Literal, Type}};
 
 pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
@@ -378,6 +379,29 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
     ];
     result.extend(io_library);
     
+    let http_library = vec![
+        ("httpGet", Function {
+            type_params: vec![],
+            params: define_params![
+                url = Type::String,
+            ],
+            return_type: Some(
+                Type::func(
+                    &[
+                        Type::func(
+                            &*HTTP_REQUEST_SUCCESS_TYPES,
+                            generic_type("T")
+                        ),
+                        Type::func(&[Type::String], generic_type("T")),
+                    ],
+                    generic_type("T")
+                )
+            ),
+            body: FuncBody::Native(lib_http_get)
+        })
+    ];
+    result.extend(http_library);
+
     result
 });
 

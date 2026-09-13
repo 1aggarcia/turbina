@@ -1,0 +1,21 @@
+let handleSuccess(statusCode: int, body: string) {
+    println("Status Code:");
+    println(statusCode);
+    println("");
+    println("Response:");
+    println(body);
+    println("");
+}
+
+let handleError(error: string) {
+    println("Failed to make request: " + error);
+}
+
+let testGet() {
+    let url = "https://jsonplaceholder.typicode.com/comments?id=1";
+    println("Calling GET " + url);
+    let getResult = httpGet(url);
+    getResult(handleSuccess, handleError);
+}
+
+testGet();
