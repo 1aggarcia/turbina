@@ -93,6 +93,22 @@ fn create_result_from_func_call(
     })
 }
 
+/// Creates a "result" type represented by a function type that accepts two
+/// more functions as input:
+/// - The first parameter is a function that is called with `success_types` and
+///     returns generic `T` if the result is a success
+/// - The second parameter is a function that is called with `Type::String` and
+///     returns generic `T` if the result is a failure
+pub fn create_result_type(success_types: &[Type]) -> Type {
+    Type::func(
+        &[
+            Type::func(success_types, generic_type("T")),
+            Type::func(&[Type::String], generic_type("T")),
+        ],
+        generic_type("T")
+    )
+}
+
 pub fn generic_type(type_name: &str) -> Type {
     Type::Generic(type_name.to_string())
 }

@@ -6,7 +6,7 @@ use rand::Rng;
 use once_cell::sync::Lazy;
 
 use crate::libraries::io::{append_to_file, call_exec, get_filenames_in_directory, open_tcp_server};
-use crate::libraries::factories::{create_result_from_error, create_result_from_success, generic_list, generic_type};
+use crate::libraries::factories::{create_result_from_error, create_result_from_success, create_result_type, generic_list, generic_type};
 use crate::libraries::http::{HTTP_REQUEST_SUCCESS_TYPES, lib_http_get};
 use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function, Literal, Type}};
 
@@ -29,17 +29,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
                 command = Type::String,
                 args = Type::String.as_list(),
             ],
-            return_type: Some(
-                Type::func(
-                    &[
-                        // success handler: stdout and stderr streams
-                        Type::func(&EXEC_SUCCESS_TYPES, generic_type("T")),
-                        // error handler
-                        Type::func(&[Type::String], generic_type("T")),
-                    ],
-                    generic_type("T")
-                )
-            ),
+            return_type: Some(create_result_type(&EXEC_SUCCESS_TYPES)),
             body: FuncBody::Native(lib_exec),
         }),
         ("help", Function {
@@ -329,31 +319,13 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
         ("readDir", Function {
             type_params: vec![],
             params: define_params![directoryPath = Type::String],
-            return_type: Some(
-                Type::func(
-                    &[
-                        // success handler: list of filepaths
-                        Type::func(&*READ_DIR_SUCCESS_TYPES, generic_type("T")),
-                        // error handler
-                        Type::func(&[Type::String], generic_type("T")),
-                    ],
-                    generic_type("T")
-                )
-            ),
+            return_type: Some(create_result_type(&*READ_DIR_SUCCESS_TYPES)),
             body: FuncBody::Native(lib_read_dir),
         }),
         ("readFile", Function {
             type_params: vec![],
             params: define_params![filepath = Type::String],
-            return_type: Some(
-                Type::func(
-                    &[
-                        Type::func(&READ_FILE_SUCCESS_TYPES, generic_type("T")),
-                        Type::func(&[Type::String], generic_type("T")),
-                    ],
-                    generic_type("T")
-                )
-            ),
+            return_type: Some(create_result_type(&READ_FILE_SUCCESS_TYPES)),
             body: FuncBody::Native(lib_read_file)
         }),
         ("writeFile", Function {
@@ -385,18 +357,7 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             params: define_params![
                 url = Type::String,
             ],
-            return_type: Some(
-                Type::func(
-                    &[
-                        Type::func(
-                            &*HTTP_REQUEST_SUCCESS_TYPES,
-                            generic_type("T")
-                        ),
-                        Type::func(&[Type::String], generic_type("T")),
-                    ],
-                    generic_type("T")
-                )
-            ),
+            return_type: Some(create_result_type(&*HTTP_REQUEST_SUCCESS_TYPES)),
             body: FuncBody::Native(lib_http_get)
         })
     ];
@@ -415,6 +376,7 @@ fn lib_exit(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     std::process::exit(*code);
 }
 
+// stdout and stderr outputs
 static EXEC_SUCCESS_TYPES: [Type; 2] = [Type::String, Type::String];
 
 fn lib_exec(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
