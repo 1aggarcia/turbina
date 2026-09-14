@@ -13,3 +13,40 @@ Response:
   }
 ]
 
+Calling POST https://jsonplaceholder.typicode.com/posts with body {}
+Status Code:
+201
+
+Response:
+{
+  "id": 101
+}
+
+Calling PUT https://jsonplaceholder.typicode.com/posts/1 with body {}
+Status Code:
+200
+
+Response:
+{
+  "id": 1
+}
+
+Calling PATCH https://jsonplaceholder.typicode.com/posts/1 with body {}
+Status Code:
+200
+
+Response:
+{
+  "userId": 1,
+  "id": 1,
+  "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+  "body": "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto"
+}
+
+Calling DELETE https://jsonplaceholder.typicode.com/posts/1
+Status Code:
+200
+
+Response:
+{}
+

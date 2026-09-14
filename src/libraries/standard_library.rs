@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 
 use crate::libraries::io::{append_to_file, call_exec, get_filenames_in_directory, open_tcp_server};
 use crate::libraries::factories::{create_result_from_error, create_result_from_success, create_result_type, generic_list, generic_type};
-use crate::libraries::http::{HTTP_REQUEST_SUCCESS_TYPES, lib_http_get};
+use crate::libraries::http::{HttpBodySetting, create_http_function, lib_http_delete, lib_http_get, lib_http_patch, lib_http_post, lib_http_put};
 use crate::{evaluator::eval_func_call, models::{EvalContext, FuncBody, Function, Literal, Type}};
 
 pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
@@ -337,14 +337,21 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
     result.extend(io_library);
     
     let http_library = vec![
-        ("httpGet", Function {
-            type_params: vec![],
-            params: define_params![
-                url = Type::String,
-            ],
-            return_type: Some(create_result_type(&*HTTP_REQUEST_SUCCESS_TYPES)),
-            body: FuncBody::Native(lib_http_get)
-        })
+        ("httpDelete", create_http_function(
+            lib_http_delete, HttpBodySetting::NoBody
+        )),
+        ("httpGet", create_http_function(
+            lib_http_get, HttpBodySetting::NoBody
+        )),
+        ("httpPatch", create_http_function(
+            lib_http_patch, HttpBodySetting::RequireBody
+        )),
+        ("httpPost", create_http_function(
+            lib_http_post, HttpBodySetting::RequireBody
+        )),
+        ("httpPut", create_http_function(
+            lib_http_put, HttpBodySetting::RequireBody
+        )),
     ];
     result.extend(http_library);
 

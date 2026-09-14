@@ -1,11 +1,19 @@
 use once_cell::sync::Lazy;
 use ureq::{Agent, Error};
 
-use crate::{libraries::factories::{create_result_from_error, create_result_from_success}, models::{EvalContext, Literal, Type}};
+use crate::{libraries::factories::{create_result_from_error, create_result_from_success, create_result_type}, models::{EvalContext, FuncBody, Function, Literal, Type}};
+
+pub enum HttpBodySetting {
+    NoBody,
+    RequireBody
+}
 
 enum HttpRequest {
+    Delete { url: String },
     Get { url: String },
-    // add more methods here
+    Post { url: String, body: String },
+    Put { url: String, body: String },
+    Patch { url: String, body: String },
 }
 
 struct HttpResponse {
@@ -28,11 +36,71 @@ pub static HTTP_REQUEST_SUCCESS_TYPES: Lazy<[Type; 3]> = Lazy::new(|| [
     */
 ]);
 
+/// Factory to help create function AST nodes for different HTTP methods,
+/// as they are all mostly the same and only have different symbols for
+/// user convenience.
+pub fn create_http_function(
+    http_handler: fn(Vec<Literal>, &mut EvalContext) -> Literal,
+    body_setting: HttpBodySetting
+) -> Function {
+    let params = match body_setting {
+        HttpBodySetting::NoBody => define_params![
+            url = Type::String,
+        ],
+        HttpBodySetting::RequireBody => define_params![
+            url = Type::String,
+            body = Type::String,
+        ]
+    };
+    Function {
+        type_params: vec![],
+        params,
+        return_type: Some(create_result_type(&*HTTP_REQUEST_SUCCESS_TYPES)),
+        body: FuncBody::Native(http_handler)
+    }
+}
+
+pub fn lib_http_delete(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    unwrap_args! { args => Literal::String(url) }
+    handle_http_request(HttpRequest::Delete { url: url.to_string() }, context)
+}
+
 pub fn lib_http_get(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    unwrap_args! { args => Literal::String(url) }
+    handle_http_request(HttpRequest::Get { url: url.to_string() }, context)
+}
+
+pub fn lib_http_patch(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     unwrap_args! { args =>
         Literal::String(url),
+        Literal::String(request_body),
     }
-    handle_http_request(HttpRequest::Get { url: url.to_string() }, context)
+    handle_http_request(HttpRequest::Patch {
+        url: url.to_string(),
+        body: request_body.to_string(),
+    }, context)
+}
+
+pub fn lib_http_post(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    unwrap_args! { args =>
+        Literal::String(url),
+        Literal::String(request_body),
+    }
+    handle_http_request(HttpRequest::Post {
+        url: url.to_string(),
+        body: request_body.to_string(),
+    }, context)
+}
+
+pub fn lib_http_put(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    unwrap_args! { args =>
+        Literal::String(url),
+        Literal::String(request_body),
+    }
+    handle_http_request(HttpRequest::Put {
+        url: url.to_string(),
+        body: request_body.to_string(),
+    }, context)
 }
 
 fn handle_http_request(method: HttpRequest, context: &mut EvalContext) -> Literal {
@@ -75,7 +143,11 @@ fn make_http_request(request: HttpRequest) -> Result<HttpResponse, Error> {
         .into();
 
     let mut response = match request {
+        HttpRequest::Delete { url } => agent.delete(url).call()?,
         HttpRequest::Get { url } => agent.get(url).call()?,
+        HttpRequest::Patch { url, body } => agent.patch(url).send(body)?,
+        HttpRequest::Post { url, body } => agent.post(url).send(body)?,
+        HttpRequest::Put { url, body } => agent.put(url).send(body)?,
     };
 
     let status_code = i32::from(response.status().as_u16());

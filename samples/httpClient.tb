@@ -11,11 +11,52 @@ let handleError(error: string) {
     println("Failed to make request: " + error);
 }
 
-let testGet() {
-    let url = "https://jsonplaceholder.typicode.com/comments?id=1";
-    println("Calling GET " + url);
-    let getResult = httpGet(url);
-    getResult(handleSuccess, handleError);
+let testWithoutBody(
+    url: string,
+    method: string,
+    func: (string -> ((int, string, string[]) -> T, string -> T) -> T),
+) {
+    println(["Calling", method, url] |> join(_, " "));
+    let result = func(url);
+    result(handleSuccess, handleError);
 }
 
-testGet();
+let testWithBody(
+    url: string,
+    method: string,
+    func: ((string, string) -> ((int, string, string[]) -> T, string -> T) -> T),
+    body: string,
+) {
+    println(["Calling", method, url, "with body", body] |> join(_, " "));
+    let result = func(url, body);
+    result(handleSuccess, handleError);
+}
+
+testWithoutBody(
+    "https://jsonplaceholder.typicode.com/comments?id=1",
+    "GET",
+    httpGet
+);
+testWithBody(
+    "https://jsonplaceholder.typicode.com/posts",
+    "POST",
+    httpPost,
+    "{}"
+);
+testWithBody(
+    "https://jsonplaceholder.typicode.com/posts/1",
+    "PUT",
+    httpPut,
+    "{}"
+);
+testWithBody(
+    "https://jsonplaceholder.typicode.com/posts/1",
+    "PATCH",
+    httpPatch,
+    "{}"
+);
+testWithoutBody(
+    "https://jsonplaceholder.typicode.com/posts/1",
+    "DELETE",
+    httpDelete
+);
