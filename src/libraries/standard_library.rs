@@ -78,13 +78,10 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             params: define_params![min = Type::Int, max = Type::Int],
             return_type: Some(Type::Int),
             body: FuncBody::Native(|args, _| {
-                let [
+                unwrap_args! { args => 
                     Literal::Int(min_arg),
                     Literal::Int(max_arg),
-                    ..
-                ] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                }
                 let num = rand::rng().random_range(*min_arg..*max_arg);
                 Literal::Int(num)
             }),
@@ -104,9 +101,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             params: define_params![text = Type::String],
             return_type: Some(Type::Int),
             body: FuncBody::Native(|args, _| {
-                let [Literal::String(text), ..] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                unwrap_args! { args => 
+                    Literal::String(text),
+                }
                 Literal::Int(text.len().try_into().expect("Integer overflow"))
             }),
         }),
@@ -115,9 +112,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             params: define_params![text = Type::String],
             return_type: Some(Type::String),
             body: FuncBody::Native(|args, _| {
-                let [Literal::String(text), ..] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                unwrap_args! { args => 
+                    Literal::String(text),
+                }
                 Literal::String(text.to_uppercase())
             }),
         }),
@@ -126,9 +123,9 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             params: define_params![text = Type::String], 
             return_type: Some(Type::String),
             body: FuncBody::Native(|args, _| {
-                let [Literal::String(text), ..] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                unwrap_args! { args => 
+                    Literal::String(text),
+                }
                 Literal::String(text.to_lowercase())
             }),
         }),
@@ -140,13 +137,10 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             ],
             return_type: Some(Type::Bool),
             body: FuncBody::Native(|args, _| {
-                let [
+                unwrap_args! { args => 
                     Literal::String(text),
                     Literal::String(substring),
-                    ..
-                ] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                }
                 Literal::Bool(text.contains(substring))
             }),
         }),
@@ -158,13 +152,10 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             ],
             return_type: Some(Type::Bool),
             body: FuncBody::Native(|args, _| {
-                let [
+                unwrap_args! { args => 
                     Literal::String(text),
                     Literal::String(substring),
-                    ..
-                ] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                }
                 Literal::Bool(text.starts_with(substring))
             }),
         }),
@@ -176,13 +167,10 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             ],
             return_type: Some(Type::Bool),
             body: FuncBody::Native(|args, _| {
-                let [
+                unwrap_args! { args => 
                     Literal::String(text),
                     Literal::String(substring),
-                    ..
-                ] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                }
                 Literal::Bool(text.ends_with(substring))
             }),
         }),
@@ -280,13 +268,10 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             ],
             return_type: Some(generic_list("T")),
             body: FuncBody::Native(|args, context| {
-                let [
+                unwrap_args! { args => 
                     Literal::Int(length),
                     Literal::Closure(elem_func),
-                    ..
-                ] = args.as_slice() else {
-                    panic!("bad args");
-                };
+                }
                 if *length < 0 {
                     panic!("Cannot create a list with a negative length");
                 }
