@@ -8,6 +8,7 @@ use crate::{lexer::escape_string, libraries::STANDARD_LIBRARY, streams::OutputSt
 pub struct Program {
     pub bindings: HashMap<String, Literal>,
     pub type_context: HashMap<String, Type>,
+    pub type_aliases: HashMap<String, Type>,
     pub output: OutputStreams,
 }
 
@@ -34,7 +35,8 @@ impl Program {
             });
         }
 
-        Self { bindings, type_context, output }
+        let type_aliases = HashMap::<String, Type>::new();
+        Self { bindings, type_context, type_aliases, output }
     }
 
     pub fn init_with_std_streams() -> Self {
@@ -140,6 +142,7 @@ pub enum Token {
     If,
     Else,
     Import,
+    TypeKeyword,
     Type(Type),
 
     // non-standard
@@ -435,6 +438,7 @@ pub enum AbstractSyntaxTree {
     Let(LetNode),
     Import(Import),
     Expr(Expr),
+    TypeAlias(TypeAlias)
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -518,6 +522,12 @@ pub struct LetNode {
     pub id: String,
     pub datatype: Option<Type>,
     pub value: Expr,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct TypeAlias {
+    pub type_alias: String,
+    pub datatype: Type,
 }
 
 #[cfg(test)]

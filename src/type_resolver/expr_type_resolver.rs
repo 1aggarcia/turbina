@@ -38,6 +38,7 @@ fn resolve_binary_expr_type(context: &TypeContext, expr: &BinaryExpr) -> SubResu
                     ("_".into(), result_type.clone())
                 ]),
                 parameter_types: &HashMap::new(),
+                type_aliases: &HashMap::new(),
                 generic_type_parameters: &[],
                 name_to_bind: None,
                 parent: Some(context)
@@ -79,6 +80,7 @@ fn resolve_code_block_type(context: &TypeContext, block: &CodeBlock) -> SubResul
         let mut statement_context = TypeContext {
             variable_types: &variable_types,
             parameter_types: &parameter_types,
+            type_aliases: &HashMap::new(), // no code block support for type aliases yet
             generic_type_parameters: &[],
             name_to_bind: None,
             parent: Some(context),
@@ -154,6 +156,7 @@ fn resolve_function_type(context: &TypeContext, function: &Function) -> SubResul
     let mut func_context = TypeContext {
         variable_types: &mut HashMap::new(),
         parameter_types: &param_types,
+        type_aliases: &HashMap::new(),
         generic_type_parameters: &function.type_params,
         name_to_bind: None,
         parent: Some(&context),

@@ -206,6 +206,9 @@ fn validate_next_statement(
     if let Some(name) = &tree_type.name_to_bind {
         program.type_context.insert(name.clone(), tree_type.datatype.clone());
     }
+    if let Some((type_alias, datatype)) = &tree_type.type_alias_to_bind {
+        program.type_aliases.insert(type_alias.clone(), datatype.clone());
+    }
     Ok((syntax_tree, Some(tree_type.datatype)))
 }
 

@@ -3,6 +3,7 @@ use crate::errors::{InterpreterError, Result};
 use crate::parser::expr_parser::parse_expr;
 use crate::parser::import_parser::parse_import;
 use crate::parser::let_parser::parse_let;
+use crate::parser::type_alias_parser::parse_type_alias;
 use crate::parser::utils::skip_newlines;
 use crate::streams::TokenStream;
 
@@ -25,6 +26,9 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
         Token::Let => AbstractSyntaxTree::Let(parse_let(token_stream)?),
         Token::Import => AbstractSyntaxTree::Import(
             parse_import(token_stream)?
+        ),
+        Token::TypeKeyword => AbstractSyntaxTree::TypeAlias(
+            parse_type_alias(token_stream)?
         ),
         Token::EndOfFile => return Err(InterpreterError::EndOfFile),
         _ => AbstractSyntaxTree::Expr(parse_expr(token_stream)?),

@@ -12,6 +12,10 @@ pub struct TreeType {
 
     /// if present, datatype should be bound to this name in the global scope
     pub name_to_bind: Option<String>,
+
+    // Tuple of (type_alias, type). If present, type should be bound to the
+    // type_alias in the global scope
+    pub type_alias_to_bind: Option<(String, Type)>,
 }
 
 /// The types associated to all bindings in a typing scope.
@@ -22,6 +26,9 @@ pub struct TypeContext<'a> {
 
     /// bindings created as function parameters
     pub parameter_types: &'a HashMap<String, Type>,
+
+    /// type aliases created with the `type` keyword
+    pub type_aliases: &'a HashMap<String, Type>,
 
     /// the names of type parameters declared in function definitions
     pub generic_type_parameters: &'a [String],
@@ -47,6 +54,17 @@ impl TypeContext<'_> {
             return Some(t.clone());
         }
         self.parent.and_then(|parent_context| parent_context.lookup(id))
+    }
+
+    /// Find the type associated to a type alias, if any, in the local scope
+    /// and all parent scopes.
+    pub fn lookup_type_alias(&self, type_alias: &str) -> Option<Type> {
+        match self.type_aliases.get(type_alias) {
+            Some(t) => Some(t.clone()),
+            None => self.parent.and_then(
+                |parent_context| parent_context.lookup_type_alias(type_alias)
+            ),
+        }
     }
 
     /// Recursively search through all type contexts and determine if the
@@ -85,10 +103,14 @@ pub mod test_utils {
     }
 
     pub fn ok_without_binding(datatype: Type) -> ValidationResult {
-        Ok(TreeType { datatype, name_to_bind: None })
+        Ok(TreeType { datatype, name_to_bind: None, type_alias_to_bind: None })
     }
 
     pub fn ok_with_binding(id: &str, datatype: Type) -> ValidationResult {
-        Ok(TreeType { datatype, name_to_bind: Some(id.into()) })
+        Ok(TreeType {
+            datatype,
+            name_to_bind: Some(id.into()),
+            type_alias_to_bind: None,
+        })
     }
 }

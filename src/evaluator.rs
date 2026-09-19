@@ -26,6 +26,7 @@ fn eval_statement(context: &mut EvalContext, statement: AbstractSyntaxTree) -> L
         AbstractSyntaxTree::Let(node) => eval_let(context, node),
         AbstractSyntaxTree::Import(_) => todo!("import evaluation"),
         AbstractSyntaxTree::Expr(node) => eval_expr(context, node),
+        AbstractSyntaxTree::TypeAlias(_) => Literal::Null,
     }
 }
 
@@ -380,6 +381,13 @@ mod test_evalutate {
     fn it_returns_value_of_var_after_binding() {
         let input = make_tree("let t = 12345 - 98765;");
         let expected = Literal::Int(12345 - 98765);
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_returns_null_for_type_alias() {
+        let input = make_tree("type X = int;");
+        let expected = Literal::Null;
         assert_eq!(evaluate_fresh(input), expected);
     }
 

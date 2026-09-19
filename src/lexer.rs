@@ -171,6 +171,7 @@ fn symbol_to_token(symbol: &str) -> Token {
         "import" => Token::Import,
         "if" => Token::If,
         "else" => Token::Else,
+        "type" => Token::TypeKeyword,
         "string" => Token::Type(Type::String),
         "int" => Token::Type(Type::Int),
         "bool" => Token::Type(Type::Bool),
@@ -258,6 +259,7 @@ mod tests {
 
     #[case::symbol("let", Token::Let)]
     #[case::symbol("import", Token::Import)]
+    #[case::symbol("type", Token::TypeKeyword)]
     #[case::symbol_with_underscore(
         "multi_word_var_name", id_token("multi_word_var_name"))]
     #[case::symbol_starting_with_underscore("_a", id_token("_a"))]

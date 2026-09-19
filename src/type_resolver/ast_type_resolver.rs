@@ -5,6 +5,7 @@ use crate::type_resolver::expr_type_resolver::resolve_expr_type;
 use crate::type_resolver::import_type_resolver::resolve_import_type;
 use crate::type_resolver::let_type_resolver::resolve_let_type;
 use crate::type_resolver::shared::{TreeType, TypeContext, ValidationResult};
+use crate::type_resolver::type_alias_resolver::resolve_type_alias_type;
 
 /// Find syntax errors not caught while parsing
 /// - Check that all symbols exist in the program
@@ -17,6 +18,7 @@ pub fn resolve_type(
     let mut global_context = TypeContext {
         variable_types: &program.type_context,
         parameter_types: &HashMap::new(),
+        type_aliases: &program.type_aliases,
         generic_type_parameters: &[],
         name_to_bind: None,
         parent: None,
@@ -33,11 +35,18 @@ pub fn resolve_statement_type(
             resolve_let_type(&context, node)
                 .map(|datatype| TreeType {
                     datatype,
-                    name_to_bind: Some(node.id.clone())
+                    name_to_bind: Some(node.id.clone()),
+                    type_alias_to_bind: None,
                 })
         },
         AbstractSyntaxTree::Import(import) => resolve_import_type(context, import),
         AbstractSyntaxTree::Expr(node) => resolve_expr_type(&context, node)
-            .map(|datatype| TreeType { datatype, name_to_bind: None })
+            .map(|datatype| TreeType {
+                datatype,
+                name_to_bind: None,
+                type_alias_to_bind: None,
+            }),
+        AbstractSyntaxTree::TypeAlias(node) =>
+            resolve_type_alias_type(context, node),
     }
 }

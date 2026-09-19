@@ -52,7 +52,7 @@ fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
 /// <function_type> ::= <arg_types> "->" <type>
 /// <arg_types> ::= <base_type> | "(" ") | "(" <type> "," <type> {"," <type>} ")"
 /// ```
-fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
+pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
     /// Decide between leaving a base type alone or parsing it as a function
     fn complete_type(
         base_type: Type, tokens: &mut TokenStream

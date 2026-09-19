@@ -81,6 +81,7 @@ fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
     while !next_token_matches(tokens, Token::CloseCurlyBracket) {
         let statement = match tokens.peek()? {
             Token::Let => AbstractSyntaxTree::Let(parse_let(tokens)?),
+            // TODO: support type aliases in code blocks
             _ => AbstractSyntaxTree::Expr(parse_expr(tokens)?),
         };
         statements.push(statement);

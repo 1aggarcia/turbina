@@ -57,6 +57,7 @@ pub fn resolve_import_type(
             let tree_type = TreeType {
                 datatype: Type::Struct(program.type_context),
                 name_to_bind: Some(module_name.to_owned()),
+                type_alias_to_bind: None, // TODO: support importable type aliases
             };
 
             Ok(tree_type)
@@ -80,6 +81,11 @@ fn validate_next_statement(
     let tree_type = resolve_type(program, &syntax_tree)?;
     if let Some(name) = &tree_type.name_to_bind {
         program.type_context.insert(name.clone(), tree_type.datatype.clone());
+    }
+    // needed to execute the imported module properly, even though the type
+    // aliases aren't visible to the importing program yet
+    if let Some((type_alias, datatype)) = &tree_type.type_alias_to_bind {
+        program.type_aliases.insert(type_alias.clone(), datatype.clone());
     }
     Ok(())
 }
@@ -160,7 +166,8 @@ mod test_resolve_import_type {
         ]));
         let expected_tree = TreeType {
             datatype: expected_struct,
-            name_to_bind: Some(VALID_MODULE.into())
+            name_to_bind: Some(VALID_MODULE.into()),
+            type_alias_to_bind: None,
         };
         assert_eq!(resolve_type(&program, &input), Ok(expected_tree));
     }
