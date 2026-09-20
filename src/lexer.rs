@@ -39,7 +39,7 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
 
     // (?x) enables verbose mode to ignore comments and whitespace
     let pattern = r#"(?x)
-        (?P<string>\"[^"]*\")
+        (?P<string>"([^"\\]|\\.)*") # special case needed for escape characters
         | (?P<newline>([\r\n]\s*)+)
         | (?P<fmt>[:;\.(),\[\]{}]|->)
         | (?P<binary_op>
@@ -256,6 +256,10 @@ mod tests {
         r#""https://www.example.com""#,
         string_token("https://www.example.com")
     )]
+    #[case::json_string(
+        r#""{\"key\": [\"value1\", \"value2\"]}""#,
+        string_token("{\"key\": [\"value1\", \"value2\"]}")
+    )]
 
     #[case::symbol("let", Token::Let)]
     #[case::symbol("import", Token::Import)]
@@ -365,13 +369,11 @@ mod tests {
         &[int_token(5), Token::Newline]
     )]
 
-    #[ignore = "TODO: Fix 'incomplete str' error"]
-    // Reproduce with unescape("\\");
-    #[case::bind_backslash_string( r#"let x = "\""#, &[
+    #[case::bind_escaped_quote( r#" let x = "\"" "#, &[
         Token::Let,
         id_token("x"),
         unary_op_token(UnaryOp::Equals),
-        string_token("\\")
+        string_token("\"")
     ])]
 
     #[case::tokens_surrounding_newlines("x \n \r\n \r \n 9 \n", &[
