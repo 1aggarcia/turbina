@@ -118,8 +118,8 @@ fn resolve_cond_expr_type(context: &TypeContext, expr: &CondExpr) -> SubResult {
 /// Check two assertions:
 /// - That the return type can be resolved with global bindings and new
 ///     bindings introduced by the input parameters
-/// - That all generic types used in the function body are declared in either
-///     the function definition or the parent scope.
+/// - That all generic types used in the function definition are declared in
+///     either the function definition or the parent scope.
 fn resolve_function_type(context: &TypeContext, function: &Function) -> SubResult {
     // if the type is generic, has it been declared?
     let validate_type_reference = |datatype: &Type| {
@@ -980,6 +980,11 @@ mod test {
             &[Type::func(&[Type::String], Type::Int), Type::String],
             Type::Int,
         )]
+        #[case::code_block_using_generic_type(
+            "<T>(x: T) -> { let y: T = x; y }",
+            &[generic_t()],
+            generic_t()
+        )]
         fn it_returns_correct_function_type(
             #[case] input: &str,
             #[case] parameter_types: &[Type],
@@ -1025,6 +1030,19 @@ mod test {
                 &[],
                 Type::func(&[generic_t()], generic_t()))
             ));
+        }
+
+        #[test]
+        #[ignore = "TODO: look up type aliases in type declarations to make this pass"]
+        fn it_returns_ok_for_type_alias_used_in_function() {
+            let mut program = Program::init_with_std_streams();
+            program.type_aliases.insert("T".into(), Type::Int);
+
+            let input = make_tree("(x: T) -> x * 2;");
+            let expected = ok_without_binding(Type::Int);
+            let actual = resolve_type(&program, &input);
+
+            assert_eq!(actual, expected);
         }
 
         #[rstest]

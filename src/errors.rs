@@ -16,6 +16,8 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
     EmptyCodeBlock = "Code block cannot be empty",
     UndeclaredGeneric { generic: String } =
         "Cannot use generic type '{generic}' without declaring it in the function definition",
+    UndeclaredGenericInLet { generic: String } = 
+        "Cannot use generic type '{generic}' unless this binding is inside a function that declares it",
 
     InvalidNullable { inner_type: Type } = "Type '{inner_type}' cannot be made nullable",
     IOError { message: String } = "IO Error: {message}",

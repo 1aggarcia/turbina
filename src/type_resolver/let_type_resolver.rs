@@ -1,5 +1,5 @@
 use crate::errors::{error, InterpreterError};
-use crate::models::LetNode;
+use crate::models::{LetNode, Type};
 use crate::type_resolver::expr_type_resolver::resolve_expr_type;
 use crate::type_resolver::shared::{SubResult, TypeContext};
 
@@ -18,6 +18,14 @@ pub fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
     let declared_type = match node.datatype.clone() {
         Some(t) => t,
         None => return Ok(expr_type),
+    };
+
+    if let Type::Generic(generic_type) = &declared_type {
+        if !context.contains_type_parameter(generic_type) {
+           return Err(InterpreterError::UndeclaredGenericInLet {
+                generic: generic_type.clone()
+            }.into()); 
+        }
     };
 
     if !expr_type.is_assignable_to(&declared_type) {
@@ -101,7 +109,20 @@ mod test {
     
             let input = make_tree("let validString: string = nullString!;");
             let expected = ok_with_binding("validString", Type::String);
-            assert_eq!(resolve_type(&mut program, &input), expected);
+            assert_eq!(resolve_type(&program, &input), expected);
+        }
+
+        #[test]
+        #[ignore = "TODO: look up type aliases in type declarations to make this pass"]
+        fn it_returns_ok_for_binding_using_type_alias() {
+            let mut program = Program::init_with_std_streams();
+            program.type_aliases.insert("X".into(), Type::String.as_nullable());
+
+            let input = make_tree("let nullString: X = null;");
+            let expected = ok_without_binding(Type::String.as_nullable());
+            let actual = resolve_type(&program, &input);
+
+            assert_eq!(actual, expected);
         }
 
         #[rstest]
@@ -163,6 +184,13 @@ mod test {
             let tree = make_tree("let _ = 0;");
             let error = InterpreterError::ReservedId { id: "_".into() };
             assert_eq!(resolve_type_fresh(tree), Err(vec![error]));
+        }
+
+        #[test]
+        fn it_returns_error_for_undeclared_generic_type() {
+            let tree = make_tree("let x: Y = 0;");
+            let error = InterpreterError::UndeclaredGenericInLet { generic: "Y".into() };
+            assert_eq!(resolve_type_fresh(tree), Err(error.into()));
         }
     }
 }
