@@ -7,9 +7,10 @@ use crate::type_resolver::shared::TypeContext;
 pub fn resolve_type_alias_type(
     context: &TypeContext, node: &TypeAlias
 ) -> MultiResult<TreeType> {
-    if let Some(_) = context.lookup_type_alias(&node.type_alias) {
+    if let Some(assigned_type) = context.lookup_type_alias(&node.type_alias) {
         return Err(vec![InterpreterError::ReassignTypeError {
-            type_alias: node.type_alias.clone()
+            type_alias: node.type_alias.clone(),
+            assigned_type,
         }]);
     }
 
@@ -52,9 +53,10 @@ mod test {
         program.type_aliases.insert("X".into(), Type::Byte);
         let input = make_tree("type X = string;");
 
-        let expected =
-            InterpreterError::ReassignTypeError { type_alias: "X".into() };
-
+        let expected = InterpreterError::ReassignTypeError {
+            type_alias: "X".into(),
+            assigned_type: Type::Byte,
+        };
         let actual = resolve_type(&program, &input);
 
         assert_eq!(actual, Err(vec![expected]));

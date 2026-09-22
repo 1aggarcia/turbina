@@ -740,7 +740,8 @@ mod test {
                 type X = string;
             };"#);
             let expected = InterpreterError::ReassignTypeError {
-                type_alias: "X".into()
+                type_alias: "X".into(),
+                assigned_type: Type::Int,
             };
             assert_eq!(resolve_type_fresh(input), Err(expected.into()));
         }
@@ -754,7 +755,8 @@ mod test {
                 type X = bool;
             };"#);
             let expected = InterpreterError::ReassignTypeError {
-                type_alias: "X".into()
+                type_alias: "X".into(),
+                assigned_type: Type::Byte,
             };
             assert_eq!(resolve_type(&program, &input), Err(expected.into()));
         }
