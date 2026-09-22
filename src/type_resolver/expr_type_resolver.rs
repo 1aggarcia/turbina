@@ -69,6 +69,7 @@ fn resolve_binary_expr_type(context: &TypeContext, expr: &BinaryExpr) -> SubResu
 
 fn resolve_code_block_type(context: &TypeContext, block: &CodeBlock) -> SubResult {
     let mut variable_types = HashMap::new();
+    let mut type_aliases = HashMap::new();
     let parameter_types = HashMap::new();
 
     let default_type = Ok(Type::Null);
@@ -80,15 +81,20 @@ fn resolve_code_block_type(context: &TypeContext, block: &CodeBlock) -> SubResul
         let mut statement_context = TypeContext {
             variable_types: &variable_types,
             parameter_types: &parameter_types,
-            type_aliases: &HashMap::new(), // no code block support for type aliases yet
+            type_aliases: &type_aliases,
             generic_type_parameters: &[],
             name_to_bind: None,
             parent: Some(context),
         };
         let tree_type = resolve_statement_type(&mut statement_context, &statement)?;
 
-        if let Some(name) = &tree_type.name_to_bind {
-            variable_types.insert(name.into(), tree_type.datatype.clone());
+        if let Some(name) = tree_type.name_to_bind {
+            variable_types.insert(name, tree_type.datatype.clone());
+        }
+        if let Some(
+            (type_alias, type_alias_type)
+        ) = tree_type.type_alias_to_bind {
+            type_aliases.insert(type_alias, type_alias_type);
         }
         Ok(tree_type.datatype)
     })
@@ -725,6 +731,46 @@ mod test {
             let expected = error::binary_op_types(
                 BinaryOp::Plus, &Type::Int, &Type::String);
             assert_eq!(resolve_type_fresh(input), Err(expected.into()))
+        }
+
+        #[test]
+        fn it_tracks_type_alias_state_between_statements() {
+            let input = make_tree(r#"{
+                type X = int;
+                type X = string;
+            };"#);
+            let expected = InterpreterError::ReassignTypeError {
+                type_alias: "X".into()
+            };
+            assert_eq!(resolve_type_fresh(input), Err(expected.into()));
+        }
+        
+        #[test]
+        fn it_does_not_allow_global_type_alias_to_be_redefined() {
+            let mut program = Program::init_with_std_streams();
+            program.type_aliases.insert("X".into(), Type::Byte);
+
+            let input = make_tree(r#"{
+                type X = bool;
+            };"#);
+            let expected = InterpreterError::ReassignTypeError {
+                type_alias: "X".into()
+            };
+            assert_eq!(resolve_type(&program, &input), Err(expected.into()));
+        }
+
+        #[test]
+        fn it_allows_type_alias_to_be_reused_in_separate_code_blocks() {
+            let input = make_tree(r#"{
+                {
+                    type X = int;
+                }
+                {
+                    type X = bool;
+                }
+            };"#);
+            let expected = ok_without_binding(Type::Null);
+            assert_eq!(resolve_type_fresh(input), expected);
         }
     }
 

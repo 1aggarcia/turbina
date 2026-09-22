@@ -5,6 +5,7 @@ use crate::models::{
 use crate::errors::{error, InterpreterError, Result};
 use crate::parser::let_parser::parse_let;
 use crate::parser::shared_parsers::{ListParserConfig, parse_id, parse_list};
+use crate::parser::type_alias_parser::parse_type_alias;
 use crate::parser::type_declaration_parser::parse_type_declaration;
 use crate::parser::utils::{match_next, next_token_matches, skip_newlines};
 use crate::streams::TokenStream;
@@ -81,7 +82,9 @@ fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
     while !next_token_matches(tokens, Token::CloseCurlyBracket) {
         let statement = match tokens.peek()? {
             Token::Let => AbstractSyntaxTree::Let(parse_let(tokens)?),
-            // TODO: support type aliases in code blocks
+            Token::TypeKeyword => AbstractSyntaxTree::TypeAlias(
+                parse_type_alias(tokens)?
+            ),
             _ => AbstractSyntaxTree::Expr(parse_expr(tokens)?),
         };
         statements.push(statement);
@@ -488,6 +491,28 @@ mod test {
                     parse_tokens(force_tokenize("let two = 2;")).unwrap(),
                     parse_tokens(force_tokenize("two;")).unwrap(),
                 ],
+            };
+            let expected = Expr::CodeBlock(expected_block);
+            assert_eq!(test_parse_expr(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_code_block_with_type_alias_declaration() {
+            let tokens = force_tokenize("{
+                type Predicate = int -> bool;
+                let isEven: Predicate = (x: int) -> x % 2 == 0;
+                isEven(0)
+            };");
+            let expected_block = CodeBlock {
+                statements: vec![
+                    "type Predicate = int -> bool;",
+                    "let isEven: Predicate = (x: int) -> x % 2 == 0;",
+                    "isEven(0);",
+                ].into_iter()
+                    .map(force_tokenize)
+                    .map(parse_tokens)
+                    .map(|result| result.unwrap())
+                    .collect(),
             };
             let expected = Expr::CodeBlock(expected_block);
             assert_eq!(test_parse_expr(tokens), Ok(expected));

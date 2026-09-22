@@ -32,7 +32,7 @@ pub fn resolve_statement_type(
     match statement {
         AbstractSyntaxTree::Let(node) => {
             context.name_to_bind = Some(node.id.clone());
-            resolve_let_type(&context, node)
+            resolve_let_type(context, node)
                 .map(|datatype| TreeType {
                     datatype,
                     name_to_bind: Some(node.id.clone()),
@@ -40,7 +40,7 @@ pub fn resolve_statement_type(
                 })
         },
         AbstractSyntaxTree::Import(import) => resolve_import_type(context, import),
-        AbstractSyntaxTree::Expr(node) => resolve_expr_type(&context, node)
+        AbstractSyntaxTree::Expr(node) => resolve_expr_type(context, node)
             .map(|datatype| TreeType {
                 datatype,
                 name_to_bind: None,

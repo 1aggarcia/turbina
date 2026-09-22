@@ -24,7 +24,7 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
     ReservedId { id: String } = "Identifier '{id}' is reserved, it cannot be redefined",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
     ReassignError { id: String } = "Reassign Error: Identifier '{id}' cannot be redefined",
-    ReassignTypeError { type_alias: String } = "Type Alias '{type_alias}' cannot be redefined",
+    ReassignTypeError { type_alias: String } = "Type alias '{type_alias}' cannot be redefined",
     UnrecognizedToken { payload: String } = "Unrecognized Token: {payload}",
     ArgCount { got: usize, expected: usize } = "Passed {got} args to function but expected {expected}",
 
