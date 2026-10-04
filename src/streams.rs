@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::{stderr, stdin, stdout, BufRead, BufReader, Lines, Write};
+use std::io::{stderr, stdout, BufRead, BufReader, Lines, Write};
 
 use crate::errors::InterpreterError;
 use crate::lexer::tokenize;
@@ -59,26 +59,6 @@ impl InputStream for FileStream {
             buf = line? + "\n";
         }
         Ok(buf)
-    }
-}
-
-// Currently not in use, replaced by RustylineStream
-pub struct StdinStream;
-impl InputStream for StdinStream {
-    fn next_line(&mut self) -> Result<String, InterpreterError> {
-        let mut buf: String = String::new();
-
-        // re-read if the last line is empty or a comment
-        while buf.trim().is_empty() || buf.starts_with("//") {
-            buf.clear();
-            print!("> ");
-            stdout().flush()?;
-            if stdin().read_line(&mut buf)? == 0 {
-                // 0 bytes read indicates end of file
-                return Ok("".to_string());
-            }
-        }
-        Ok(buf.to_string())
     }
 }
 
