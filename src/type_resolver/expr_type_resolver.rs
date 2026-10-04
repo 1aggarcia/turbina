@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, Literal, Term, Type};
-use crate::type_resolver::shared::{SubResult, TypeContext};
+use crate::type_resolver::shared::{SubResult, TypeContext, replace_generic_types};
 use crate::type_resolver::resolve_statement_type;
 
 pub fn resolve_expr_type(context: &TypeContext, expr: &Expr) -> SubResult {
@@ -126,6 +126,9 @@ fn resolve_function_type(context: &TypeContext, function: &Function) -> SubResul
         let Type::Generic(type_param) = datatype else {
             return Ok(());
         };
+        // Type aliases should already be resolved at this point, so we don't
+        // check for them here with lookup_type_alias.
+        // Generic types cannot be resolved until the function call.
         if function.type_params.contains(&type_param)
                 || context.contains_type_parameter(&type_param) {
             Ok(())
@@ -142,7 +145,11 @@ fn resolve_function_type(context: &TypeContext, function: &Function) -> SubResul
     let mut param_type_list = Vec::<Type>::new();
     let mut param_errors = Vec::<InterpreterError>::new();
 
-    for (id, datatype) in function.params.clone() {
+    for (id, declared_datatype) in function.params.clone() {
+        let datatype = 
+            replace_generic_types(declared_datatype,
+                &|alias| context.lookup_type_alias(alias)
+                );
         if context.contains_parameter(&id) {
             param_errors.push(InterpreterError::ReassignError { id });
             continue;
@@ -168,13 +175,15 @@ fn resolve_function_type(context: &TypeContext, function: &Function) -> SubResul
         parent: Some(&context),
     };
 
-    if let Some(declared_return_type) = &function.return_type {
-        if let Err(err) = validate_type_reference(declared_return_type) {
+    if let Some(declared_return_type) = function.return_type.clone() {
+        let return_type =
+            replace_generic_types(declared_return_type, &|alias| context.lookup_type_alias(alias));
+        if let Err(err) = validate_type_reference(&return_type) {
             return Err(err.into());
         }
         let func_type = Type::Func {
             input: param_type_list,
-            output: Box::new(declared_return_type.clone())
+            output: Box::new(return_type.clone())
         };
         let FuncBody::Expr(func_body) = &function.body else {
             return Ok(func_type);
@@ -191,9 +200,9 @@ fn resolve_function_type(context: &TypeContext, function: &Function) -> SubResul
         }
 
         let body_type = resolve_expr_type(&func_context, &func_body)?;
-        if !body_type.is_assignable_to(&declared_return_type) {
+        if !body_type.is_assignable_to(&return_type) {
             return Err(InterpreterError
-                ::bad_return_type(declared_return_type, &body_type).into());
+                ::bad_return_type(&return_type, &body_type).into());
         }
         Ok(func_type)
     } else {
@@ -317,62 +326,10 @@ fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
     if errors.is_empty() {
         Ok(replace_generic_types(
             *output_type,
-            &generic_to_literal_types
+            &|generic| generic_to_literal_types.get(generic).cloned()
         ))
     } else {
         Err(errors)
-    }
-}
-
-/// Recursively replace all generic types in the input datatype with literal
-/// types defined in the passed in mapping. If no literal type is found, the
-/// generic is left in place.
-fn replace_generic_types(
-    datatype: Type,
-    generic_to_literal_types: &HashMap<String, Type>
-) -> Type {
-    match datatype {
-        Type::Generic(name) => {
-            match generic_to_literal_types.get(&name) {
-                Some(t) => t.clone(),
-                None => Type::Generic(name), // do nothing rather than erroring
-            }
-        },
-        Type::Func { input, output } => {
-            let new_inputs: Vec<Type> = input.into_iter()
-                .map(|t|
-                    replace_generic_types(t, generic_to_literal_types)
-                )
-                .collect();
-
-            let new_output =
-                replace_generic_types(*output, generic_to_literal_types);
-
-            Type::Func { input: new_inputs, output: Box::new(new_output) }
-        },
-        Type::List(list) => {
-            let converted =
-                replace_generic_types(*list, generic_to_literal_types);
-            Type::List(Box::new(converted))
-        },
-        Type::Nullable(nullable) => {
-            let converted =
-                replace_generic_types(*nullable, generic_to_literal_types);
-            Type::Nullable(Box::new(converted))
-        },
-        Type::Struct(struct_map) => {
-            let converted: HashMap<String, Type> = struct_map.into_iter()
-                .map(|(key, datatype)| (
-                    key,
-                    replace_generic_types(
-                        datatype,
-                        generic_to_literal_types
-                    )
-                ))
-                .collect();
-            Type::Struct(converted)
-        },
-        _ => datatype,
     }
 }
 
@@ -1032,14 +989,20 @@ mod test {
             ));
         }
 
-        #[test]
-        #[ignore = "TODO: look up type aliases in type declarations to make this pass"]
-        fn it_returns_ok_for_type_alias_used_in_function() {
+        #[rstest]
+        #[case::type_alias_as_param("(x: T) -> x * 2;")]
+        #[case::type_alias_as_return("(x: int): T -> x * 2;")]
+        #[case::type_alias_param_in_code_block("{ (x: T) -> x * 2; };")]
+        #[case::type_alias_return_in_code_block("{ (x: int): T -> x * 2; };")]
+        fn it_returns_ok_for_type_alias_used_in_function(
+            #[case] input_str: &str
+        ) {
             let mut program = Program::init_with_std_streams();
             program.type_aliases.insert("T".into(), Type::Int);
 
-            let input = make_tree("(x: T) -> x * 2;");
-            let expected = ok_without_binding(Type::Int);
+            let input = make_tree(input_str);
+            let expected =
+                ok_without_binding(Type::func(&[Type::Int], Type::Int));
             let actual = resolve_type(&program, &input);
 
             assert_eq!(actual, expected);

@@ -1,3 +1,5 @@
+type IntProducer = () -> int;
+
 let log<T>(name: string, value: T) -> {
     let x = print(name);
     let y = print(": ");
@@ -21,7 +23,7 @@ let six: int = {
 };
 
 // no return keyword, function blocks work just like normal code blocks
-let seven() {
+let seven: IntProducer = () {
     let three = 3;
     let four = 4;
     three + four

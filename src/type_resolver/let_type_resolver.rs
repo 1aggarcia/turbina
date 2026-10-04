@@ -1,7 +1,7 @@
 use crate::errors::{error, InterpreterError};
 use crate::models::{LetNode, Type};
 use crate::type_resolver::expr_type_resolver::resolve_expr_type;
-use crate::type_resolver::shared::{SubResult, TypeContext};
+use crate::type_resolver::shared::{SubResult, TypeContext, replace_generic_types};
 
 /// Check that the expression type does not conflict with the declared type
 /// and that the variable name is unique
@@ -16,7 +16,7 @@ pub fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
 
     let expr_type = resolve_expr_type(context, &node.value)?;
     let declared_type = match node.datatype.clone() {
-        Some(t) => t,
+        Some(t) => replace_generic_types(t, &|alias| context.lookup_type_alias(alias)),
         None => return Ok(expr_type),
     };
 
@@ -113,13 +113,29 @@ mod test {
         }
 
         #[test]
-        #[ignore = "TODO: look up type aliases in type declarations to make this pass"]
         fn it_returns_ok_for_binding_using_type_alias() {
             let mut program = Program::init_with_std_streams();
             program.type_aliases.insert("X".into(), Type::String.as_nullable());
 
             let input = make_tree("let nullString: X = null;");
-            let expected = ok_without_binding(Type::String.as_nullable());
+            let expected = ok_with_binding(
+                "nullString",
+                Type::String.as_nullable()
+            );
+            let actual = resolve_type(&program, &input);
+
+            assert_eq!(actual, expected);
+        }
+
+        #[rstest]
+        fn it_returns_ok_for_type_alias_used_in_code_block() {
+            let mut program = Program::init_with_std_streams();
+            program.type_aliases.insert("X".into(), Type::String.as_nullable());
+
+            let input = make_tree("{ let nullString: X = null; }");
+            let expected = ok_without_binding(
+                Type::String.as_nullable()
+            );
             let actual = resolve_type(&program, &input);
 
             assert_eq!(actual, expected);

@@ -91,6 +91,58 @@ impl TypeContext<'_> {
     }
 }
 
+/// Recursively replace all generic types/type aliases in the input datatype
+/// with literal types defined by the passed in lookup function. If no literal
+/// type is found, the generic is left in place.
+pub fn replace_generic_types(
+    datatype: Type,
+    lookup_type: &impl Fn(&str) -> Option<Type>,
+) -> Type {
+    match datatype {
+        Type::Generic(name) => {
+            match lookup_type(&name) {
+                Some(t) => t,
+                None => Type::Generic(name), // do nothing rather than erroring
+            }
+        },
+        Type::Func { input, output } => {
+            let new_inputs: Vec<Type> = input.into_iter()
+                .map(|t|
+                    replace_generic_types(t, lookup_type)
+                )
+                .collect();
+
+            let new_output =
+                replace_generic_types(*output, lookup_type);
+
+            Type::Func { input: new_inputs, output: Box::new(new_output) }
+        },
+        Type::List(list) => {
+            let converted =
+                replace_generic_types(*list, lookup_type);
+            Type::List(Box::new(converted))
+        },
+        Type::Nullable(nullable) => {
+            let converted =
+                replace_generic_types(*nullable, lookup_type);
+            Type::Nullable(Box::new(converted))
+        },
+        Type::Struct(struct_map) => {
+            let converted: HashMap<String, Type> = struct_map.into_iter()
+                .map(|(key, datatype)| (
+                    key,
+                    replace_generic_types(
+                        datatype,
+                        lookup_type
+                    )
+                ))
+                .collect();
+            Type::Struct(converted)
+        },
+        _ => datatype,
+    }
+}
+
 #[cfg(test)]
 pub mod test_utils {
     use super::*;
