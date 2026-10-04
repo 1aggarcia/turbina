@@ -1,6 +1,6 @@
 //! CLI parser, input stream and all other related code for the CLI Rustyline
 //! integration.
-//! 
+//!
 //! Kept separate from the rest of the codebase since Rustyline is
 //! not supported in WASM compilation and breaks the build when compiling for
 //! WASM. Having this module separate makes it easy to conditionally compile it
@@ -9,7 +9,7 @@
 use std::process::exit;
 
 use clap::Parser;
-use rustyline::{DefaultEditor, error::ReadlineError, config::Configurer};
+use rustyline::{config::Configurer, error::ReadlineError, DefaultEditor};
 
 use crate::{errors::InterpreterError, streams::InputStream};
 
@@ -24,7 +24,9 @@ pub struct RustylineArgs {
 
 impl From<ReadlineError> for InterpreterError {
     fn from(value: ReadlineError) -> Self {
-        Self::IOError { message: value.to_string() }
+        Self::IOError {
+            message: value.to_string(),
+        }
     }
 }
 
@@ -48,7 +50,7 @@ impl InputStream for RustylineStream {
             Ok(input) => Ok(input + "\n"),
 
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => exit(0),
-            Err(err) => Err(err.into())
+            Err(err) => Err(err.into()),
         }
     }
 }

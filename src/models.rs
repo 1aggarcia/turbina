@@ -1,7 +1,9 @@
 use core::fmt;
 use std::collections::HashMap;
 
-use crate::{lexer::escape_string, libraries::STANDARD_LIBRARY, streams::OutputStreams};
+use crate::{
+    lexer::escape_string, libraries::STANDARD_LIBRARY, streams::OutputStreams,
+};
 
 /// State of the running program
 #[derive(Debug)]
@@ -21,22 +23,36 @@ impl Program {
         // cloning here is needed to insert into the hashmap
         for (name, func) in STANDARD_LIBRARY.clone() {
             let Some(return_type) = &func.return_type else {
-                eprintln!("WARNING: Cannot resolve return type for library function {}", name);
+                eprintln!(
+                    "WARNING: Cannot resolve return type for library function {}",
+                    name
+                );
                 continue;
             };
-            bindings.insert(name.to_owned(), Literal::Closure(Closure {
-                function: func.clone(),
-                parent_scope: HashMap::new()
-            }));
+            bindings.insert(
+                name.to_owned(),
+                Literal::Closure(Closure {
+                    function: func.clone(),
+                    parent_scope: HashMap::new(),
+                }),
+            );
 
-            type_context.insert(name.to_owned(), Type::Func {
-                input: func.params.iter().map(|(_, t)| t.clone()).collect(),
-                output: Box::new(return_type.clone())
-            });
+            type_context.insert(
+                name.to_owned(),
+                Type::Func {
+                    input: func.params.iter().map(|(_, t)| t.clone()).collect(),
+                    output: Box::new(return_type.clone()),
+                },
+            );
         }
 
         let type_aliases = HashMap::<String, Type>::new();
-        Self { bindings, type_context, type_aliases, output }
+        Self {
+            bindings,
+            type_context,
+            type_aliases,
+            output,
+        }
     }
 
     pub fn init_with_std_streams() -> Self {
@@ -53,7 +69,7 @@ pub struct EvalContext<'a> {
 
 /// Linked-list like structure to model all bindings that a can be accessed
 /// in a scope.
-/// 
+///
 /// Stores references to data (instead of copying) for memory efficiency.
 #[derive(Debug)]
 pub struct Scope<'a> {
@@ -66,10 +82,11 @@ impl Scope<'_> {
     /// recursively search the parent scopes until reaching the global scope.
     pub fn lookup(&self, id: &str) -> Option<Literal> {
         match self.bindings.get(id) {
-            // TODO: try to make this return a reference 
+            // TODO: try to make this return a reference
             Some(value) => Some(value.clone()),
-            None => self.parent
-                .and_then(|parent_scope| parent_scope.lookup(id)),
+            None => {
+                self.parent.and_then(|parent_scope| parent_scope.lookup(id))
+            }
         }
     }
 
@@ -86,7 +103,6 @@ impl Scope<'_> {
     }
 }
 
-
 impl std::fmt::Display for Scope<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         format_scope(f, self, 0)
@@ -100,7 +116,7 @@ static INDENT_SPACES: usize = 4;
 fn format_scope(
     f: &mut std::fmt::Formatter<'_>,
     scope: &Scope,
-    indent_level: usize
+    indent_level: usize,
 ) -> std::fmt::Result {
     let outer_indent = " ".repeat(indent_level * INDENT_SPACES);
     let inner_indent = " ".repeat((indent_level + 1) * INDENT_SPACES);
@@ -146,7 +162,7 @@ pub enum Token {
     Type(Type),
 
     // non-standard
-    Null,  // null token for lexing needed since type vs literal "null" is ambiguous
+    Null, // null token for lexing needed since type vs literal "null" is ambiguous
     EndOfFile,
 }
 
@@ -177,9 +193,9 @@ impl std::fmt::Display for Literal {
             Self::Int(i) => write!(f, "{i}"),
             Self::Byte(b) => write!(f, "0x{b:02X}"),
             Self::String(s) => {
-                let escaped_string= escape_string(s).unwrap();
+                let escaped_string = escape_string(s).unwrap();
                 write!(f, "{escaped_string}")
-            },
+            }
             Self::Bool(s) => write!(f, "{s}"),
             Self::Closure(_) => write!(f, "<function>"),
             Self::List(list) => {
@@ -189,7 +205,7 @@ impl std::fmt::Display for Literal {
                     .collect::<Vec<String>>()
                     .join(", ");
                 write!(f, "[{}]", string_representation)
-            },
+            }
             Self::Null => write!(f, "null"),
         }
     }
@@ -198,15 +214,15 @@ impl std::fmt::Display for Literal {
 /// A function with a copy of the scope it was created in
 #[derive(PartialEq, Debug, Clone)]
 pub struct Closure {
-   pub function: Function,
-   pub parent_scope: HashMap<String, Literal>,
+    pub function: Function,
+    pub parent_scope: HashMap<String, Literal>,
 }
 
 #[derive(PartialEq, Debug, Clone)]
 #[allow(unpredictable_function_pointer_comparisons)]
 pub enum FuncBody {
     Expr(Box<Expr>),
-    Native(fn(Vec<Literal>, &mut EvalContext) -> Literal)
+    Native(fn(Vec<Literal>, &mut EvalContext) -> Literal),
 }
 
 #[derive(PartialEq, Debug, Clone, Eq)]
@@ -248,49 +264,52 @@ impl fmt::Display for Type {
                 } else {
                     write!(f, "{}[]", element_type)
                 }
-            },
+            }
             Type::Struct(fields) => {
-                let formatted= format_struct(fields, 1);
+                let formatted = format_struct(fields, 1);
                 write!(f, "{}", formatted)
-            },
+            }
             Type::Func { input, output } => {
                 // don't show parentheses for functions with one argument
                 if input.len() == 1 {
-                    return write!(f, "{} -> {}", input[0], output)
+                    return write!(f, "{} -> {}", input[0], output);
                 }
-                let args = input.iter()
+                let args = input
+                    .iter()
                     .map(|t| t.to_string())
                     .collect::<Vec<String>>()
                     .join(", ");
 
                 write!(f, "({}) -> {}", args, output)
-            },
+            }
             Type::Generic(id) => write!(f, "{}", id),
             Type::Nullable(datatype) => {
                 // nullable functions are ambiguous without parentheses
-                if matches!(**datatype, Type::Func {..}) {
+                if matches!(**datatype, Type::Func { .. }) {
                     write!(f, "({})?", datatype)
                 } else {
                     write!(f, "{}?", datatype)
                 }
-            },
+            }
         }
     }
 }
 
 fn format_struct(
     fields: &HashMap<String, Type>,
-    indent_level: usize
+    indent_level: usize,
 ) -> String {
     let base_indent = " ".repeat((indent_level - 1) * INDENT_SPACES);
     let indent = " ".repeat(indent_level * INDENT_SPACES);
 
-    let formatted_fields = fields.into_iter()
+    let formatted_fields = fields
+        .into_iter()
         .map(|(field, datatype)| {
             let type_string = match datatype {
-                Type::Struct(nested_fields) =>
-                    format_struct(nested_fields, indent_level + 1),
-                other => other.to_string()
+                Type::Struct(nested_fields) => {
+                    format_struct(nested_fields, indent_level + 1)
+                }
+                other => other.to_string(),
             };
             format!("{}{}: {}", indent, field, type_string)
         })
@@ -302,7 +321,10 @@ fn format_struct(
 
 impl Type {
     pub fn func(input: &[Type], output: Type) -> Self {
-        Self::Func { input: input.to_vec(), output: Box::new(output) }
+        Self::Func {
+            input: input.to_vec(),
+            output: Box::new(output),
+        }
     }
 
     /// Create a list type from some base type
@@ -334,10 +356,18 @@ impl Type {
         match supertype {
             Type::Unknown => true,
             Type::Generic(_) => true,
-            Type::Nullable(inner_type) =>
-                *self == Type::Null || self.is_assignable_to(inner_type),
-            Type::Func { input: super_ins, output: super_out } => {
-                let Type::Func { input: sub_ins, output: sub_out } = self else {
+            Type::Nullable(inner_type) => {
+                *self == Type::Null || self.is_assignable_to(inner_type)
+            }
+            Type::Func {
+                input: super_ins,
+                output: super_out,
+            } => {
+                let Type::Func {
+                    input: sub_ins,
+                    output: sub_out,
+                } = self
+                else {
                     return false;
                 };
                 if !sub_out.is_assignable_to(&super_out) {
@@ -351,11 +381,12 @@ impl Type {
                     .iter()
                     .zip(sub_ins.iter())
                     .all(|(super_in, sub_in)| super_in.is_assignable_to(sub_in))
-            },
+            }
             Type::List(supertype_list) => match self {
                 Type::EmptyList => true,
-                Type::List(subtype_list) =>
-                    subtype_list.is_assignable_to(&supertype_list),
+                Type::List(subtype_list) => {
+                    subtype_list.is_assignable_to(&supertype_list)
+                }
                 _ => false,
             },
             _ => supertype == self,
@@ -438,7 +469,7 @@ pub enum AbstractSyntaxTree {
     Let(LetNode),
     Import(Import),
     Expr(Expr),
-    TypeAlias(TypeAlias)
+    TypeAlias(TypeAlias),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -452,8 +483,8 @@ pub enum Term {
     Id(String),
     FuncCall(FuncCall),
     Expr(Box<Expr>),
-    Not(Box<Term>),  // negate boolean terms
-    Minus(Box<Term>),  // negate int terms
+    Not(Box<Term>),   // negate boolean terms
+    Minus(Box<Term>), // negate int terms
     NotNull(Box<Term>),
     List(Vec<Expr>),
 }
@@ -493,12 +524,12 @@ pub enum Expr {
 #[derive(Debug, PartialEq, Clone)]
 pub struct BinaryExpr {
     pub first: Term,
-    pub rest: Vec<(BinaryOp, Term)>
+    pub rest: Vec<(BinaryOp, Term)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CodeBlock {
-    pub statements: Vec<AbstractSyntaxTree>
+    pub statements: Vec<AbstractSyntaxTree>,
 }
 
 /// if/else expressions
@@ -599,8 +630,9 @@ mod test_type {
     fn test_display_adds_parentheses_for_nullable_function() {
         let nullable_func = Type::Func {
             input: vec![],
-            output: Box::new(Type::Int)
-        }.as_nullable();
+            output: Box::new(Type::Int),
+        }
+        .as_nullable();
 
         assert_eq!(format!("{}", nullable_func), "(() -> int)?");
     }
@@ -609,7 +641,7 @@ mod test_type {
     fn test_display_function_with_nullable_return_type() {
         let func = Type::Func {
             input: vec![],
-            output: Box::new(Type::Int.as_nullable())
+            output: Box::new(Type::Int.as_nullable()),
         };
         assert_eq!(format!("{}", func), "() -> int?");
     }
@@ -637,8 +669,7 @@ r#"{
 }"#;
         let result = format!("{}", struct_type);
         assert!(
-            result == accepted1
-            || result == accepted2,
+            result == accepted1 || result == accepted2,
             "Actual result did not match accepted results: {}",
             result
         );
@@ -646,29 +677,25 @@ r#"{
 
     #[test]
     fn test_display_formats_nested_struct_readably() {
-        let fields = HashMap::from([
-            ("parent".into(), Type::Struct(
-                HashMap::from([
-                    ("middle".into(), Type::Struct(
-                        HashMap::from([
-                            ("child".into(), Type::Unknown)
-                        ])
-                    ))
-                ])
-            )),
-        ]);
+        let fields = HashMap::from([(
+            "parent".into(),
+            Type::Struct(HashMap::from([(
+                "middle".into(),
+                Type::Struct(HashMap::from([("child".into(), Type::Unknown)])),
+            )])),
+        )]);
         let struct_type = Type::Struct(fields);
         assert_eq!(
             format!("{}", struct_type),
-// Unindented to match the indentation of the output
-r#"{
+            // Unindented to match the indentation of the output
+            r#"{
     parent: {
         middle: {
             child: unknown
         }
     }
 }"#
-        );  
+        );
     }
 }
 
@@ -683,7 +710,7 @@ mod test_literal {
     #[case(255, "0xFF")]
     fn it_should_display_byte_as_hexadecimal(
         #[case] input: u8,
-        #[case] expected: &str
+        #[case] expected: &str,
     ) {
         let actual = format!("{}", Literal::Byte(input));
         assert_eq!(actual, expected);

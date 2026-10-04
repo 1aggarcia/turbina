@@ -1,4 +1,7 @@
-use crate::models::{BinaryExpr, Closure, EvalContext, Expr, FuncBody, FuncCall, Function, Literal, Term, Type};
+use crate::models::{
+    BinaryExpr, Closure, EvalContext, Expr, FuncBody, FuncCall, Function,
+    Literal, Term, Type,
+};
 
 /*
 The factories for result types are major band-aids, it should not be this much
@@ -12,28 +15,30 @@ variants and executes the appropriate handler:
 type Result<T, E, R> = (handleSuccess: (T -> R), handleError: (E -> R)) -> R
 */
 
-
 /// Create a "result" type with a list of values to pass to a user-supplied
 /// handler for the success case. A "result" type is a function that
 /// accepts a success and error handler and calls the appropriate handler.
 pub fn create_result_from_success(
     data: Vec<Literal>,
     success_handler_param_types: &[Type],
-    context: &EvalContext
+    context: &EvalContext,
 ) -> Literal {
     let func_call = FuncCall {
         func: Box::new(Term::Id("handleSuccess".into())),
-        args: data.into_iter().map(|literal|
-            Expr::Binary(BinaryExpr {
-                first: Term::Literal(literal),
-                rest: vec![],
+        args: data
+            .into_iter()
+            .map(|literal| {
+                Expr::Binary(BinaryExpr {
+                    first: Term::Literal(literal),
+                    rest: vec![],
+                })
             })
-        ).collect(),
+            .collect(),
     };
     create_result_from_func_call(
         func_call,
         success_handler_param_types,
-        context
+        context,
     )
 }
 
@@ -43,35 +48,31 @@ pub fn create_result_from_success(
 pub fn create_result_from_error(
     error: Literal,
     success_handler_param_types: &[Type],
-    context: &EvalContext
+    context: &EvalContext,
 ) -> Literal {
     let func_call = FuncCall {
         func: Box::new(Term::Id("handleError".into())),
-        args: vec![
-            Expr::Binary(BinaryExpr {
-                first: Term::Literal(error),
-                rest: vec![],
-            }),
-        ],
+        args: vec![Expr::Binary(BinaryExpr {
+            first: Term::Literal(error),
+            rest: vec![],
+        })],
     };
     create_result_from_func_call(
         func_call,
         success_handler_param_types,
-        context
+        context,
     )
 }
 
 fn create_result_from_func_call(
     func_call: FuncCall,
     success_handler_param_types: &[Type],
-    context: &EvalContext
+    context: &EvalContext,
 ) -> Literal {
-    let func_body = FuncBody::Expr(Box::new(
-        Expr::Binary(BinaryExpr {
-            first: Term::FuncCall(func_call), 
-            rest: vec![]
-        })
-    ));
+    let func_body = FuncBody::Expr(Box::new(Expr::Binary(BinaryExpr {
+        first: Term::FuncCall(func_call),
+        rest: vec![],
+    })));
     let function = Function {
         type_params: vec!["T".into()],
         params: vec![
@@ -89,7 +90,7 @@ fn create_result_from_func_call(
     };
     Literal::Closure(Closure {
         function,
-        parent_scope: context.scope.bindings.clone()
+        parent_scope: context.scope.bindings.clone(),
     })
 }
 
@@ -105,7 +106,7 @@ pub fn create_result_type(success_types: &[Type]) -> Type {
             Type::func(success_types, generic_type("T")),
             Type::func(&[Type::String], generic_type("T")),
         ],
-        generic_type("T")
+        generic_type("T"),
     )
 }
 

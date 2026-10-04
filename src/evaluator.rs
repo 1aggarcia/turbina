@@ -1,18 +1,28 @@
 use std::collections::HashMap;
 
-use crate::{errors::Result, models::{AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CodeBlock, CondExpr, EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal, Program, Scope, Term}};
+use crate::{
+    errors::Result,
+    models::{
+        AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CodeBlock, CondExpr,
+        EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal,
+        Program, Scope, Term,
+    },
+};
 
 /// Execute the statement represented by the AST on the program passed in.
-/// 
+///
 /// Syntax errors will cause a panic and should be checked with the
 /// `validate` function first.
-pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Result<Literal> {
+pub fn evaluate(
+    program: &mut Program,
+    tree: &AbstractSyntaxTree,
+) -> Result<Literal> {
     let mut global_context = EvalContext {
         output: &mut program.output,
         scope: Scope {
             bindings: &mut program.bindings,
             parent: None,
-        }
+        },
     };
     // TODO: remove reference, this should be able to consume the tree
     let owned_tree: AbstractSyntaxTree = tree.clone();
@@ -21,7 +31,10 @@ pub fn evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Result<Lite
     Ok(eval_statement(&mut global_context, owned_tree))
 }
 
-fn eval_statement(context: &mut EvalContext, statement: AbstractSyntaxTree) -> Literal {
+fn eval_statement(
+    context: &mut EvalContext,
+    statement: AbstractSyntaxTree,
+) -> Literal {
     match statement {
         AbstractSyntaxTree::Let(node) => eval_let(context, node),
         AbstractSyntaxTree::Import(_) => todo!("import evaluation"),
@@ -36,7 +49,10 @@ fn eval_let(context: &mut EvalContext, node: LetNode) -> Literal {
         panic!("variable '{}' already defined", node.id);
     }
     let literal_value = eval_expr(context, node.value);
-    context.scope.bindings.insert(node.id, literal_value.clone());
+    context
+        .scope
+        .bindings
+        .insert(node.id, literal_value.clone());
 
     return literal_value;
 }
@@ -82,14 +98,15 @@ fn eval_code_block(context: &mut EvalContext, block: CodeBlock) -> Literal {
         output: context.output,
         scope: Scope {
             bindings: &mut local_scope,
-            parent: Some(&context.scope)
-        }
+            parent: Some(&context.scope),
+        },
     };
-    block.statements
+    block
+        .statements
         .into_iter()
-        .fold(Literal::Null, |_, statement|
+        .fold(Literal::Null, |_, statement| {
             eval_statement(&mut local_context, statement)
-        )
+        })
 }
 
 fn eval_cond_expr(context: &mut EvalContext, expr: CondExpr) -> Literal {
@@ -97,7 +114,7 @@ fn eval_cond_expr(context: &mut EvalContext, expr: CondExpr) -> Literal {
     match cond_result {
         Literal::Bool(true) => eval_expr(context, *expr.if_true),
         Literal::Bool(false) => eval_expr(context, *expr.if_false),
-        _ => panic!("TYPE CHECKER FAILED: condition did not evaluate to bool: {cond_result:?}")
+        _ => panic!("TYPE CHECKER FAILED: condition did not evaluate to bool: {cond_result:?}"),
     }
 }
 
@@ -110,7 +127,10 @@ fn eval_function(context: &mut EvalContext, function: Function) -> Literal {
         HashMap::new()
     };
 
-    let closure = Closure { function: function, parent_scope };
+    let closure = Closure {
+        function: function,
+        parent_scope,
+    };
     Literal::Closure(closure)
 }
 
@@ -119,10 +139,13 @@ fn eval_function(context: &mut EvalContext, function: Function) -> Literal {
 /// evaluate user-supplied functions.
 pub fn eval_func_call(
     context: &mut EvalContext,
-    closure: Closure, 
+    closure: Closure,
     args: Vec<Literal>,
 ) -> Literal {
-    let Closure { function, mut parent_scope } = closure;
+    let Closure {
+        function,
+        mut parent_scope,
+    } = closure;
     let function_body = match function.body {
         FuncBody::Native(native_func) => {
             let mut function_context = EvalContext {
@@ -130,10 +153,10 @@ pub fn eval_func_call(
                 scope: Scope {
                     bindings: &mut parent_scope,
                     parent: Some(&context.scope.get_global_scope()),
-                }
+                },
             };
             return native_func(args, &mut function_context);
-        },
+        }
         FuncBody::Expr(expr) => expr,
     };
 
@@ -147,7 +170,7 @@ pub fn eval_func_call(
         scope: Scope {
             bindings: &mut parent_scope,
             parent: Some(&context.scope.get_global_scope()),
-        }
+        },
     };
     eval_expr(&mut function_context, *function_body)
 }
@@ -168,17 +191,24 @@ fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
         match inner_result {
             Literal::Bool(bool) => Literal::Bool(!bool),
             Literal::Int(int) => Literal::Int(-int),
-            _ => panic!("expected bool or int, got {:?}", inner_result)
+            _ => panic!("expected bool or int, got {:?}", inner_result),
         }
     }
 
     #[inline(always)]
-    fn eval_wrapped_func_call(context: &mut EvalContext, call: FuncCall) -> Literal {
-        let Literal::Closure(closure) = eval_term(context, *call.func.clone()) else {
+    fn eval_wrapped_func_call(
+        context: &mut EvalContext,
+        call: FuncCall,
+    ) -> Literal {
+        let Literal::Closure(closure) = eval_term(context, *call.func.clone())
+        else {
             panic!("bad type: {:?}", call.func);
         };
-        let args: Vec<Literal> = call.args.into_iter()
-            .map(|a| eval_expr(context, a)).collect();
+        let args: Vec<Literal> = call
+            .args
+            .into_iter()
+            .map(|a| eval_expr(context, a))
+            .collect();
         eval_func_call(context, closure, args)
     }
 
@@ -199,12 +229,18 @@ fn eval_id(context: &mut EvalContext, id: &str) -> Literal {
         Some(literal) => literal,
 
         // TODO: this should never happen, but use result type anyway
-        None => panic!("variable '{}' does not exist: context {:#?}", id, context),
+        None => {
+            panic!("variable '{}' does not exist: context {:#?}", id, context)
+        }
     }
 }
 
 /// Helper to compute the result of the binary operation
-fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal {
+fn eval_binary_op(
+    left: Literal,
+    operator: &BinaryOp,
+    right: Literal,
+) -> Literal {
     use BinaryOp::*;
     macro_rules! eval_bitwise_op {
         ($left:expr, $right:expr, $operator:tt) => {
@@ -219,23 +255,21 @@ fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal
     // TODO: return error for invalid combos instead of panicking
     match operator {
         Plus => eval_plus(left, right),
-        Minus =>
-            Literal::Int(literal_as_int(left) - literal_as_int(right)),
-        Star =>
-            Literal::Int(literal_as_int(left) * literal_as_int(right)),
-        Slash =>
-            Literal::Int(literal_as_int(left) / literal_as_int(right)),
-        Percent =>
-            Literal::Int(literal_as_int(left) % literal_as_int(right)),
+        Minus => Literal::Int(literal_as_int(left) - literal_as_int(right)),
+        Star => Literal::Int(literal_as_int(left) * literal_as_int(right)),
+        Slash => Literal::Int(literal_as_int(left) / literal_as_int(right)),
+        Percent => Literal::Int(literal_as_int(left) % literal_as_int(right)),
 
-        GreaterThan =>
-            Literal::Bool(literal_as_int(left) > literal_as_int(right)),
-        GreaterThanOrEqual =>
-            Literal::Bool(literal_as_int(left) >= literal_as_int(right)),
-        LessThan =>
-            Literal::Bool(literal_as_int(left) < literal_as_int(right)),
-        LessThanOrEqual =>
-            Literal::Bool(literal_as_int(left) <= literal_as_int(right)),
+        GreaterThan => {
+            Literal::Bool(literal_as_int(left) > literal_as_int(right))
+        }
+        GreaterThanOrEqual => {
+            Literal::Bool(literal_as_int(left) >= literal_as_int(right))
+        }
+        LessThan => Literal::Bool(literal_as_int(left) < literal_as_int(right)),
+        LessThanOrEqual => {
+            Literal::Bool(literal_as_int(left) <= literal_as_int(right))
+        }
 
         And => Literal::Bool(literal_as_bool(left) && literal_as_bool(right)),
         Or => Literal::Bool(literal_as_bool(left) || literal_as_bool(right)),
@@ -259,12 +293,11 @@ fn eval_binary_op(left: Literal, operator: &BinaryOp, right: Literal) -> Literal
 fn eval_plus(left: Literal, right: Literal) -> Literal {
     let left_as_str = literal_to_string(left.clone());
     match left_as_str {
-        None => Literal::Int(
-            literal_as_int(left) + literal_as_int(right)
-        ),
+        None => Literal::Int(literal_as_int(left) + literal_as_int(right)),
         Some(str) => Literal::String(
-            str + &literal_to_string(right.clone()).expect(
-                &format!("right side of + was a non-string literal: {right}"))
+            str + &literal_to_string(right.clone()).expect(&format!(
+                "right side of + was a non-string literal: {right}"
+            )),
         ),
     }
 }
@@ -277,9 +310,9 @@ fn eval_right_shift(left: Literal, right: Literal) -> Literal {
     };
     // Rust panics on overflow by default, so we use the unbounded_shr method
     // to truncate bits that don't fit
-    let unsigned_b: u32 = b.try_into().expect(
-        "failed to used right side of >> as unsigned int"
-    );
+    let unsigned_b: u32 = b
+        .try_into()
+        .expect("failed to used right side of >> as unsigned int");
     match left {
         Byte(a) => Byte(a.unbounded_shr(unsigned_b)),
         Int(a) => Int(a.unbounded_shr(unsigned_b)),
@@ -295,9 +328,9 @@ fn eval_left_shift(left: Literal, right: Literal) -> Literal {
     };
     // Rust panics on overflow by default, so we use the unbounded_shl method
     // to truncate bits that don't fit
-    let unsigned_b: u32 = b.try_into().expect(
-        "failed to used right side of << as unsigned int"
-    );
+    let unsigned_b: u32 = b
+        .try_into()
+        .expect("failed to used right side of << as unsigned int");
     match left {
         Byte(a) => Byte(a.unbounded_shl(unsigned_b)),
         Int(a) => Int(a.unbounded_shl(unsigned_b)),
@@ -356,8 +389,12 @@ mod test_evalutate {
     #[test]
     fn it_looks_up_variables_correctly() {
         let mut program = Program::init_with_std_streams();
-        program.bindings.insert("is_lang_good".to_string(), Literal::Bool(true));
-        program.bindings.insert("some_int".to_string(), Literal::Int(-5));
+        program
+            .bindings
+            .insert("is_lang_good".to_string(), Literal::Bool(true));
+        program
+            .bindings
+            .insert("some_int".to_string(), Literal::Int(-5));
 
         let input = make_tree("is_lang_good;");
         assert_eq!(force_evaluate(&mut program, &input), Literal::Bool(true));
@@ -412,7 +449,8 @@ mod test_evalutate {
     #[case("3 << 5;", 3 << 5)]
     #[case("3 >> 5;", 3 >> 5)]
     fn it_evaluates_binary_math_operators(
-        #[case] input: &str, #[case] expected_val: i32
+        #[case] input: &str,
+        #[case] expected_val: i32,
     ) {
         let input = make_tree(input);
         let expected = Literal::Int(expected_val);
@@ -444,7 +482,8 @@ mod test_evalutate {
         8
     )]
     fn it_evaluates_complex_expressions(
-        #[case] input: &str, #[case] expected_val: i32
+        #[case] input: &str,
+        #[case] expected_val: i32,
     ) {
         let input = make_tree(input);
         let expected = Literal::Int(expected_val);
@@ -460,7 +499,8 @@ mod test_evalutate {
     #[case::left_shift_overflow("1b << 8;", 0)]
     #[case("(25b ^ 16b & 3b) | (10b & 4b);", 25)]
     fn it_evaluates_bitwise_operators_on_bytes(
-        #[case] input: &str, #[case] expected_val: u8
+        #[case] input: &str,
+        #[case] expected_val: u8,
     ) {
         let input = make_tree(input);
         let expected = Literal::Byte(expected_val);
@@ -473,37 +513,32 @@ mod test_evalutate {
     #[case("12 == 12;", 12 == 12)]
     #[case("0 != 0;", 0 != 0)]
     #[case("2 != 1;", 2 != 1)]
-
     // int comparison
     #[case("2 > 1;", 2 > 1)]
     #[case("2 < 1;", 2 < 1)]
     #[case("2 >= 2;", 2 >= 2)]
     #[case("2 <= 2;", 2 <= 2)]
-
     // strings
     #[case("\"a\" == \"a\";", true)]
     #[case("\"a\" != \"a\";", false)]
     #[case("\"abc\" == \"efg\";", false)]
     #[case("\"efg\" != \"abc\";", true)]
-
     // bools
     #[case("true == true;", true)]
     #[case("true != true;", false)]
     #[case("false == true;", false)]
     #[case("true != false;", true)]
-
     #[case("true && true;", true)]
     #[case("true && false;", false)]
     #[case("false || false;", false)]
     #[case("false || true;", true)]
-
     #[case("false || (true && false);", false)]
     #[case("(false && true) || (false || true);", true)]
-
     #[case("4 - 3 > 3 - 4;", true)]
     #[case("4 - 3 > 3 - 4 && 4 - 3 < 3 - 4;", false)]
     fn it_evaluates_binary_bool_operators(
-        #[case] input: &str, #[case] expected_val: bool
+        #[case] input: &str,
+        #[case] expected_val: bool,
     ) {
         let input = make_tree(input);
         let expected = Literal::Bool(expected_val);
@@ -513,18 +548,19 @@ mod test_evalutate {
     #[test]
     fn it_evaluates_list_of_literals() {
         let input = make_tree("[1, 2, 3];");
-        let expected = Literal::List(
-            vec![Literal::Int(1), Literal::Int(2), Literal::Int(3)]
-        );
+        let expected = Literal::List(vec![
+            Literal::Int(1),
+            Literal::Int(2),
+            Literal::Int(3),
+        ]);
         assert_eq!(evaluate_fresh(input), expected);
     }
 
     #[test]
     fn it_evaluates_list_of_expressions() {
         let input = make_tree("[false && true, (() -> 15)()];");
-        let expected = Literal::List(
-            vec![Literal::Bool(false), Literal::Int(15)]
-        );
+        let expected =
+            Literal::List(vec![Literal::Bool(false), Literal::Int(15)]);
         assert_eq!(evaluate_fresh(input), expected);
     }
 
@@ -537,7 +573,8 @@ mod test_evalutate {
 
     #[test]
     fn it_evaluates_code_blocks() {
-        let input = make_tree(r#"{
+        let input = make_tree(
+            r#"{
             let string_a = if (true) {
                 "a" + "A"
             } else {
@@ -549,7 +586,8 @@ mod test_evalutate {
                 "ERROR"
             };
             string_a + " " + string_b
-        };"#);
+        };"#,
+        );
         let expected = Literal::String("aA ERROR".into());
         assert_eq!(evaluate_fresh(input), expected);
     }
@@ -560,25 +598,28 @@ mod test_evalutate {
 
         let define_y = make_tree("let y = 5;");
         let define_closure = make_tree("let closure = () -> y;");
-        let define_override_y = make_tree(
-            "let overrideY = (y: string) -> closure();");
+        let define_override_y =
+            make_tree("let overrideY = (y: string) -> closure();");
 
         force_evaluate(&mut program, &define_y);
         force_evaluate(&mut program, &define_closure);
         force_evaluate(&mut program, &define_override_y);
 
-        let call_override_y = make_tree(r#"overrideY("should not be returned");"#);
+        let call_override_y =
+            make_tree(r#"overrideY("should not be returned");"#);
         let expected = Literal::Int(5);
         assert_eq!(force_evaluate(&mut program, &call_override_y), expected);
     }
 
     #[test]
     fn it_captures_closure_environment_correctly_in_code_blocks() {
-        let input = make_tree(r#"{
+        let input = make_tree(
+            r#"{
             let y: string = "not an int";
             let overrideY = (y: int) -> { () -> y * 2 };
             overrideY(5)()
-        };"#);
+        };"#,
+        );
         let expected = Literal::Int(10);
 
         assert_eq!(evaluate_fresh(input), expected);
@@ -587,7 +628,10 @@ mod test_evalutate {
     #[rstest]
     #[case("if (2 == 3) 1 else 2;", 2)]
     #[case("if (2 != 3) 3 else 4;", 3)]
-    fn it_evaluates_conditional_expression(#[case] input: &str, #[case] expected: i32) {
+    fn it_evaluates_conditional_expression(
+        #[case] input: &str,
+        #[case] expected: i32,
+    ) {
         let input = make_tree(input);
         assert_eq!(evaluate_fresh(input), Literal::Int(expected));
     }
@@ -620,7 +664,10 @@ mod test_evalutate {
 
         force_evaluate(&mut program, &define_x);
         force_evaluate(&mut program, &define_square);
-        assert_eq!(force_evaluate(&mut program, &square_three), Literal::Int(9));
+        assert_eq!(
+            force_evaluate(&mut program, &square_three),
+            Literal::Int(9)
+        );
     }
 
     #[test]
@@ -642,10 +689,16 @@ mod test_evalutate {
     fn it_calls_function_with_function_argument() {
         let mut program = Program::init_with_std_streams();
 
-        force_evaluate(&mut program, &make_tree(
-            "let compose(f: (int -> int), g: (int -> int)) -> (x: int) -> f(g(x));"));
-            force_evaluate(&mut program, &make_tree(
-            "let addThree = compose((x: int) -> x + 1, (x: int) -> x + 2);"));
+        force_evaluate(
+            &mut program,
+            &make_tree("let compose(f: (int -> int), g: (int -> int)) -> (x: int) -> f(g(x));"),
+        );
+        force_evaluate(
+            &mut program,
+            &make_tree(
+                "let addThree = compose((x: int) -> x + 1, (x: int) -> x + 2);",
+            ),
+        );
         assert_eq!(
             force_evaluate(&mut program, &make_tree("addThree(5);")),
             Literal::Int(8)
@@ -656,10 +709,14 @@ mod test_evalutate {
     fn it_calls_passed_in_function_with_less_args_than_param_type_defines() {
         let mut program = Program::init_with_std_streams();
 
-        force_evaluate(&mut program, &make_tree(
-            "let callBinaryFunc(binaryFunc: ((int, int) -> int)) -> binaryFunc(4, 14);"));
-        let result = force_evaluate(&mut program, &make_tree(
-            "callBinaryFunc((x: int) -> x * 2);"));
+        force_evaluate(
+            &mut program,
+            &make_tree("let callBinaryFunc(binaryFunc: ((int, int) -> int)) -> binaryFunc(4, 14);"),
+        );
+        let result = force_evaluate(
+            &mut program,
+            &make_tree("callBinaryFunc((x: int) -> x * 2);"),
+        );
         assert_eq!(result, Literal::Int(8));
     }
 
@@ -668,7 +725,10 @@ mod test_evalutate {
         evaluate(&mut Program::init_with_std_streams(), &tree).unwrap()
     }
 
-    fn force_evaluate(program: &mut Program, tree: &AbstractSyntaxTree) -> Literal {
+    fn force_evaluate(
+        program: &mut Program,
+        tree: &AbstractSyntaxTree,
+    ) -> Literal {
         evaluate(program, &tree).unwrap()
     }
 }

@@ -1,8 +1,8 @@
 use std::fmt::Debug;
-use std::io::{BufRead, BufReader, Lines, Write, stderr, stdin, stdout};
 use std::fs::File;
+use std::io::{stderr, stdin, stdout, BufRead, BufReader, Lines, Write};
 
-use crate::errors::{InterpreterError};
+use crate::errors::InterpreterError;
 use crate::lexer::tokenize;
 use crate::models::Token;
 
@@ -15,7 +15,10 @@ pub struct OutputStreams {
 impl OutputStreams {
     /// Create a new struct using stdout and stderr
     pub fn std_streams() -> Self {
-        Self { stdout: Box::new(stdout()), stderr: Box::new(stderr()) }
+        Self {
+            stdout: Box::new(stdout()),
+            stderr: Box::new(stderr()),
+        }
     }
 }
 
@@ -33,7 +36,7 @@ pub trait InputStream {
 }
 
 pub struct FileStream {
-    pub lines: Lines<BufReader<File>>
+    pub lines: Lines<BufReader<File>>,
 }
 
 impl FileStream {
@@ -88,7 +91,8 @@ pub struct StringStream {
 impl StringStream {
     pub fn new(source_code: &str) -> Self {
         StringStream {
-            lines: source_code.lines()
+            lines: source_code
+                .lines()
                 .map(|s| s.to_owned() + "\n")
                 .filter(|s| !s.trim().is_empty())
                 .filter(|s| !s.starts_with("//"))
@@ -121,7 +125,11 @@ pub struct TokenStream {
 
 impl TokenStream {
     pub fn new(input_stream: Box<dyn InputStream>) -> Self {
-        Self { input_stream, tokens: vec![], position: 0 }
+        Self {
+            input_stream,
+            tokens: vec![],
+            position: 0,
+        }
     }
 
     pub fn from_tokens(tokens: Vec<Token>) -> Self {
@@ -145,7 +153,10 @@ impl TokenStream {
     }
 
     /// Returns the token at the current position plus `offset`
-    pub fn lookahead(&mut self, offset: usize) -> Result<Token, InterpreterError> {
+    pub fn lookahead(
+        &mut self,
+        offset: usize,
+    ) -> Result<Token, InterpreterError> {
         if let Some(token) = self.tokens.get(self.position + offset) {
             return Ok(token.clone());
         }
@@ -165,13 +176,17 @@ mod test_file_stream {
 
     #[test]
     fn it_returns_empty_string_for_eof() {
-        let file = File::open(TEST_FILE_PATH).expect(
-            "Test file should exist"
-        );
+        let file = File::open(TEST_FILE_PATH).expect("Test file should exist");
         let mut file_stream = FileStream::from_file(file);
 
-        assert_eq!(file_stream.next_line(), Ok("Text before blank line\n".to_string()));
-        assert_eq!(file_stream.next_line(), Ok("Text after blank line\n".to_string()));
+        assert_eq!(
+            file_stream.next_line(),
+            Ok("Text before blank line\n".to_string())
+        );
+        assert_eq!(
+            file_stream.next_line(),
+            Ok("Text after blank line\n".to_string())
+        );
         assert_eq!(file_stream.next_line(), Ok("".to_string()));
     }
 }

@@ -37,23 +37,25 @@ pub struct TypeContext<'a> {
     /// functions to reference themselves in their own definition.
     pub name_to_bind: Option<String>,
 
-    pub parent: Option<&'a TypeContext<'a>>
+    pub parent: Option<&'a TypeContext<'a>>,
 }
-
 
 impl TypeContext<'_> {
     /// Find the type associated to an ID, if any, in the local scope and
     /// all parent scopes.
     pub fn lookup(&self, id: &str) -> Option<Type> {
         if let Some(t) = self.variable_types.get(id) {
-            debug_assert!(!self.parameter_types.contains_key(id),
-                "binding should not be defined twice in the same scope");
+            debug_assert!(
+                !self.parameter_types.contains_key(id),
+                "binding should not be defined twice in the same scope"
+            );
             return Some(t.clone());
         }
         if let Some(t) = self.parameter_types.get(id) {
             return Some(t.clone());
         }
-        self.parent.and_then(|parent_context| parent_context.lookup(id))
+        self.parent
+            .and_then(|parent_context| parent_context.lookup(id))
     }
 
     /// Find the type associated to a type alias, if any, in the local scope
@@ -61,9 +63,9 @@ impl TypeContext<'_> {
     pub fn lookup_type_alias(&self, type_alias: &str) -> Option<Type> {
         match self.type_aliases.get(type_alias) {
             Some(t) => Some(t.clone()),
-            None => self.parent.and_then(
-                |parent_context| parent_context.lookup_type_alias(type_alias)
-            ),
+            None => self.parent.and_then(|parent_context| {
+                parent_context.lookup_type_alias(type_alias)
+            }),
         }
     }
 
@@ -75,7 +77,7 @@ impl TypeContext<'_> {
         }
         self.parent
             .map(|parent_context| parent_context.contains_parameter(id))
-            .unwrap_or(false)  // base case
+            .unwrap_or(false) // base case
     }
 
     /// Recursively search through all type contexts and determine if the
@@ -85,9 +87,10 @@ impl TypeContext<'_> {
             return true;
         }
         self.parent
-            .map(|parent_context|
-                parent_context.contains_type_parameter(type_parameter))
-            .unwrap_or(false)  // base case
+            .map(|parent_context| {
+                parent_context.contains_type_parameter(type_parameter)
+            })
+            .unwrap_or(false) // base case
     }
 }
 
@@ -104,41 +107,37 @@ pub fn replace_generic_types(
                 Some(t) => t,
                 None => Type::Generic(name), // do nothing rather than erroring
             }
-        },
+        }
         Type::Func { input, output } => {
-            let new_inputs: Vec<Type> = input.into_iter()
-                .map(|t|
-                    replace_generic_types(t, lookup_type)
-                )
+            let new_inputs: Vec<Type> = input
+                .into_iter()
+                .map(|t| replace_generic_types(t, lookup_type))
                 .collect();
 
-            let new_output =
-                replace_generic_types(*output, lookup_type);
+            let new_output = replace_generic_types(*output, lookup_type);
 
-            Type::Func { input: new_inputs, output: Box::new(new_output) }
-        },
+            Type::Func {
+                input: new_inputs,
+                output: Box::new(new_output),
+            }
+        }
         Type::List(list) => {
-            let converted =
-                replace_generic_types(*list, lookup_type);
+            let converted = replace_generic_types(*list, lookup_type);
             Type::List(Box::new(converted))
-        },
+        }
         Type::Nullable(nullable) => {
-            let converted =
-                replace_generic_types(*nullable, lookup_type);
+            let converted = replace_generic_types(*nullable, lookup_type);
             Type::Nullable(Box::new(converted))
-        },
+        }
         Type::Struct(struct_map) => {
-            let converted: HashMap<String, Type> = struct_map.into_iter()
-                .map(|(key, datatype)| (
-                    key,
-                    replace_generic_types(
-                        datatype,
-                        lookup_type
-                    )
-                ))
+            let converted: HashMap<String, Type> = struct_map
+                .into_iter()
+                .map(|(key, datatype)| {
+                    (key, replace_generic_types(datatype, lookup_type))
+                })
                 .collect();
             Type::Struct(converted)
-        },
+        }
         _ => datatype,
     }
 }
@@ -155,7 +154,11 @@ pub mod test_utils {
     }
 
     pub fn ok_without_binding(datatype: Type) -> ValidationResult {
-        Ok(TreeType { datatype, name_to_bind: None, type_alias_to_bind: None })
+        Ok(TreeType {
+            datatype,
+            name_to_bind: None,
+            type_alias_to_bind: None,
+        })
     }
 
     pub fn ok_with_binding(id: &str, datatype: Type) -> ValidationResult {

@@ -33,13 +33,13 @@ macro_rules! unwrap_args {
 }
 
 pub mod errors;
-pub mod models;
-pub mod lexer;
-pub mod parser;
-pub mod type_resolver;
 pub mod evaluator;
+pub mod lexer;
 pub mod libraries;
+pub mod models;
+pub mod parser;
 pub mod streams;
+pub mod type_resolver;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod rustyline; // only for the CLI, breaks WASM compilation
@@ -54,16 +54,21 @@ pub struct CliArgs {
 }
 
 /// Writer that passes data to the JavaScript runtime
-struct JavaScriptWriter { write_callback: js_sys::Function }
+struct JavaScriptWriter {
+    write_callback: js_sys::Function,
+}
 
 impl Write for JavaScriptWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let string_data = String::from_utf8(buf.to_vec())
-            .map_err(|e| Error::other(e))?;
+        let string_data =
+            String::from_utf8(buf.to_vec()).map_err(|e| Error::other(e))?;
 
         let js_string = JsValue::from_str(&string_data);
-        self.write_callback.call1(&JsValue::NULL, &js_string)
-            .map_err(|_| std::io::Error::other("Failed to call JS write callback"))?;
+        self.write_callback
+            .call1(&JsValue::NULL, &js_string)
+            .map_err(|_| {
+                std::io::Error::other("Failed to call JS write callback")
+            })?;
 
         Ok(buf.len())
     }
@@ -80,10 +85,10 @@ extern "C" {
 }
 
 /// Function visible in JavaScript to use Turbina through Web Assembly.
-/// 
+///
 /// Accepts two callback functions that consume all string data that is written
 /// to either stdout or stderr. They are called every time a write is made.
-/// 
+///
 /// ```typescript
 /// on_stdout_write: (data: string) => void
 /// on_stderr_write: (data: string) => void
@@ -96,14 +101,21 @@ pub fn run_turbina_program(
 ) {
     let input_stream = Box::new(StringStream::new(source_code));
     let output_streams = OutputStreams {
-        stdout: Box::new(JavaScriptWriter { write_callback: on_stdout_write }),
-        stderr: Box::new(JavaScriptWriter { write_callback: on_stderr_write }),
+        stdout: Box::new(JavaScriptWriter {
+            write_callback: on_stdout_write,
+        }),
+        stderr: Box::new(JavaScriptWriter {
+            write_callback: on_stderr_write,
+        }),
     };
 
     let result = run_as_file(
         input_stream,
         output_streams,
-        CliArgs { path: None, disable_type_checker: false },
+        CliArgs {
+            path: None,
+            disable_type_checker: false,
+        },
     );
 
     if let Err(e) = result {
@@ -117,7 +129,7 @@ pub fn run_turbina_program(
 pub fn run_as_file(
     input_stream: Box<dyn InputStream>,
     out_streams: OutputStreams,
-    args: CliArgs
+    args: CliArgs,
 ) -> std::io::Result<()> {
     let mut token_stream = TokenStream::new(input_stream);
 
@@ -157,12 +169,12 @@ pub fn run_as_file(
 
 /// Command line interface for using Turbina.
 /// REPL = Read-eval-print loop
-/// 
+///
 /// Excluded when compiling for WASM since Rustyline is not supported in WASM
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run_repl(args: CliArgs) {
-    let input_stream = RustylineStream::new()
-        .expect("Failed to open input stream");
+    let input_stream =
+        RustylineStream::new().expect("Failed to open input stream");
 
     let mut token_stream = TokenStream::new(Box::new(input_stream));
     let mut program = Program::init_with_std_streams();
@@ -172,9 +184,10 @@ pub fn run_repl(args: CliArgs) {
     loop {
         let eval_result =
             validate_next_statement(&mut program, &mut token_stream, &args)
-                .and_then(|statement|
+                .and_then(|statement| {
                     evaluate_statement(&mut program, &statement)
-                        .map_err(|e| vec![e]));
+                        .map_err(|e| vec![e])
+                });
 
         match eval_result {
             Ok(result) => println!("{result}"),
@@ -184,7 +197,7 @@ pub fn run_repl(args: CliArgs) {
                 }
                 errors.iter().for_each(|e| eprintln!("{e}"));
                 continue;
-            },
+            }
         };
     }
 }
@@ -195,7 +208,7 @@ pub fn run_repl(args: CliArgs) {
 fn validate_next_statement(
     program: &mut Program,
     token_stream: &mut TokenStream,
-    args: &CliArgs
+    args: &CliArgs,
 ) -> Result<Statement, Vec<InterpreterError>> {
     let syntax_tree = parse_statement(token_stream)?;
     if args.disable_type_checker {
@@ -204,10 +217,14 @@ fn validate_next_statement(
 
     let tree_type = resolve_type(program, &syntax_tree)?;
     if let Some(name) = &tree_type.name_to_bind {
-        program.type_context.insert(name.clone(), tree_type.datatype.clone());
+        program
+            .type_context
+            .insert(name.clone(), tree_type.datatype.clone());
     }
     if let Some((type_alias, datatype)) = &tree_type.type_alias_to_bind {
-        program.type_aliases.insert(type_alias.clone(), datatype.clone());
+        program
+            .type_aliases
+            .insert(type_alias.clone(), datatype.clone());
     }
     Ok((syntax_tree, Some(tree_type.datatype)))
 }

@@ -1,4 +1,12 @@
-use crate::{errors::Result, models::{Token, TypeAlias, UnaryOp}, parser::{shared_parsers::parse_id, type_declaration_parser::parse_type, utils::match_next}, streams::TokenStream};
+use crate::{
+    errors::Result,
+    models::{Token, TypeAlias, UnaryOp},
+    parser::{
+        shared_parsers::parse_id, type_declaration_parser::parse_type,
+        utils::match_next,
+    },
+    streams::TokenStream,
+};
 
 /// Create an AST for the "type" keyword given the remaining tokens
 /// ```text
@@ -10,15 +18,21 @@ pub fn parse_type_alias(tokens: &mut TokenStream) -> Result<TypeAlias> {
     match_next(tokens, Token::UnaryOp(UnaryOp::Equals))?;
     let datatype = parse_type(tokens)?;
 
-    Ok(TypeAlias { type_alias, datatype })
+    Ok(TypeAlias {
+        type_alias,
+        datatype,
+    })
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{
+        errors::error,
+        models::{test_utils::int_token, AbstractSyntaxTree, Type},
+        parser::test_utils::{force_tokenize, parse_tokens},
+    };
     use rstest::rstest;
-    use crate::{errors::error, models::{AbstractSyntaxTree, Type, test_utils::int_token}, parser::test_utils::{force_tokenize, parse_tokens}};
-
 
     fn test_parse_type_alias(tokens: Vec<Token>) -> Result<TypeAlias> {
         let ast = parse_tokens(tokens)?;
@@ -37,11 +51,14 @@ mod test {
         Type::func(&[Type::String, Type::Int.as_list()], Type::Null)
     )]
     fn it_returns_correct_ast_node_for_valid_type_alias(
-        #[case] input_type: &str, #[case] expected_type: Type
+        #[case] input_type: &str,
+        #[case] expected_type: Type,
     ) {
         let input = force_tokenize(&format!("type X = {};", input_type));
-        let expected =
-            TypeAlias { type_alias: "X".into(), datatype: expected_type };
+        let expected = TypeAlias {
+            type_alias: "X".into(),
+            datatype: expected_type,
+        };
         let actual = test_parse_type_alias(input);
 
         assert_eq!(actual, Ok(expected));

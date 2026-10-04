@@ -4,9 +4,7 @@ use regex::Regex;
 use unescaper::unescape;
 
 use crate::errors::{InterpreterError, MultiResult, Result};
-use crate::models::{
-    BinaryOp, Literal, Token, Type, UnaryOp
-};
+use crate::models::{BinaryOp, Literal, Token, Type, UnaryOp};
 
 /// Parse source code text into a list of tokens according to the language's
 /// grammar. All whitespace is eliminated, unless is is part of a string.
@@ -18,11 +16,11 @@ use crate::models::{
 /// - keywords/symbols: a-zA-Z
 /// - operators: +, -, &&, ||, <, =, ==
 /// - formatters: (parentheses, brackets, semicolon, comma)
-/// 
+///
 /// Comments are sequences starting with `//`. Comments do not produce tokens.
 pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
     if line.is_empty() {
-        return Ok(vec![Token::EndOfFile])
+        return Ok(vec![Token::EndOfFile]);
     }
 
     // removing comments will remove a trailing newline,
@@ -31,11 +29,8 @@ pub fn tokenize(line: &str) -> MultiResult<Vec<Token>> {
     let ends_with_newline = newline_regex.is_match(line);
 
     let escaped_line = escape_string_inputs(line);
-    let line_without_comments = escaped_line
-        .trim()
-        .split("//")
-        .next()
-        .unwrap_or("");
+    let line_without_comments =
+        escaped_line.trim().split("//").next().unwrap_or("");
 
     // (?x) enables verbose mode to ignore comments and whitespace
     let pattern = r#"(?x)
@@ -131,7 +126,7 @@ fn string_to_binary_op(string: &str) -> Option<BinaryOp> {
         "|>" => BinaryOp::Pipe,
         _ => return None,
     };
-    return Some(op)
+    return Some(op);
 }
 
 fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
@@ -141,7 +136,7 @@ fn string_to_unary_op(string: &str) -> Option<UnaryOp> {
         "?" => UnaryOp::Nullable,
         _ => return None,
     };
-    return Some(op)
+    return Some(op);
 }
 
 fn formatter_to_token(text: &str) -> MultiResult<Token> {
@@ -157,9 +152,12 @@ fn formatter_to_token(text: &str) -> MultiResult<Token> {
         "{" => Token::OpenCurlyBracket,
         "}" => Token::CloseCurlyBracket,
         "->" => Token::Arrow,
-        _ => return Err(
-            InterpreterError::UnrecognizedToken { payload: text.into() }.into()
-        )
+        _ => {
+            return Err(InterpreterError::UnrecognizedToken {
+                payload: text.into(),
+            }
+            .into())
+        }
     };
     Ok(token)
 }
@@ -187,9 +185,11 @@ fn parse_byte_from_string(text: &str) -> MultiResult<Token> {
     let mut text_without_suffix = text.to_owned();
     text_without_suffix.pop();
 
-    let byte_value = text_without_suffix.parse::<u8>().map_err(|err|
-        InterpreterError::SyntaxError { message: err.to_string() }
-    )?;
+    let byte_value = text_without_suffix.parse::<u8>().map_err(|err| {
+        InterpreterError::SyntaxError {
+            message: err.to_string(),
+        }
+    })?;
 
     Ok(Token::Literal(Literal::Byte(byte_value)))
 }
@@ -213,9 +213,9 @@ pub fn escape_string(string: &str) -> Result<String> {
 
     match String::from_utf8(escaped_string_bytes) {
         Ok(escaped_string) => Ok(format!("\"{escaped_string}\"")),
-        Err(err) => Err(
-            InterpreterError::SyntaxError { message: err.to_string() }
-        )
+        Err(err) => Err(InterpreterError::SyntaxError {
+            message: err.to_string(),
+        }),
     }
 }
 
@@ -227,9 +227,11 @@ fn unescape_string(string: &str) -> Result<String> {
     chars.next();
     chars.next_back();
     let string_without_quotes = chars.as_str();
-    unescape(string_without_quotes).map_err(|err|
-        InterpreterError::SyntaxError { message: err.to_string() }
-    )
+    unescape(string_without_quotes).map_err(|err| {
+        InterpreterError::SyntaxError {
+            message: err.to_string(),
+        }
+    })
 }
 
 #[cfg(test)]
@@ -242,12 +244,9 @@ mod tests {
     #[rstest]
     #[case::bool("true", bool_token(true))]
     #[case::bool("false", bool_token(false))]
-
     #[case::null("unknown", Token::Type(Type::Unknown))]
     #[case::null("null", Token::Null)]
-
     #[case::base_10_byte_literal("123b", byte_token(123))]
-
     #[case::empty_string("\"\"", string_token(""))]
     #[case::normal_string(r#""hola""#, string_token("hola"))]
     #[case::string_with_spaces(r#""a b c""#, string_token("a b c"))]
@@ -260,22 +259,21 @@ mod tests {
         r#""{\"key\": [\"value1\", \"value2\"]}""#,
         string_token("{\"key\": [\"value1\", \"value2\"]}")
     )]
-
     #[case::symbol("let", Token::Let)]
     #[case::symbol("import", Token::Import)]
     #[case::symbol("type", Token::TypeKeyword)]
     #[case::symbol_with_underscore(
-        "multi_word_var_name", id_token("multi_word_var_name"))]
+        "multi_word_var_name",
+        id_token("multi_word_var_name")
+    )]
     #[case::symbol_starting_with_underscore("_a", id_token("_a"))]
     #[case::underscore_symbol("_", id_token("_"))]
-
     #[case::linux_newline("\n", Token::Newline)]
     #[case::windows_newline("\r\n", Token::Newline)]
     #[case::legacy_mac_newline("\r", Token::Newline)]
     #[case::multiple_newlines("\n\n\n\n", Token::Newline)]
     #[case::mixed_newlines("\r\n\r\n\r\r\n\n", Token::Newline)]
     #[case::newlines_with_whitespace("\n    \n  \n", Token::Newline)]
-
     #[case("(", Token::OpenParens)]
     #[case(")", Token::CloseParens)]
     #[case(";", Token::Semicolon)]
@@ -300,19 +298,16 @@ mod tests {
         bool_token(false),
         unary_op_token(UnaryOp::Not),
     ])]
-
     // identifying negative numbers is a job for the parser, not the lexer
     #[case::negative_int("-9", &[
         op_token(BinaryOp::Minus),
         int_token(9),
     ])]
-
     #[case::operators_and_numbers("4+5", &[
         int_token(4),
         op_token(BinaryOp::Plus),
         int_token(5),
     ])]
-
     #[case::operators_and_numbers("56-439%4", &[
         int_token(56),
         op_token(BinaryOp::Minus),
@@ -320,7 +315,6 @@ mod tests {
         op_token(BinaryOp::Percent),
         int_token(4),
     ])]
-
     #[case::operators_with_spaces("1* 2  +   3", &[
         int_token(1),
         op_token(BinaryOp::Star),
@@ -328,7 +322,6 @@ mod tests {
         op_token(BinaryOp::Plus),
         int_token(3),
     ])]
-
     #[case::var_declaration("let x = 5;", &[
         Token::Let,
         id_token("x"),
@@ -336,7 +329,6 @@ mod tests {
         int_token(5),
         Token::Semicolon,
     ])]
-
     #[case::declared_type("let x: int = 5;", &[
         Token::Let,
         id_token("x"),
@@ -346,7 +338,6 @@ mod tests {
         int_token(5),
         Token::Semicolon,
     ])]
-
     #[case::symbols("fn customSymbol data if else", &[
         id_token("fn"),
         id_token("customSymbol"),
@@ -354,28 +345,24 @@ mod tests {
         Token::If,
         Token::Else,
     ])]
-
     #[case::function_call("print(x + 1)", &[
         id_token("print"),
-        Token::OpenParens, 
+        Token::OpenParens,
         id_token("x"),
         op_token(BinaryOp::Plus),
         int_token(1),
         Token::CloseParens,
     ])]
-
     #[case::comment_and_newline(
         "5 // this comment should not produce tokens\n",
         &[int_token(5), Token::Newline]
     )]
-
     #[case::bind_escaped_quote( r#" let x = "\"" "#, &[
         Token::Let,
         id_token("x"),
         unary_op_token(UnaryOp::Equals),
         string_token("\"")
     ])]
-
     #[case::tokens_surrounding_newlines("x \n \r\n \r \n 9 \n", &[
         id_token("x"),
         Token::Newline,
@@ -401,17 +388,9 @@ mod tests {
 
     #[test]
     fn multiple_strings() {
-        let strings= [
-            "hola mundo",
-            "23~/.`=--`.1",
-            "",
-            "",
-            "ya es hora"
-        ];
+        let strings = ["hola mundo", "23~/.`=--`.1", "", "", "ya es hora"];
 
-        let input = strings
-            .map(|s| "\"".to_string() + s + "\"")
-            .join(" ");
+        let input = strings.map(|s| "\"".to_string() + s + "\"").join(" ");
         let expected = strings.map(|s| string_token(s)).to_vec();
         assert_eq!(tokenize(input.as_str()), Ok(expected));
     }
@@ -451,8 +430,12 @@ mod tests {
     #[test]
     fn symbol_starting_with_numbers() {
         let errors = vec![
-            InterpreterError::UnrecognizedToken { payload: "23sdf".into() },
-            InterpreterError::UnrecognizedToken { payload: "5l".into() }
+            InterpreterError::UnrecognizedToken {
+                payload: "23sdf".into(),
+            },
+            InterpreterError::UnrecognizedToken {
+                payload: "5l".into(),
+            },
         ];
         assert_eq!(tokenize("23sdf 5l"), Err(errors));
     }
@@ -486,7 +469,7 @@ mod tests {
         fn it_performs_inverse_of_unescape_string() {
             let original = "\"1\\n\\t23\"";
             let unescaped = unescape_string(original).unwrap();
-           assert_eq!(escape_string(&unescaped).unwrap(), original); 
+            assert_eq!(escape_string(&unescaped).unwrap(), original);
         }
 
         #[test]
@@ -512,7 +495,10 @@ mod tests {
 
         #[test]
         fn it_applies_forward_slash_escape() {
-            assert_eq!(unescape_string("\"https:\\/\\/\"").unwrap(), "https://");
+            assert_eq!(
+                unescape_string("\"https:\\/\\/\"").unwrap(),
+                "https://"
+            );
         }
     }
 }

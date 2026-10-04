@@ -1,11 +1,12 @@
 use crate::errors::{InterpreterError, MultiResult};
 use crate::models::{Type, TypeAlias};
-use crate::type_resolver::TreeType;
 use crate::type_resolver::shared::TypeContext;
+use crate::type_resolver::TreeType;
 
 /// Check that the type alias name has not already been declared.
 pub fn resolve_type_alias_type(
-    context: &TypeContext, node: &TypeAlias
+    context: &TypeContext,
+    node: &TypeAlias,
 ) -> MultiResult<TreeType> {
     if let Some(assigned_type) = context.lookup_type_alias(&node.type_alias) {
         return Err(vec![InterpreterError::ReassignTypeError {
@@ -15,9 +16,12 @@ pub fn resolve_type_alias_type(
     }
 
     let result = TreeType {
-        datatype: Type::Null,  // type alias is not usable runtime data
+        datatype: Type::Null, // type alias is not usable runtime data
         name_to_bind: None,
-        type_alias_to_bind: Some((node.type_alias.clone(), node.datatype.clone()))
+        type_alias_to_bind: Some((
+            node.type_alias.clone(),
+            node.datatype.clone(),
+        )),
     };
     Ok(result)
 }
@@ -25,17 +29,18 @@ pub fn resolve_type_alias_type(
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::rstest;
     use crate::models::{Program, Type};
     use crate::parser::test_utils::make_tree;
     use crate::type_resolver::resolve_type;
     use crate::type_resolver::shared::test_utils::*;
+    use rstest::rstest;
 
     #[rstest]
     #[case::simple_type("int", Type::Int)]
     #[case::list_type("string[]", Type::String.as_list())]
     fn it_returns_correct_tree_for_new_type_alias(
-        #[case] input_type: &str, #[case] expected_type: Type
+        #[case] input_type: &str,
+        #[case] expected_type: Type,
     ) {
         let input = make_tree(&format!("type X = {};", input_type));
         let expected = TreeType {

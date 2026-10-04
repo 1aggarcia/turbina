@@ -1,7 +1,7 @@
 use crate::parser::utils::{match_next, skip_newlines};
 
+use crate::errors::{error, Result};
 use crate::{models::Token, streams::TokenStream};
-use crate::errors::{Result, error};
 
 /// Match the next token as an Id and extract the String name from it
 pub fn parse_id(tokens: &mut TokenStream) -> Result<String> {
@@ -26,7 +26,7 @@ pub struct ListParserConfig<T> {
 /// ```
 pub fn parse_list<T>(
     tokens: &mut TokenStream,
-    config: ListParserConfig<T>
+    config: ListParserConfig<T>,
 ) -> Result<Vec<T>> {
     let mut items = Vec::<T>::new();
 
@@ -50,10 +50,10 @@ pub fn parse_list<T>(
 
 #[cfg(test)]
 mod test {
-    use rstest::rstest;
-    use crate::parser::test_utils::*;
     use crate::models::test_utils::*;
-    use crate::models::{BinaryOp, Term, Expr, FuncBody, Function};
+    use crate::models::{BinaryOp, Expr, FuncBody, Function, Term};
+    use crate::parser::test_utils::*;
+    use rstest::rstest;
 
     mod list {
         use super::*;
@@ -62,10 +62,16 @@ mod test {
         #[case::empty("[];", &[])]
         #[case::one_element("[1];", &[1])]
         #[case::many_elements("[1, 6, 2, 4543, 5];", &[1, 6, 2, 4543, 5])]
-        fn it_parses_list_of_literals(#[case] input: &str, #[case] expected: &[i32]) {
+        fn it_parses_list_of_literals(
+            #[case] input: &str,
+            #[case] expected: &[i32],
+        ) {
             let tokens = force_tokenize(input);
             let list_term = Term::List(
-                expected.iter().map(|num| term_expr(int_term(*num))).collect()
+                expected
+                    .iter()
+                    .map(|num| term_expr(int_term(*num)))
+                    .collect(),
             );
             assert_eq!(parse_tokens(tokens), Ok(term_tree(list_term)));
         }
@@ -76,14 +82,14 @@ mod test {
             let expected_list = vec![
                 bin_expr(
                     bool_term(false),
-                    vec![(BinaryOp::And, bool_term(true))]
+                    vec![(BinaryOp::And, bool_term(true))],
                 ),
                 Expr::Function(Function {
                     type_params: vec![],
                     params: vec![],
                     return_type: None,
-                    body: FuncBody::Expr(Box::new(term_expr(int_term(15))))
-                })
+                    body: FuncBody::Expr(Box::new(term_expr(int_term(15)))),
+                }),
             ];
             let expected_tree = term_tree(Term::List(expected_list));
             assert_eq!(parse_tokens(tokens), Ok(expected_tree));

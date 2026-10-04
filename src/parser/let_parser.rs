@@ -16,10 +16,8 @@ pub fn parse_let(tokens: &mut TokenStream) -> Result<LetNode> {
     let id = parse_id(tokens)?;
 
     let includes_type_declaration = tokens.peek()? == Token::Colon;
-    let is_shorthand_function = [
-        Token::OpenParens,
-        Token::open_type_list()
-    ].contains(&tokens.peek()?);
+    let is_shorthand_function =
+        [Token::OpenParens, Token::open_type_list()].contains(&tokens.peek()?);
 
     let datatype = if includes_type_declaration {
         Some(parse_type_declaration(tokens)?)
@@ -36,18 +34,22 @@ pub fn parse_let(tokens: &mut TokenStream) -> Result<LetNode> {
         parse_expr(tokens)?
     };
 
-    return Ok(LetNode { id, datatype, value: expr });
+    return Ok(LetNode {
+        id,
+        datatype,
+        value: expr,
+    });
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::rstest;
     use crate::errors::{error, InterpreterError};
-    use crate::parser::test_utils::*;
     use crate::models::test_utils::*;
     use crate::models::{AbstractSyntaxTree, BinaryOp, Literal, Term, Type};
-    
+    use crate::parser::test_utils::*;
+    use rstest::rstest;
+
     mod let_binding {
         use super::*;
 
@@ -69,10 +71,10 @@ mod test {
         #[test]
         fn it_returns_error_for_equals_in_let_expr() {
             let input = force_tokenize("let x = 1 = 0;");
-            let error = InterpreterError::end_of_statement(
-                Token::UnaryOp(UnaryOp::Equals)
-            );
-            assert_eq!(test_parse_let(input), Err(error)); 
+            let error = InterpreterError::end_of_statement(Token::UnaryOp(
+                UnaryOp::Equals,
+            ));
+            assert_eq!(test_parse_let(input), Err(error));
         }
 
         #[rstest]
@@ -130,10 +132,13 @@ mod test {
                 "some expression too long for one line";
         "#, LetNode {
             id: "x".into(),
-            datatype: Some(Type::String), 
+            datatype: Some(Type::String),
             value: term_expr(str_term("some expression too long for one line"))
         })]
-        fn it_parses_var_binding(#[case] input: &str, #[case] expected: LetNode) {
+        fn it_parses_var_binding(
+            #[case] input: &str,
+            #[case] expected: LetNode,
+        ) {
             let input = force_tokenize(input);
             assert_eq!(test_parse_let(input), Ok(expected));
         }
@@ -163,9 +168,10 @@ mod test {
         )]
         fn it_parses_correct_function_type(
             #[case] type_string: &str,
-            #[case] function_type: Type
+            #[case] function_type: Type,
         ) {
-            let tokens = force_tokenize(&format!("let f: {} = null;", type_string));
+            let tokens =
+                force_tokenize(&format!("let f: {} = null;", type_string));
             let expected = LetNode {
                 id: "f".into(),
                 datatype: Some(function_type),
@@ -180,7 +186,7 @@ mod test {
             let input = force_tokenize("let nullableData: null? = null;");
             let expected = error::unexpected_token(
                 &format!("{:?}", Token::UnaryOp(UnaryOp::Equals)),
-                Token::UnaryOp(UnaryOp::Nullable)
+                Token::UnaryOp(UnaryOp::Nullable),
             );
             assert_eq!(test_parse_let(input), Err(expected));
         }
@@ -190,7 +196,7 @@ mod test {
             let input = force_tokenize("let nullable: int????? = 2;");
             let expected = error::unexpected_token(
                 &format!("{:?}", Token::UnaryOp(UnaryOp::Equals)),
-                Token::UnaryOp(UnaryOp::Nullable)
+                Token::UnaryOp(UnaryOp::Nullable),
             );
             assert_eq!(test_parse_let(input), Err(expected));
         }
@@ -199,13 +205,14 @@ mod test {
         fn it_returns_error_for_invalid_let_type() {
             let input = force_tokenize("let x: 5 = z;");
             let error = error::not_a_type(int_token(5));
-            assert_eq!(test_parse_let(input), Err(error)); 
+            assert_eq!(test_parse_let(input), Err(error));
         }
 
         #[test]
         fn it_returns_error_for_unexpected_let() {
             let input = force_tokenize("let x = let y = 2;");
-            let error = error::unexpected_token("identifier or expression", Token::Let);
+            let error =
+                error::unexpected_token("identifier or expression", Token::Let);
             assert_eq!(test_parse_let(input), Err(error));
         }
     }

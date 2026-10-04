@@ -1,10 +1,11 @@
 use crate::models::{
-    AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall, Function, Literal, Term, Token, Type, UnaryOp
+    AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr,
+    FuncBody, FuncCall, Function, Literal, Term, Token, Type, UnaryOp,
 };
 
 use crate::errors::{error, InterpreterError, Result};
 use crate::parser::let_parser::parse_let;
-use crate::parser::shared_parsers::{ListParserConfig, parse_id, parse_list};
+use crate::parser::shared_parsers::{parse_id, parse_list, ListParserConfig};
 use crate::parser::type_alias_parser::parse_type_alias;
 use crate::parser::type_declaration_parser::parse_type_declaration;
 use crate::parser::utils::{match_next, next_token_matches, skip_newlines};
@@ -23,22 +24,18 @@ pub fn parse_expr(tokens: &mut TokenStream) -> Result<Expr> {
         return Ok(Expr::CodeBlock(code_block));
     }
 
-    let next_is_function =
-        if tokens.lookahead(0)? == Token::open_type_list() {
-            true
-        } else if tokens.lookahead(0)? != Token::OpenParens {
-            false
-        } else if tokens.lookahead(1)? == Token::CloseParens {
-            true
-        } else {
-            // function with at least one argument
-            matches!(tokens.lookahead(1)?, Token::Id(_))
-            && [
-                Token::CloseParens,
-                Token::Colon,
-                Token::Comma,
-            ].contains(&tokens.lookahead(2)?)
-        };
+    let next_is_function = if tokens.lookahead(0)? == Token::open_type_list() {
+        true
+    } else if tokens.lookahead(0)? != Token::OpenParens {
+        false
+    } else if tokens.lookahead(1)? == Token::CloseParens {
+        true
+    } else {
+        // function with at least one argument
+        matches!(tokens.lookahead(1)?, Token::Id(_))
+            && [Token::CloseParens, Token::Colon, Token::Comma]
+                .contains(&tokens.lookahead(2)?)
+    };
 
     if next_is_function {
         let function = parse_function(tokens)?;
@@ -68,10 +65,14 @@ fn parse_cond_expr(tokens: &mut TokenStream) -> Result<CondExpr> {
     skip_newlines(tokens);
     let if_false = Box::new(parse_expr(tokens)?);
 
-    return Ok(CondExpr { cond: condition, if_true, if_false });
+    return Ok(CondExpr {
+        cond: condition,
+        if_true,
+        if_false,
+    });
 }
 
-/// <code_block> ::= 
+/// <code_block> ::=
 ///     | "{" (<statement> | {<statement>}) [<expr>] "}"
 ///     | "{" <expr> "}"
 fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
@@ -82,9 +83,9 @@ fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
     while !next_token_matches(tokens, Token::CloseCurlyBracket) {
         let statement = match tokens.peek()? {
             Token::Let => AbstractSyntaxTree::Let(parse_let(tokens)?),
-            Token::TypeKeyword => AbstractSyntaxTree::TypeAlias(
-                parse_type_alias(tokens)?
-            ),
+            Token::TypeKeyword => {
+                AbstractSyntaxTree::TypeAlias(parse_type_alias(tokens)?)
+            }
             _ => AbstractSyntaxTree::Expr(parse_expr(tokens)?),
         };
         statements.push(statement);
@@ -92,7 +93,7 @@ fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
         match statement_end {
             Token::Semicolon | Token::Newline => {
                 tokens.pop()?;
-            },
+            }
             // final expression without semicolon allowed, but no more
             // statements are allowed afterwards
             _ => break,
@@ -111,7 +112,7 @@ fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
 /// ```text
 /// <function> ::= [type_param_list] "(" <param_list> ")" [<type_declaration>] <function_body>
 /// <function_body> ::= "->" <expr> | <code_block>
-/// 
+///
 /// <type_param_list> ::= "<" [Id] {"," Id} ">"
 /// <param_list> ::= [<param> {"," <param>}]
 /// ```
@@ -123,18 +124,24 @@ pub fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
         if tokens.peek()? == Token::close_type_list() {
             return Err(InterpreterError::EmptyTypeList);
         }
-        type_params = parse_list(tokens, ListParserConfig {
-            item_parser: parse_id,
-            opening_token: None,
-            closing_token: Token::close_type_list(),
-        })?;
+        type_params = parse_list(
+            tokens,
+            ListParserConfig {
+                item_parser: parse_id,
+                opening_token: None,
+                closing_token: Token::close_type_list(),
+            },
+        )?;
     }
 
-    let params = parse_list(tokens, ListParserConfig {
-        item_parser: parse_param,
-        opening_token: Some(Token::OpenParens),
-        closing_token: Token::CloseParens,
-    })?;
+    let params = parse_list(
+        tokens,
+        ListParserConfig {
+            item_parser: parse_param,
+            opening_token: Some(Token::OpenParens),
+            closing_token: Token::CloseParens,
+        },
+    )?;
 
     let return_type = if tokens.peek()? == Token::Colon {
         Some(parse_type_declaration(tokens)?)
@@ -154,7 +161,7 @@ pub fn parse_function(tokens: &mut TokenStream) -> Result<Function> {
         type_params,
         params,
         return_type,
-        body: FuncBody::Expr(Box::new(body_expr))
+        body: FuncBody::Expr(Box::new(body_expr)),
     })
 }
 
@@ -172,10 +179,13 @@ static MAX_EXPRESSION_PRECEDENCE: u8 = 4;
 /// Naming things is hard, so why bother? Let's just use numbers.
 fn parse_binary_expr(
     tokens: &mut TokenStream,
-    precedence: u8
+    precedence: u8,
 ) -> Result<BinaryExpr> {
     if precedence > MAX_EXPRESSION_PRECEDENCE {
-        let expr = BinaryExpr { first: parse_term(tokens)?, rest: vec![] };
+        let expr = BinaryExpr {
+            first: parse_term(tokens)?,
+            rest: vec![],
+        };
         return Ok(expr);
     }
 
@@ -186,7 +196,7 @@ fn parse_binary_expr(
         let op_token = tokens.pop()?;
         let operator = match op_token {
             Token::BinaryOp(op) => op,
-            _ => return Err(error::unexpected_token("binary op", op_token))
+            _ => return Err(error::unexpected_token("binary op", op_token)),
         };
         skip_newlines(tokens);
         let expr = parse_binary_expr(tokens, precedence + 1)?;
@@ -197,7 +207,10 @@ fn parse_binary_expr(
     if rest.is_empty() {
         return Ok(first);
     }
-    Ok(BinaryExpr { first: expr_as_term(first), rest })
+    Ok(BinaryExpr {
+        first: expr_as_term(first),
+        rest,
+    })
 }
 
 ///```text
@@ -208,7 +221,7 @@ fn parse_param(tokens: &mut TokenStream) -> Result<(String, Type)> {
     let datatype = if next_token_matches(tokens, Token::Colon) {
         parse_type_declaration(tokens)?
     } else {
-        Type:: Unknown
+        Type::Unknown
     };
 
     Ok((id, datatype))
@@ -239,7 +252,7 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
 ///     | Literal
 ///     | <list>
 ///     | (Id | "(" <expr> ")") ["!"] {<arg_list> ["!"]}
-/// 
+///
 /// <list> ::= "[" [<expr> {"," <expr>}] "]"
 /// ```
 fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
@@ -251,11 +264,14 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
         return Ok(Term::Literal(lit));
     }
     if Token::OpenSquareBracket == first {
-        let elements = parse_list(tokens, ListParserConfig {
-            item_parser: parse_expr,
-            opening_token: None,
-            closing_token: Token::CloseSquareBracket,
-        })?;
+        let elements = parse_list(
+            tokens,
+            ListParserConfig {
+                item_parser: parse_expr,
+                opening_token: None,
+                closing_token: Token::CloseSquareBracket,
+            },
+        )?;
         return Ok(Term::List(elements));
     }
     let callable = if let Token::Id(id) = first {
@@ -280,7 +296,7 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
 
 /// Try to construct a function call term with the function supplied as a
 /// callable term. If a function call cannot be constructed, the callable term is returned.
-/// 
+///
 /// The `<arg_list>` below is preceded by the callable term and may be
 /// succeeded by the not-null assertion operator "!".
 /// ```text
@@ -288,20 +304,26 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
 /// ```
 fn complete_term_with_arg_list(
     callable: Term,
-    tokens: &mut TokenStream
+    tokens: &mut TokenStream,
 ) -> Result<Term> {
     // we might be at the end of the stream, but that's allowed since
     // callable is a valid term
     if !next_token_matches(tokens, Token::OpenParens) {
         return Ok(callable);
     }
-    let args = parse_list(tokens, ListParserConfig {
-        item_parser: parse_expr,
-        opening_token: Some(Token::OpenParens),
-        closing_token: Token::CloseParens,
-    })?;
+    let args = parse_list(
+        tokens,
+        ListParserConfig {
+            item_parser: parse_expr,
+            opening_token: Some(Token::OpenParens),
+            closing_token: Token::CloseParens,
+        },
+    )?;
 
-    let func_call = FuncCall { func: Box::new(callable), args };
+    let func_call = FuncCall {
+        func: Box::new(callable),
+        args,
+    };
     let callable = if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
         tokens.pop()?;
         Term::FuncCall(func_call).as_not_null()
@@ -324,14 +346,14 @@ fn expr_as_term(expr: BinaryExpr) -> Term {
 
 /// Decide if the next token is an operator with the given precedence without
 /// consuming it. If there is no next token, returns false.
-/// 
+///
 /// Consumes any newlines at the front of the stream.
 fn next_is_operator(tokens: &mut TokenStream, precedence: u8) -> bool {
     skip_newlines(tokens);
     let Ok(Token::BinaryOp(operator)) = tokens.peek() else {
         return false;
     };
-    return get_binary_operator_precedence(operator) == precedence
+    return get_binary_operator_precedence(operator) == precedence;
 }
 
 /// Returns precedence of operator, larger numbers being higher precedence
@@ -344,22 +366,21 @@ fn get_binary_operator_precedence(operator: BinaryOp) -> u8 {
 
         And | Or => 1,
 
-        Equals | NotEq | LessThan | LessThanOrEqual
-        | GreaterThan | GreaterThanOrEqual => 2,
+        Equals | NotEq | LessThan | LessThanOrEqual | GreaterThan
+        | GreaterThanOrEqual => 2,
 
         Plus | Minus | BitwiseOr | BitwiseXor => 3,
 
-        Star | Slash | Percent | BitwiseAnd
-        | RightShift | LeftShift => 4,
+        Star | Slash | Percent | BitwiseAnd | RightShift | LeftShift => 4,
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::rstest;
     use crate::models::test_utils::*;
     use crate::parser::test_utils::{force_tokenize, parse_tokens};
+    use rstest::rstest;
 
     fn test_parse_expr(tokens: Vec<Token>) -> Result<Expr> {
         let ast = parse_tokens(tokens)?;
@@ -376,10 +397,8 @@ mod test {
         fn it_parses_string_plus_string() {
             let input = force_tokenize("\"a\" + \"b\";");
 
-            let expected = bin_expr(
-                str_term("a"),
-                vec![(BinaryOp::Plus, str_term("b"))]
-            );
+            let expected =
+                bin_expr(str_term("a"), vec![(BinaryOp::Plus, str_term("b"))]);
             assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
@@ -387,13 +406,11 @@ mod test {
         fn it_parses_expression_in_parens() {
             let input = force_tokenize("3 * (2 - 5);");
 
-            let inner_expr = bin_expr(
-                int_term(2),
-                vec![(BinaryOp::Minus, int_term(5))]
-            );
+            let inner_expr =
+                bin_expr(int_term(2), vec![(BinaryOp::Minus, int_term(5))]);
             let expected = bin_expr(
                 int_term(3),
-                vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))]
+                vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))],
             );
             assert_eq!(test_parse_expr(input), Ok(expected));
         }
@@ -402,12 +419,14 @@ mod test {
         fn it_respects_boolean_operator_precedence() {
             let input = force_tokenize("1 == 0 || 1 != 0;");
 
-            let left = bin_expr(int_term(1), vec![(BinaryOp::Equals, int_term(0))]); 
-            let right = bin_expr(int_term(1), vec![(BinaryOp::NotEq, int_term(0))]);
-            
+            let left =
+                bin_expr(int_term(1), vec![(BinaryOp::Equals, int_term(0))]);
+            let right =
+                bin_expr(int_term(1), vec![(BinaryOp::NotEq, int_term(0))]);
+
             let expected = bin_expr(
                 Term::Expr(Box::new(left)),
-                vec![(BinaryOp::Or, Term::Expr(Box::new(right)))]
+                vec![(BinaryOp::Or, Term::Expr(Box::new(right)))],
             );
             assert_eq!(test_parse_expr(input), Ok(expected));
         }
@@ -436,10 +455,10 @@ mod test {
             let y_call = FuncCall {
                 func: Box::new(Term::Id("y".into())),
                 args: vec![],
-            }; 
+            };
             let expr = BinaryExpr {
                 first: Term::FuncCall(x_call),
-                rest: vec![(BinaryOp::Plus, Term::FuncCall(y_call))]
+                rest: vec![(BinaryOp::Plus, Term::FuncCall(y_call))],
             };
             let expected = Expr::Binary(expr);
 
@@ -466,15 +485,17 @@ mod test {
 
         #[test]
         fn it_parses_code_block_with_no_result_value() {
-            let tokens = force_tokenize("{
+            let tokens = force_tokenize(
+                "{
                 println(1);
                 println(2);
-            };");
+            };",
+            );
             let expected_block = CodeBlock {
                 statements: vec![
                     parse_tokens(force_tokenize("println(1);")).unwrap(),
                     parse_tokens(force_tokenize("println(2);")).unwrap(),
-                ]
+                ],
             };
             let expected = Expr::CodeBlock(expected_block);
             assert_eq!(test_parse_expr(tokens), Ok(expected));
@@ -482,10 +503,12 @@ mod test {
 
         #[test]
         fn it_parses_code_block_with_binding() {
-            let tokens = force_tokenize("{
+            let tokens = force_tokenize(
+                "{
                 let two = 2;
                 two
-            };");
+            };",
+            );
             let expected_block = CodeBlock {
                 statements: vec![
                     parse_tokens(force_tokenize("let two = 2;")).unwrap(),
@@ -498,21 +521,24 @@ mod test {
 
         #[test]
         fn it_parses_code_block_with_type_alias_declaration() {
-            let tokens = force_tokenize("{
+            let tokens = force_tokenize(
+                "{
                 type Predicate = int -> bool;
                 let isEven: Predicate = (x: int) -> x % 2 == 0;
                 isEven(0)
-            };");
+            };",
+            );
             let expected_block = CodeBlock {
                 statements: vec![
                     "type Predicate = int -> bool;",
                     "let isEven: Predicate = (x: int) -> x % 2 == 0;",
                     "isEven(0);",
-                ].into_iter()
-                    .map(force_tokenize)
-                    .map(parse_tokens)
-                    .map(|result| result.unwrap())
-                    .collect(),
+                ]
+                .into_iter()
+                .map(force_tokenize)
+                .map(parse_tokens)
+                .map(|result| result.unwrap())
+                .collect(),
             };
             let expected = Expr::CodeBlock(expected_block);
             assert_eq!(test_parse_expr(tokens), Ok(expected));
@@ -521,7 +547,10 @@ mod test {
         #[test]
         fn it_returns_error_for_empty_code_block() {
             let tokens = force_tokenize("{};");
-            assert_eq!(test_parse_expr(tokens), Err(InterpreterError::EmptyCodeBlock))
+            assert_eq!(
+                test_parse_expr(tokens),
+                Err(InterpreterError::EmptyCodeBlock)
+            )
         }
     }
 
@@ -587,7 +616,7 @@ mod test {
                     .collect(),
                 params: params
                     .into_iter()
-                    .map(|(p, t)|(p.to_owned(), t))
+                    .map(|(p, t)| (p.to_owned(), t))
                     .collect(),
                 return_type,
                 body: FuncBody::Expr(Box::new(term_expr(body_term))),
@@ -621,7 +650,7 @@ mod test {
         #[case(id_token("name"), term_tree(Term::Id("name".into())))]
         fn it_parses_one_token_to_one_node(
             #[case] token: Token,
-            #[case] node: AbstractSyntaxTree
+            #[case] node: AbstractSyntaxTree,
         ) {
             let input = vec![token.clone(), Token::Semicolon];
             assert_eq!(parse_tokens(input), Ok(node));
@@ -632,7 +661,8 @@ mod test {
         #[case(op_token(BinaryOp::Percent))]
         #[case(unary_op_token(UnaryOp::Equals))]
         fn it_returns_error_for_one_operator(#[case] op: Token) {
-            let error = error::unexpected_token("identifier or expression", op.clone());
+            let error =
+                error::unexpected_token("identifier or expression", op.clone());
             assert_eq!(parse_tokens(vec![op, Token::Newline]), Err(error));
         }
 
@@ -641,7 +671,7 @@ mod test {
         #[case(force_tokenize("- 123;"), -123)]
         fn it_parses_negative_numbers(
             #[case] input: Vec<Token>,
-            #[case] negative_num: i32
+            #[case] negative_num: i32,
         ) {
             let inner_term = int_term(negative_num * -1);
             let term = Term::negative_int(inner_term);
@@ -659,23 +689,24 @@ mod test {
             let negative_nine = Term::negative_int(nine_as_term);
             let expected_tree = term_tree(negative_nine);
 
-            assert_eq!(parse_tokens(input), Ok(expected_tree)); 
+            assert_eq!(parse_tokens(input), Ok(expected_tree));
         }
 
         #[test]
         fn it_parses_negated_boolean() {
             let term = Term::negated_bool(Term::Id("someVariable".into()));
             let expected = term_tree(term);
-            assert_eq!(parse_tokens(force_tokenize("!someVariable;")), Ok(expected));
+            assert_eq!(
+                parse_tokens(force_tokenize("!someVariable;")),
+                Ok(expected)
+            );
         }
 
         #[test]
         fn it_parses_many_negations() {
-            let term = Term::negated_bool(
-                Term::negated_bool(
-                    Term::negated_bool(Term::Id("x".into()))
-                )
-            );
+            let term = Term::negated_bool(Term::negated_bool(
+                Term::negated_bool(Term::Id("x".into())),
+            ));
             let expected = term_tree(term);
             assert_eq!(parse_tokens(force_tokenize("!!!x;")), Ok(expected));
         }
@@ -698,7 +729,8 @@ mod test {
             })
         )]
         fn it_parses_not_null_assertion(
-            #[case] input: &str, #[case] not_null: Term
+            #[case] input: &str,
+            #[case] not_null: Term,
         ) {
             let tokens = force_tokenize(input);
             let expected = term_tree(not_null.as_not_null());
@@ -709,8 +741,9 @@ mod test {
         #[test]
         fn it_returns_error_for_not_null_literal() {
             let tokens = force_tokenize("null!;");
-            let expected =
-                InterpreterError::end_of_statement(Token::UnaryOp(UnaryOp::Not));
+            let expected = InterpreterError::end_of_statement(Token::UnaryOp(
+                UnaryOp::Not,
+            ));
             assert_eq!(parse_tokens(tokens), Err(expected));
         }
 
@@ -718,7 +751,7 @@ mod test {
         fn it_returns_error_for_many_negative_symbols() {
             let error = error::unexpected_token(
                 "identifier or expression",
-                Token::BinaryOp(BinaryOp::Minus)
+                Token::BinaryOp(BinaryOp::Minus),
             );
             assert_eq!(parse_tokens(force_tokenize("---9;")), Err(error));
         }
@@ -748,7 +781,10 @@ mod test {
             })),
             args: vec![term_expr(int_term(2))],
         })]
-        fn it_parses_function_call(#[case] input: &str, #[case] call: FuncCall) {
+        fn it_parses_function_call(
+            #[case] input: &str,
+            #[case] call: FuncCall,
+        ) {
             let tree = force_tokenize(input);
             let expr = term_expr(Term::FuncCall(call));
             let expected = Ok(AbstractSyntaxTree::Expr(expr));

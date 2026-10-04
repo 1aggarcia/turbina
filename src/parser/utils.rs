@@ -10,12 +10,15 @@ pub fn next_token_matches(stream: &mut TokenStream, token: Token) -> bool {
 }
 
 /// Take the next token from the stream and compare it to the expected token.
-/// If they do not match, return a syntax error 
+/// If they do not match, return a syntax error
 pub fn match_next(stream: &mut TokenStream, expected: Token) -> Result<()> {
     let next = stream.pop()?;
     if next != expected {
         // TODO: improve debug string
-        Err(error::unexpected_token(format!("{expected:?}").as_str(), next))
+        Err(error::unexpected_token(
+            format!("{expected:?}").as_str(),
+            next,
+        ))
     } else {
         Ok(())
     }

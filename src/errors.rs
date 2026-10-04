@@ -6,7 +6,7 @@ use crate::models::{Term, Token, Type};
 pub type Result<T> = std::result::Result<T, InterpreterError>;
 pub type MultiResult<T> = std::result::Result<T, Vec<InterpreterError>>;
 
-custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
+custom_error! {#[derive(PartialEq, Clone)] pub InterpreterError
     SyntaxError { message: String } = "Syntax Error: {message}",
 
     TypeError { message: String } = "Type Error: {message}",
@@ -16,7 +16,7 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
     EmptyCodeBlock = "Code block cannot be empty",
     UndeclaredGeneric { generic: String } =
         "Cannot use generic type '{generic}' without declaring it in the function definition",
-    UndeclaredGenericInLet { generic: String } = 
+    UndeclaredGenericInLet { generic: String } =
         "Cannot use generic type '{generic}' unless this binding is inside a function that declares it",
 
     InvalidNullable { inner_type: Type } = "Type '{inner_type}' cannot be made nullable",
@@ -37,18 +37,25 @@ custom_error!{#[derive(PartialEq, Clone)] pub InterpreterError
 impl InterpreterError {
     pub fn not_a_function(term: &Term) -> Self {
         Self::TypeError {
-            message: format!("Tried to call '{term:?}', but it is not a function")
+            message: format!(
+                "Tried to call '{term:?}', but it is not a function"
+            ),
         }
     }
 
     pub fn end_of_statement(token: Token) -> Self {
         Self::SyntaxError {
-            message: format!("Expected newline or semicolon, got '{:?}'", token)
+            message: format!(
+                "Expected newline or semicolon, got '{:?}'",
+                token
+            ),
         }
     }
 
     pub fn bad_return_type(declared: &Type, body: &Type) -> Self {
-        let message = format!("Function should return {declared}, but evaluates to {body}");
+        let message = format!(
+            "Function should return {declared}, but evaluates to {body}"
+        );
         Self::TypeError { message }
     }
 }
@@ -56,7 +63,9 @@ impl InterpreterError {
 // allows implicit conversion using ? operator
 impl From<std::io::Error> for InterpreterError {
     fn from(value: std::io::Error) -> Self {
-        Self::IOError { message: value.to_string() }
+        Self::IOError {
+            message: value.to_string(),
+        }
     }
 }
 
@@ -67,9 +76,9 @@ impl From<InterpreterError> for Vec<InterpreterError> {
 }
 
 /// Utility functions to format common error types.
-/// 
+///
 /// This was more necessary when I had plain string errors, but over the
-/// functions should be removed in favor of the enum impl above. 
+/// functions should be removed in favor of the enum impl above.
 pub mod error {
     use std::path::PathBuf;
 
@@ -78,29 +87,34 @@ pub mod error {
     use crate::models::{BinaryOp, Token, Type};
 
     pub fn unexpected_token(expected: &str, got: Token) -> InterpreterError {
-        SyntaxError { message: format!("Expected {}, got {:?}", expected, got) }
+        SyntaxError {
+            message: format!("Expected {}, got {:?}", expected, got),
+        }
     }
 
     pub fn not_a_type(token: Token) -> InterpreterError {
-        TypeError { message: format!("'{:?}' is not a valid type", token) }
+        TypeError {
+            message: format!("'{:?}' is not a valid type", token),
+        }
     }
 
     pub fn binary_op_types(
         operator: BinaryOp,
         left_type: &Type,
-        right_type: &Type
+        right_type: &Type,
     ) -> InterpreterError {
         let message = format!(
             "Illegal types for '{:?}' operator: {:?}, {:?}",
-            operator,
-            left_type,
-            right_type
+            operator, left_type, right_type
         );
         return TypeError { message };
     }
 
     pub fn unary_op_type(operator: &str, datatype: Type) -> InterpreterError {
-        let message = format!("Cannot apply {} to token of type '{}'", operator, datatype);
+        let message = format!(
+            "Cannot apply {} to token of type '{}'",
+            operator, datatype
+        );
         return TypeError { message };
     }
 
@@ -114,11 +128,17 @@ pub mod error {
 
     pub fn import_error(path: &PathBuf) -> InterpreterError {
         ImportError {
-            filepath: path.to_str().unwrap_or("unknown filepath").into()
+            filepath: path.to_str().unwrap_or("unknown filepath").into(),
         }
     }
 
-    pub fn module_error(module: &str, error: InterpreterError) -> InterpreterError {
-        ModuleError { module: module.into(), error: Box::new(error) }
+    pub fn module_error(
+        module: &str,
+        error: InterpreterError,
+    ) -> InterpreterError {
+        ModuleError {
+            module: module.into(),
+            error: Box::new(error),
+        }
     }
 }

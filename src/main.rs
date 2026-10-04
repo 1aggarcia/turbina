@@ -1,9 +1,9 @@
-use std::fs::File;
 use clap::Parser;
+use std::fs::File;
 
 use turbina::rustyline::RustylineArgs;
-use turbina::{run_as_file, run_repl, CliArgs};
 use turbina::streams::{FileStream, OutputStreams};
+use turbina::{run_as_file, run_repl, CliArgs};
 
 fn main() {
     let args = RustylineArgs::parse();
@@ -21,12 +21,12 @@ fn main() {
             let result = run_as_file(
                 file_stream,
                 OutputStreams::std_streams(),
-                cli_args 
+                cli_args,
             );
             if let Err(err) = result {
                 eprintln!("{err}");
             }
-        },
+        }
         Err(err) => eprintln!("{err}"),
     }
 }

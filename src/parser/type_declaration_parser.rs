@@ -1,11 +1,11 @@
-use crate::errors::{Result, error};
+use crate::errors::{error, Result};
 use crate::models::{Token, Type, UnaryOp};
-use crate::parser::shared_parsers::{ListParserConfig, parse_list};
+use crate::parser::shared_parsers::{parse_list, ListParserConfig};
 use crate::parser::utils::{match_next, next_token_matches};
 use crate::streams::TokenStream;
 
 /// Type declarations cannot include function types without parentheses
-/// since return types and function bodies are ambiguous 
+/// since return types and function bodies are ambiguous
 ///
 /// e.g. `(): (bool -> bool) -> (x: bool) -> true` is a function that returns a
 /// function returning bool, but without parentheses it is unclear. (Even with
@@ -37,7 +37,7 @@ fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
     let datatype = match type_token {
         Token::Type(literal_type) => literal_type,
         Token::Id(type_name) => Type::Generic(type_name),
-        _ => return Err(error::not_a_type(type_token)), 
+        _ => return Err(error::not_a_type(type_token)),
     };
     complete_base_type(datatype, tokens)
 }
@@ -47,7 +47,7 @@ fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
 /// ```
 ///
 /// Note the `arg_types` non-terminal cannot be a list of one type, since that
-/// conflicts with a variant of `base_type` 
+/// conflicts with a variant of `base_type`
 /// ```text
 /// <function_type> ::= <arg_types> "->" <type>
 /// <arg_types> ::= <base_type> | "(" ") | "(" <type> "," <type> {"," <type>} ")"
@@ -55,7 +55,8 @@ fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
 pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
     /// Decide between leaving a base type alone or parsing it as a function
     fn complete_type(
-        base_type: Type, tokens: &mut TokenStream
+        base_type: Type,
+        tokens: &mut TokenStream,
     ) -> Result<Type> {
         if next_token_matches(tokens, Token::Arrow) {
             complete_function_type(vec![base_type], tokens)
@@ -66,14 +67,14 @@ pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
 
     fn complete_function_type(
         arg_types: Vec<Type>,
-        tokens: &mut TokenStream
+        tokens: &mut TokenStream,
     ) -> Result<Type> {
         match_next(tokens, Token::Arrow)?;
         let return_type = parse_type(tokens)?;
 
         let func_type = Type::Func {
             input: arg_types,
-            output: Box::new(return_type)
+            output: Box::new(return_type),
         };
         Ok(func_type)
     }
@@ -84,11 +85,14 @@ pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
         return complete_type(base_type, tokens);
     }
 
-    let types_in_parens = parse_list(tokens, ListParserConfig {
-        item_parser: parse_type,
-        opening_token: Some(Token::OpenParens),
-        closing_token: Token::CloseParens,
-    })?;
+    let types_in_parens = parse_list(
+        tokens,
+        ListParserConfig {
+            item_parser: parse_type,
+            opening_token: Some(Token::OpenParens),
+            closing_token: Token::CloseParens,
+        },
+    )?;
 
     if types_in_parens.len() == 1 {
         let base_type = complete_base_type(types_in_parens[0].clone(), tokens)?;
@@ -96,13 +100,15 @@ pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
         return complete_type(base_type, tokens);
     }
     complete_function_type(types_in_parens, tokens)
-
 }
 
 /// Given a base type, recursively wrap it as a list type if the next tokens
 /// are "[]". If the next token is "?", make it a nullable type. Nullable
 /// types cannot be stacked the same way list types can.
-fn complete_base_type(base_type: Type, tokens: &mut TokenStream) -> Result<Type> {
+fn complete_base_type(
+    base_type: Type,
+    tokens: &mut TokenStream,
+) -> Result<Type> {
     if !matches!(base_type, Type::Nullable(..))
         && next_token_matches(tokens, Token::UnaryOp(UnaryOp::Nullable))
     {

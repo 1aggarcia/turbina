@@ -1,14 +1,16 @@
 use crate::errors::{error, InterpreterError};
 use crate::models::{LetNode, Type};
 use crate::type_resolver::expr_type_resolver::resolve_expr_type;
-use crate::type_resolver::shared::{SubResult, TypeContext, replace_generic_types};
+use crate::type_resolver::shared::{
+    replace_generic_types, SubResult, TypeContext,
+};
 
 /// Check that the expression type does not conflict with the declared type
 /// and that the variable name is unique
 pub fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
     if node.id == "_" {
         // reserved for function piping
-        return Err(InterpreterError::ReservedId { id: "_".into() }.into())
+        return Err(InterpreterError::ReservedId { id: "_".into() }.into());
     }
     if let Some(_) = context.lookup(&node.id) {
         return Err(vec![error::already_defined(&node.id)]);
@@ -16,22 +18,25 @@ pub fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
 
     let expr_type = resolve_expr_type(context, &node.value)?;
     let declared_type = match node.datatype.clone() {
-        Some(t) => replace_generic_types(t, &|alias| context.lookup_type_alias(alias)),
+        Some(t) => {
+            replace_generic_types(t, &|alias| context.lookup_type_alias(alias))
+        }
         None => return Ok(expr_type),
     };
 
     if let Type::Generic(generic_type) = &declared_type {
         if !context.contains_type_parameter(generic_type) {
-           return Err(InterpreterError::UndeclaredGenericInLet {
-                generic: generic_type.clone()
-            }.into()); 
+            return Err(InterpreterError::UndeclaredGenericInLet {
+                generic: generic_type.clone(),
+            }
+            .into());
         }
     };
 
     if !expr_type.is_assignable_to(&declared_type) {
         let err = InterpreterError::UnexpectedType {
             got: expr_type,
-            expected: declared_type
+            expected: declared_type,
         };
         return Err(vec![err]);
     }
@@ -41,12 +46,12 @@ pub fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
 
 #[cfg(test)]
 mod test {
-    use rstest::rstest;
     use crate::errors::{error, InterpreterError};
     use crate::models::{Program, Type};
     use crate::parser::test_utils::make_tree;
     use crate::type_resolver::resolve_type;
     use crate::type_resolver::shared::test_utils::*;
+    use rstest::rstest;
 
     mod bindings {
         use super::*;
@@ -55,15 +60,17 @@ mod test {
         #[case::literal_with_declared_type("let x: int = 3;", "x", Type::Int)]
         #[case::math_expr("let something = 5 + 2;", "something", Type::Int)]
         #[case::string_expr(
-            "let something = \"a\" + \"b\";", "something", Type::String)]
-
-        #[case::int_as_unknown(
-            "let x: unknown = 5;", "x", Type::Unknown)]
-        #[case::string_as_unknown(
-            "let y: unknown = \"\";", "y", Type::Unknown)]
+            "let something = \"a\" + \"b\";",
+            "something",
+            Type::String
+        )]
+        #[case::int_as_unknown("let x: unknown = 5;", "x", Type::Unknown)]
+        #[case::string_as_unknown("let y: unknown = \"\";", "y", Type::Unknown)]
         #[case::function_as_unknown(
-            "let f: unknown = () -> 3;", "f", Type::Unknown)]
-
+            "let f: unknown = () -> 3;",
+            "f",
+            Type::Unknown
+        )]
         #[case::int_as_nullable_type(
             "let n: int? = 3;", "n", Type::Int.as_nullable())]
         #[case::null_as_nullable_type(
@@ -72,7 +79,6 @@ mod test {
             "let x: unknown? = 5;", "x", Type::Unknown.as_nullable())]
         #[case::null_as_nullable_unknown(
             "let x: unknown? = null;", "x", Type::Unknown.as_nullable())]
-
         #[case::func_with_explicit_type(
             "let f: (int -> unknown) = (x: unknown): int -> 0;",
             "f",
@@ -99,14 +105,19 @@ mod test {
             #[case] datatype: Type,
         ) {
             let tree = make_tree(input);
-            assert_eq!(resolve_type_fresh(tree), ok_with_binding(symbol, datatype));
+            assert_eq!(
+                resolve_type_fresh(tree),
+                ok_with_binding(symbol, datatype)
+            );
         }
 
         #[test]
         fn it_allows_casted_nullable_value_to_be_assigned_as_not_null() {
             let mut program = Program::init_with_std_streams();
-            program.type_context.insert("nullString".into(), Type::String.as_nullable());
-    
+            program
+                .type_context
+                .insert("nullString".into(), Type::String.as_nullable());
+
             let input = make_tree("let validString: string = nullString!;");
             let expected = ok_with_binding("validString", Type::String);
             assert_eq!(resolve_type(&program, &input), expected);
@@ -115,13 +126,13 @@ mod test {
         #[test]
         fn it_returns_ok_for_binding_using_type_alias() {
             let mut program = Program::init_with_std_streams();
-            program.type_aliases.insert("X".into(), Type::String.as_nullable());
+            program
+                .type_aliases
+                .insert("X".into(), Type::String.as_nullable());
 
             let input = make_tree("let nullString: X = null;");
-            let expected = ok_with_binding(
-                "nullString",
-                Type::String.as_nullable()
-            );
+            let expected =
+                ok_with_binding("nullString", Type::String.as_nullable());
             let actual = resolve_type(&program, &input);
 
             assert_eq!(actual, expected);
@@ -130,12 +141,12 @@ mod test {
         #[rstest]
         fn it_returns_ok_for_type_alias_used_in_code_block() {
             let mut program = Program::init_with_std_streams();
-            program.type_aliases.insert("X".into(), Type::String.as_nullable());
+            program
+                .type_aliases
+                .insert("X".into(), Type::String.as_nullable());
 
             let input = make_tree("{ let nullString: X = null; }");
-            let expected = ok_without_binding(
-                Type::String.as_nullable()
-            );
+            let expected = ok_without_binding(Type::String.as_nullable());
             let actual = resolve_type(&program, &input);
 
             assert_eq!(actual, expected);
@@ -151,7 +162,7 @@ mod test {
         #[case::empty_list(
             "let x: string = [];",
             Type::String,
-            Type::EmptyList,
+            Type::EmptyList
         )]
         fn it_returns_type_error_for_conflicting_types(
             #[case] input: &str,
@@ -174,7 +185,7 @@ mod test {
             let tree = make_tree("let b: int = a;");
             let error = InterpreterError::UnexpectedType {
                 got: Type::Unknown,
-                expected: Type::Int
+                expected: Type::Int,
             };
             assert_eq!(resolve_type(&program, &tree), Err(vec![error]));
         }
@@ -205,7 +216,9 @@ mod test {
         #[test]
         fn it_returns_error_for_undeclared_generic_type() {
             let tree = make_tree("let x: Y = 0;");
-            let error = InterpreterError::UndeclaredGenericInLet { generic: "Y".into() };
+            let error = InterpreterError::UndeclaredGenericInLet {
+                generic: "Y".into(),
+            };
             assert_eq!(resolve_type_fresh(tree), Err(error.into()));
         }
     }

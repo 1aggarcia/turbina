@@ -10,10 +10,11 @@ use crate::type_resolver::type_alias_resolver::resolve_type_alias_type;
 /// Find syntax errors not caught while parsing
 /// - Check that all symbols exist in the program
 /// - Type-check all nodes
-/// 
+///
 /// Return the type of the tree, and optionally a name to bind it to
 pub fn resolve_type(
-    program: &Program, tree: &AbstractSyntaxTree
+    program: &Program,
+    tree: &AbstractSyntaxTree,
 ) -> ValidationResult {
     let mut global_context = TypeContext {
         variable_types: &program.type_context,
@@ -27,26 +28,30 @@ pub fn resolve_type(
 }
 
 pub fn resolve_statement_type(
-    context: &mut TypeContext, statement: &AbstractSyntaxTree
+    context: &mut TypeContext,
+    statement: &AbstractSyntaxTree,
 ) -> ValidationResult {
     match statement {
         AbstractSyntaxTree::Let(node) => {
             context.name_to_bind = Some(node.id.clone());
-            resolve_let_type(context, node)
-                .map(|datatype| TreeType {
-                    datatype,
-                    name_to_bind: Some(node.id.clone()),
-                    type_alias_to_bind: None,
-                })
-        },
-        AbstractSyntaxTree::Import(import) => resolve_import_type(context, import),
-        AbstractSyntaxTree::Expr(node) => resolve_expr_type(context, node)
-            .map(|datatype| TreeType {
+            resolve_let_type(context, node).map(|datatype| TreeType {
+                datatype,
+                name_to_bind: Some(node.id.clone()),
+                type_alias_to_bind: None,
+            })
+        }
+        AbstractSyntaxTree::Import(import) => {
+            resolve_import_type(context, import)
+        }
+        AbstractSyntaxTree::Expr(node) => {
+            resolve_expr_type(context, node).map(|datatype| TreeType {
                 datatype,
                 name_to_bind: None,
                 type_alias_to_bind: None,
-            }),
-        AbstractSyntaxTree::TypeAlias(node) =>
-            resolve_type_alias_type(context, node),
+            })
+        }
+        AbstractSyntaxTree::TypeAlias(node) => {
+            resolve_type_alias_type(context, node)
+        }
     }
 }

@@ -1,5 +1,5 @@
-use crate::models::{AbstractSyntaxTree, Token};
 use crate::errors::{InterpreterError, Result};
+use crate::models::{AbstractSyntaxTree, Token};
 use crate::parser::expr_parser::parse_expr;
 use crate::parser::import_parser::parse_import;
 use crate::parser::let_parser::parse_let;
@@ -9,13 +9,15 @@ use crate::streams::TokenStream;
 
 /// Consumes the next statement from the token stream and returns a syntax tree
 /// representing the statement using recursive descent parsing.
-/// 
+///
 /// A syntax error is returned for any syntactical errors in the token sequence.
-/// 
+///
 /// ```text
 /// <statement> ::=  (<let> | <expr>) [";" | Newline]
 /// ```
-pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxTree> {
+pub fn parse_statement(
+    token_stream: &mut TokenStream,
+) -> Result<AbstractSyntaxTree> {
     skip_newlines(token_stream);
 
     let first = match token_stream.peek() {
@@ -24,19 +26,19 @@ pub fn parse_statement(token_stream: &mut TokenStream) -> Result<AbstractSyntaxT
     };
     let statement = match first {
         Token::Let => AbstractSyntaxTree::Let(parse_let(token_stream)?),
-        Token::Import => AbstractSyntaxTree::Import(
-            parse_import(token_stream)?
-        ),
-        Token::TypeKeyword => AbstractSyntaxTree::TypeAlias(
-            parse_type_alias(token_stream)?
-        ),
+        Token::Import => {
+            AbstractSyntaxTree::Import(parse_import(token_stream)?)
+        }
+        Token::TypeKeyword => {
+            AbstractSyntaxTree::TypeAlias(parse_type_alias(token_stream)?)
+        }
         Token::EndOfFile => return Err(InterpreterError::EndOfFile),
         _ => AbstractSyntaxTree::Expr(parse_expr(token_stream)?),
     };
 
     let statement_end = token_stream.pop()?;
     match statement_end {
-        Token::Semicolon | Token::Newline => {},
+        Token::Semicolon | Token::Newline => {}
         _ => return Err(InterpreterError::end_of_statement(statement_end)),
     }
     return Ok(statement);
@@ -61,8 +63,7 @@ pub mod test_utils {
     }
 
     pub fn force_tokenize(text: &str) -> Vec<Token> {
-        text
-            .split_inclusive("\n") // split and preserve newline
+        text.split_inclusive("\n") // split and preserve newline
             .flat_map(|line| tokenize(line).unwrap())
             .collect()
     }
@@ -71,9 +72,9 @@ pub mod test_utils {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::errors::error;
     use crate::models::*;
     use crate::parser::test_utils::{force_tokenize, parse_tokens};
-    use crate::errors::error;
     use rstest::rstest;
 
     #[rstest]
@@ -94,7 +95,7 @@ mod test {
     )]
     fn it_returns_error_for_incomplete_statements(
         #[case] tokens: Vec<Token>,
-        #[case] error: InterpreterError
+        #[case] error: InterpreterError,
     ) {
         assert_eq!(parse_tokens(tokens), Err(error));
     }
@@ -102,39 +103,46 @@ mod test {
     #[test]
     fn it_returns_error_for_statement_without_newline_or_semicolon() {
         let input = force_tokenize("2 + 2");
-        let expected = InterpreterError::end_of_statement(
-            Token::EndOfFile
-        );
+        let expected = InterpreterError::end_of_statement(Token::EndOfFile);
         assert_eq!(parse_tokens(input), Err(expected));
     }
 
     #[test]
     fn it_ignores_tokens_after_semicolon() {
         let multiple_statements =
-        parse_tokens(force_tokenize("2 + 2; 5 + 5; let = badsyntax ->"));
+            parse_tokens(force_tokenize("2 + 2; 5 + 5; let = badsyntax ->"));
         let one_statement = parse_tokens(force_tokenize("2+2;"));
-    
+
         assert!(matches!(multiple_statements, Ok(_)));
         assert_eq!(multiple_statements, one_statement);
     }
 
     #[rstest]
-    #[case::shorthand_function("let not(b: bool) -> !b;", "let not = (b: bool) -> !b;")]
+    #[case::shorthand_function(
+        "let not(b: bool) -> !b;",
+        "let not = (b: bool) -> !b;"
+    )]
     #[case::shorthand_function_with_generic_types(
         "let identity <T> (x: T) -> x;",
-        "let identity = <T> (x: T) -> x;",
+        "let identity = <T> (x: T) -> x;"
     )]
-    #[case::if_else_on_separate_lines("if (true) 1 else 0;", "
+    #[case::if_else_on_separate_lines(
+        "if (true) 1 else 0;",
+        "
         if (true)
             1
         else
             0;
-    ")]
-    #[case::expression_in_parens_on_separate_lines("(5 + 4);", "
+    "
+    )]
+    #[case::expression_in_parens_on_separate_lines(
+        "(5 + 4);",
+        "
         (
             5 + 4
         );
-    ")]
+    "
+    )]
     #[case::function_on_separate_lines(
         r#"let toString(x: int) -> if (x == 0) "0" else if (x == 1) "1" else "unknown";"#,
         r#"
@@ -144,13 +152,18 @@ mod test {
             else "unknown";
         "#
     )]
-    #[case::function_args_on_separate_lines("randInt(1, 2);", "
+    #[case::function_args_on_separate_lines(
+        "randInt(1, 2);",
+        "
         randInt(
             1,
             2  // TODO: this should work with trailing comma
         );
-    ")]
-    #[case::function_args_split_unconventionally("randInt(1, 2);", "
+    "
+    )]
+    #[case::function_args_split_unconventionally(
+        "randInt(1, 2);",
+        "
         randInt(
 
 
@@ -158,13 +171,17 @@ mod test {
             ,
 
             2);
-    ")]
-    #[case::function_args_with_trailing_comma("randInt(1, 2);", "
+    "
+    )]
+    #[case::function_args_with_trailing_comma(
+        "randInt(1, 2);",
+        "
         randInt(
             1,
             2,
         );
-    ")]
+    "
+    )]
     #[case::function_body_without_arrow(
         "let fn(x: int) -> {
             let square = x * 2;
@@ -175,11 +192,17 @@ mod test {
             square
         };"
     )]
-    #[case::list_with_trailing_comma("[1,2,3,4,5];", "[
+    #[case::list_with_trailing_comma(
+        "[1,2,3,4,5];",
+        "[
         1, 2,
         3, 4, 5,
-    ];")]
-    fn it_parses_equivalent_statements(#[case] vers1: &str, #[case] vers2: &str) {
+    ];"
+    )]
+    fn it_parses_equivalent_statements(
+        #[case] vers1: &str,
+        #[case] vers2: &str,
+    ) {
         let res1 = parse_tokens(force_tokenize(vers1));
         let res2 = parse_tokens(force_tokenize(vers2));
 
