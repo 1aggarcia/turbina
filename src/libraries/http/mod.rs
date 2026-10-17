@@ -1,10 +1,26 @@
 use once_cell::sync::Lazy;
-use ureq::{Agent, Error};
+
+mod shared;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm32;
+
+#[cfg(target_arch = "wasm32")]
+use crate::libraries::http::wasm32::make_http_request;
+
+#[cfg(not(target_arch = "wasm32"))]
+mod not_wasm32;
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::libraries::http::not_wasm32::make_http_request;
 
 use crate::{
-    libraries::factories::{
-        create_result_from_error, create_result_from_success,
-        create_result_type,
+    libraries::{
+        factories::{
+            create_result_from_error, create_result_from_success,
+            create_result_type,
+        },
+        http::shared::HttpRequest,
     },
     models::{EvalContext, FuncBody, Function, Literal, Type},
 };
@@ -12,20 +28,6 @@ use crate::{
 pub enum HttpBodySetting {
     NoBody,
     RequireBody,
-}
-
-enum HttpRequest {
-    Delete { url: String },
-    Get { url: String },
-    Post { url: String, body: String },
-    Put { url: String, body: String },
-    Patch { url: String, body: String },
-}
-
-struct HttpResponse {
-    status_code: i32,
-    body: String,
-    headers: Vec<String>,
 }
 
 pub static HTTP_REQUEST_SUCCESS_TYPES: Lazy<[Type; 3]> = Lazy::new(|| {
@@ -161,48 +163,4 @@ fn handle_http_request(
             context,
         ),
     }
-}
-
-fn make_http_request(request: HttpRequest) -> Result<HttpResponse, Error> {
-    // Needs separate agent with config to treat 4XX/5XX statuses as success
-    let agent: Agent = ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .build()
-        .into();
-
-    let mut response = match request {
-        HttpRequest::Delete { url } => agent.delete(url).call()?,
-        HttpRequest::Get { url } => agent.get(url).call()?,
-        HttpRequest::Patch { url, body } => agent.patch(url).send(body)?,
-        HttpRequest::Post { url, body } => agent.post(url).send(body)?,
-        HttpRequest::Put { url, body } => agent.put(url).send(body)?,
-    };
-
-    let status_code = i32::from(response.status().as_u16());
-    let body = response.body_mut().read_to_string()?;
-
-    let headers: Vec<String> = response
-        .headers()
-        .iter()
-        .map(|(name, value)| {
-            let str_name = name.to_string();
-            let str_value = value.to_str().map(|s| s.to_owned()).unwrap_or(
-                // Should be string most of the time, but the HTTP spec
-                // allows opaque bytes as well, so we fall back to that
-                value
-                    .as_bytes()
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            );
-            format!("{}: {}", str_name, str_value)
-        })
-        .collect();
-
-    Ok(HttpResponse {
-        status_code,
-        body,
-        headers,
-    })
 }
