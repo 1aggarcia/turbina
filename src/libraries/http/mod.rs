@@ -20,7 +20,7 @@ use crate::{
             create_result_from_error, create_result_from_success,
             create_result_type,
         },
-        http::shared::HttpRequest,
+        http::shared::{HttpRequest, RequestWithBody, RequestWithoutBody},
     },
     models::{EvalContext, FuncBody, Function, Literal, Type},
 };
@@ -53,10 +53,16 @@ pub fn create_http_function(
     http_handler: fn(Vec<Literal>, &mut EvalContext) -> Literal,
     body_setting: HttpBodySetting,
 ) -> Function {
-    let params = match body_setting {
-        HttpBodySetting::NoBody => define_params![url = Type::String,],
+    let params: Vec<(String, Type)> = match body_setting {
+        HttpBodySetting::NoBody => {
+            define_params![url = Type::String, headers = Type::String.as_list()]
+        }
         HttpBodySetting::RequireBody => {
-            define_params![url = Type::String, body = Type::String,]
+            define_params![
+                url = Type::String,
+                headers = Type::String.as_list(),
+                body = Type::String
+            ]
         }
     };
     Function {
@@ -71,68 +77,69 @@ pub fn lib_http_delete(
     args: Vec<Literal>,
     context: &mut EvalContext,
 ) -> Literal {
-    unwrap_args! { args => Literal::String(url) }
-    handle_http_request(
-        HttpRequest::Delete {
-            url: url.to_string(),
-        },
-        context,
-    )
+    let request = get_request_without_body(args);
+    handle_http_request(HttpRequest::Delete(request), context)
 }
 
 pub fn lib_http_get(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    unwrap_args! { args => Literal::String(url) }
-    handle_http_request(
-        HttpRequest::Get {
-            url: url.to_string(),
-        },
-        context,
-    )
+    let request = get_request_without_body(args);
+    handle_http_request(HttpRequest::Get(request), context)
 }
 
 pub fn lib_http_patch(
     args: Vec<Literal>,
     context: &mut EvalContext,
 ) -> Literal {
-    unwrap_args! { args =>
-        Literal::String(url),
-        Literal::String(request_body),
-    }
-    handle_http_request(
-        HttpRequest::Patch {
-            url: url.to_string(),
-            body: request_body.to_string(),
-        },
-        context,
-    )
+    let request = get_request_with_body(args);
+    handle_http_request(HttpRequest::Patch(request), context)
 }
 
 pub fn lib_http_post(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    unwrap_args! { args =>
-        Literal::String(url),
-        Literal::String(request_body),
-    }
-    handle_http_request(
-        HttpRequest::Post {
-            url: url.to_string(),
-            body: request_body.to_string(),
-        },
-        context,
-    )
+    let request = get_request_with_body(args);
+    handle_http_request(HttpRequest::Post(request), context)
 }
 
 pub fn lib_http_put(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    let request = get_request_with_body(args);
+    handle_http_request(HttpRequest::Put(request), context)
+}
+
+fn get_request_with_body(args: Vec<Literal>) -> RequestWithBody {
     unwrap_args! { args =>
         Literal::String(url),
-        Literal::String(request_body),
+        Literal::List(headers),
+        Literal::String(body),
+    };
+    RequestWithBody {
+        url: url.to_string(),
+        headers: parse_headers(headers),
+        body: body.to_string(),
     }
-    handle_http_request(
-        HttpRequest::Put {
-            url: url.to_string(),
-            body: request_body.to_string(),
-        },
-        context,
-    )
+}
+
+fn get_request_without_body(args: Vec<Literal>) -> RequestWithoutBody {
+    unwrap_args! { args =>
+        Literal::String(url),
+        Literal::List(headers),
+    };
+    RequestWithoutBody {
+        url: url.to_string(),
+        headers: parse_headers(headers),
+    }
+}
+
+/// Convert list of literals from Turbina to a list of native strings
+/// for processing
+fn parse_headers(list: &Vec<Literal>) -> Vec<String> {
+    list.into_iter()
+        .map(|item| match item {
+            Literal::String(string_item) => string_item.to_string(),
+            _ => panic!(
+                "Unexpected argument type(s) passed to function: {:?}",
+                item
+            ),
+        })
+        .collect()
 }
 
 fn handle_http_request(

@@ -15,21 +15,29 @@ let handleError(error: string) {
 let testWithoutBody(
     url: string,
     method: string,
-    func: (string -> ((int, string, string[]) -> T, string -> T) -> T),
+    func: (
+        (string, string[]) ->
+        ((int, string, string[]) -> T, string -> T)
+        -> T
+    ),
 ) {
     println(["Calling", method, url] |> join(_, " "));
-    let result = func(url);
+    let result = func(url, []);
     result(handleSuccess, handleError);
 }
 
 let testWithBody(
     url: string,
     method: string,
-    func: ((string, string) -> ((int, string, string[]) -> T, string -> T) -> T),
+    func: (
+        (string, string[], string) ->
+        ((int, string, string[]) -> T, string -> T)
+        -> T
+    ),
     body: string,
 ) {
     println(["Calling", method, url, "with body", body] |> join(_, " "));
-    let result = func(url, body);
+    let result = func(url, [], body);
     result(handleSuccess, handleError);
 }
 
