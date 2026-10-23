@@ -1,7 +1,7 @@
 use crate::errors::{error, Result};
 use crate::models::{Token, Type, UnaryOp};
 use crate::parser::shared_parsers::{parse_list, ListParserConfig};
-use crate::parser::utils::{match_next, next_token_matches};
+use crate::parser::utils::{match_next, next_token_matches, skip_newlines};
 use crate::streams::TokenStream;
 
 /// Type declarations cannot include function types without parentheses
@@ -24,8 +24,13 @@ pub fn parse_type_declaration(tokens: &mut TokenStream) -> Result<Type> {
 fn parse_base_type(tokens: &mut TokenStream) -> Result<Type> {
     if tokens.peek()? == Token::OpenParens {
         tokens.pop()?;
+        skip_newlines(tokens);
+
         let datatype = parse_type(tokens)?;
+
+        skip_newlines(tokens);
         match_next(tokens, Token::CloseParens)?;
+
         return complete_base_type(datatype, tokens);
     }
 
@@ -58,6 +63,7 @@ pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
         base_type: Type,
         tokens: &mut TokenStream,
     ) -> Result<Type> {
+        skip_newlines(tokens);
         if next_token_matches(tokens, Token::Arrow) {
             complete_function_type(vec![base_type], tokens)
         } else {
@@ -70,6 +76,7 @@ pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
         tokens: &mut TokenStream,
     ) -> Result<Type> {
         match_next(tokens, Token::Arrow)?;
+        skip_newlines(tokens);
         let return_type = parse_type(tokens)?;
 
         let func_type = Type::Func {
@@ -99,6 +106,7 @@ pub fn parse_type(tokens: &mut TokenStream) -> Result<Type> {
         // one type in parentheses is allowed to not be a function
         return complete_type(base_type, tokens);
     }
+    skip_newlines(tokens);
     complete_function_type(types_in_parens, tokens)
 }
 

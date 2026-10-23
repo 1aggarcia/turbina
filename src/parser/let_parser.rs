@@ -166,6 +166,26 @@ mod test {
             "((int -> int) -> unknown)",
             Type::func(&[Type::func(&[Type::Int], Type::Int)], Type::Unknown)
         )]
+        #[case::func_with_newlines_before_arrow(
+
+            "(
+                int ->
+                (int, string)
+                -> bool 
+            )",
+            Type::func(
+                &[Type::Int],
+                Type::func(&[Type::Int, Type::String], Type::Bool)
+            )
+        )]
+        #[case::func_with_newlines_after_arrow(
+            "(
+                int ->
+                string ->
+                bool
+            )",
+            Type::func(&[Type::Int], Type::func(&[Type::String], Type::Bool))
+        )]
         fn it_parses_correct_function_type(
             #[case] type_string: &str,
             #[case] function_type: Type,
