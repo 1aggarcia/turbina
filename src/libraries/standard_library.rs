@@ -14,7 +14,7 @@ use crate::libraries::http::{
     lib_http_post, lib_http_put, open_http_server, HttpBodySetting,
 };
 use crate::libraries::io::{
-    append_to_file, call_exec, get_filenames_in_directory, open_tcp_server,
+    append_to_file, call_exec, get_filenames_in_directory,
 };
 use crate::{
     evaluator::eval_func_call,
@@ -410,19 +410,6 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
                 body: FuncBody::Native(lib_write_file),
             },
         ),
-        (
-            "serve",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    address = Type::String,
-                    handleRequest = Type::func(&[Type::String], Type::String),
-                    handleError = Type::func(&[Type::String], Type::Null),
-                ],
-                return_type: Some(Type::Null),
-                body: FuncBody::Native(lib_serve),
-            },
-        ),
     ];
     result.extend(io_library);
 
@@ -710,37 +697,6 @@ fn lib_write_file(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
         Ok(_) => Literal::Null,
         Err(error) => Literal::String(error.to_string()),
     }
-}
-
-fn lib_serve(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
-    unwrap_args! { args =>
-        Literal::String(address),
-        Literal::Closure(handle_request),
-        Literal::Closure(handle_error),
-    }
-    let handle_tcp_request = |request: String| {
-        let response = eval_func_call(
-            context,
-            handle_request.clone(),
-            vec![Literal::String(request)],
-        );
-        match response {
-            Literal::String(s) => s,
-            other => panic!("bad return type of TCP handler: {}", other),
-        }
-    };
-
-    match open_tcp_server(address, handle_tcp_request) {
-        Ok(_) => {}
-        Err(err) => {
-            eval_func_call(
-                context,
-                handle_error.clone(),
-                vec![Literal::String(err.to_string())],
-            );
-        }
-    };
-    Literal::Null
 }
 
 fn lib_serve_http(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
