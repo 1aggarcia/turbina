@@ -182,6 +182,20 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             },
         ),
         (
+            "trim",
+            Function {
+                type_params: vec![],
+                params: define_params![text = Type::String],
+                return_type: Some(Type::String),
+                body: FuncBody::Native(|args, _| {
+                    unwrap_args! { args =>
+                        Literal::String(text),
+                    }
+                    Literal::String(text.trim().to_string())
+                }),
+            },
+        ),
+        (
             "includes",
             Function {
                 type_params: vec![],
@@ -813,6 +827,14 @@ mod test_library {
             run_cmd(r#"lowercase("John DOE");"#),
             Literal::String("john doe".into())
         );
+    }
+
+    #[test]
+    fn test_trim() {
+        assert_eq!(
+            run_cmd(r#"trim(" text with   spaces   ");"#),
+            Literal::String("text with   spaces".into())
+        )
     }
 
     #[rstest]
