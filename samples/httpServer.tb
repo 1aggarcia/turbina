@@ -14,7 +14,8 @@ let httpResponse(statusCode: int, body: string) ->[
     body
 ] |> join(_, "\r\n");
 
-let handleRequest(request: string): string {
+let handleRequest(
+    method: string, url: string, headers: string[], body: string): string {
     let currentLogs: string = readFile(LOG_FILE)(
         identity, // return file contents on success
         () -> ""  // return empty string on failure (e.g. the file doesn't exist)
@@ -28,10 +29,20 @@ let handleRequest(request: string): string {
         |> join(_, "")
         |> len(_) - 1;
 
-    httpResponse(200, "Total # of requests made: " + toString(logCount))
+    httpResponse(
+        200,
+        [
+            "Got request with method " + method,
+            "URL: " + url,
+            "Headers: " + toString(headers),
+            "Body: " + body,
+            "Total # of requests made: " + toString(logCount),
+        ]
+            |> join(_, "\n")
+    )
 };
 
 let handleError(error: string) -> println("Error in server: " + error);
 
 // start the server
-serve("localhost:8080", handleRequest, handleError);
+serveHttp("localhost:8080", handleRequest, handleError);

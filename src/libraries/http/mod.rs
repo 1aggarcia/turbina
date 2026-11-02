@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use once_cell::sync::Lazy;
 
 mod shared;
@@ -102,6 +104,40 @@ pub fn lib_http_post(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
 pub fn lib_http_put(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let request = get_request_with_body(args);
     handle_http_request(HttpRequest::Put(request), context)
+}
+
+// TODO: split client and server into separate files
+pub fn open_http_server<F>(
+    address: &str,
+    mut handle_request: F,
+) -> Result<(), Box<dyn Error>>
+where
+    F: FnMut(&mut tiny_http::Request) -> String,
+{
+    let server = tiny_http::Server::http(address).map_err(|e| e.to_string())?;
+
+    /*
+     * The Rustyline editor overrides the Ctrl+C handler, meaning
+     * Ctrl+C does not terminate the program while this blocking
+     * server is running in the REPL. I could not find a clean way to
+     * get around this, so I just reset the signal handlers back to
+     * system defaults manually with libc (as this function never
+     * returns anyways).
+     *
+     * https://github.com/kkawakam/rustyline/issues/879
+     */
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_DFL);
+    }
+    println!("Server listening on address: {}", address);
+
+    for mut request in server.incoming_requests() {
+        let response_text = handle_request(&mut request);
+        let response = tiny_http::Response::from_string(response_text);
+        request.respond(response)?;
+    }
+    Ok(())
 }
 
 fn get_request_with_body(args: Vec<Literal>) -> RequestWithBody {

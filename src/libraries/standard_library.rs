@@ -3,7 +3,7 @@
 use once_cell::sync::Lazy;
 use rand::Rng;
 use std::fs;
-use std::io::Write;
+use std::io::{read_to_string, Write};
 
 use crate::libraries::factories::{
     create_result_from_error, create_result_from_success, create_result_type,
@@ -11,7 +11,7 @@ use crate::libraries::factories::{
 };
 use crate::libraries::http::{
     create_http_function, lib_http_delete, lib_http_get, lib_http_patch,
-    lib_http_post, lib_http_put, HttpBodySetting,
+    lib_http_post, lib_http_put, open_http_server, HttpBodySetting,
 };
 use crate::libraries::io::{
     append_to_file, call_exec, get_filenames_in_directory, open_tcp_server,
@@ -447,6 +447,29 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
             "httpPut",
             create_http_function(lib_http_put, HttpBodySetting::RequireBody),
         ),
+        (
+            "serveHttp",
+            Function {
+                type_params: vec![],
+                params: define_params![
+                    address = Type::String,
+                    handleRequest = Type::func(
+                        &[
+                            // TODO: allow struct literals and make this a
+                            // struct type
+                            Type::String,           // method
+                            Type::String,           // url
+                            Type::String.as_list(), // headers
+                            Type::String            // body
+                        ],
+                        Type::String
+                    ),
+                    handleError = Type::func(&[Type::String], Type::Null),
+                ],
+                return_type: Some(Type::Null),
+                body: FuncBody::Native(lib_serve_http),
+            },
+        ),
     ];
     result.extend(http_library);
 
@@ -717,6 +740,54 @@ fn lib_serve(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
             );
         }
     };
+    Literal::Null
+}
+
+fn lib_serve_http(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
+    unwrap_args! { args =>
+        Literal::String(address),
+        Literal::Closure(handle_request),
+        Literal::Closure(handle_error),
+    }
+
+    let handle_http_request = |request: &mut tiny_http::Request| {
+        let method = request.method().to_string();
+        let url = request.url().to_owned();
+        let headers: Vec<Literal> = request
+            .headers()
+            .into_iter()
+            .map(|header| format!("{}: {}", header.field, header.value))
+            .map(|str| Literal::String(str))
+            .collect();
+
+        let body = read_to_string(request.as_reader()).unwrap();
+
+        let response = eval_func_call(
+            context,
+            handle_request.clone(),
+            vec![
+                Literal::String(method),
+                Literal::String(url),
+                Literal::List(headers),
+                Literal::String(body),
+            ],
+        );
+        match response {
+            Literal::String(s) => s,
+            other => panic!("bad return type of HTTP handler: {}", other),
+        }
+    };
+
+    match open_http_server(address, handle_http_request) {
+        Ok(_) => {}
+        Err(err) => {
+            eval_func_call(
+                context,
+                handle_error.clone(),
+                vec![Literal::String(err.to_string())],
+            );
+        }
+    }
     Literal::Null
 }
 
