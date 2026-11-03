@@ -38,7 +38,7 @@ pub fn parse_struct_declaration(
     })
 }
 
-///``````
+///```text
 /// <struct_field> ::= Id <type_declaration>
 /// ```
 fn parse_struct_field(tokens: &mut TokenStream) -> Result<(String, Type)> {
