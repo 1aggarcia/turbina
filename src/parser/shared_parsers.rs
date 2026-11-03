@@ -42,6 +42,7 @@ pub fn parse_list<T>(
             let next_item = (config.item_parser)(tokens)?;
             items.push(next_item);
         }
+        skip_newlines(tokens);
     }
     skip_newlines(tokens);
     match_next(tokens, config.closing_token)?;

@@ -30,6 +30,7 @@ custom_error! {#[derive(PartialEq, Clone)] pub InterpreterError
         "Type alias '{type_alias}' cannot be redefined (alias for type '{assigned_type}')",
     UnrecognizedToken { payload: String } = "Unrecognized Token: {payload}",
     ArgCount { got: usize, expected: usize } = "Passed {got} args to function but expected {expected}",
+    EmptyStruct { name: String } = "Cannot declare empty struct: '{name}'",
 
     EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS",
 }

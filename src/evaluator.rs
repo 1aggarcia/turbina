@@ -40,6 +40,9 @@ fn eval_statement(
         AbstractSyntaxTree::Import(_) => todo!("import evaluation"),
         AbstractSyntaxTree::Expr(node) => eval_expr(context, node),
         AbstractSyntaxTree::TypeAlias(_) => Literal::Null,
+        AbstractSyntaxTree::StructDeclaration(_) => {
+            todo!("struct declaration evaluation")
+        }
     }
 }
 

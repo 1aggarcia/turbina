@@ -53,5 +53,8 @@ pub fn resolve_statement_type(
         AbstractSyntaxTree::TypeAlias(node) => {
             resolve_type_alias_type(context, node)
         }
+        AbstractSyntaxTree::StructDeclaration(_) => {
+            todo!("struct declaration type resolution")
+        }
     }
 }

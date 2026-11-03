@@ -158,6 +158,7 @@ pub enum Token {
     If,
     Else,
     Import,
+    Struct,
     TypeKeyword,
     Type(Type),
 
@@ -470,6 +471,7 @@ pub enum AbstractSyntaxTree {
     Import(Import),
     Expr(Expr),
     TypeAlias(TypeAlias),
+    StructDeclaration(StructDeclaration),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -559,6 +561,12 @@ pub struct LetNode {
 pub struct TypeAlias {
     pub type_alias: String,
     pub datatype: Type,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct StructDeclaration {
+    pub name: String,
+    pub fields: HashMap<String, Type>,
 }
 
 #[cfg(test)]

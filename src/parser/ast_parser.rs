@@ -3,6 +3,7 @@ use crate::models::{AbstractSyntaxTree, Token};
 use crate::parser::expr_parser::parse_expr;
 use crate::parser::import_parser::parse_import;
 use crate::parser::let_parser::parse_let;
+use crate::parser::struct_declaration_parser::parse_struct_declaration;
 use crate::parser::type_alias_parser::parse_type_alias;
 use crate::parser::utils::skip_newlines;
 use crate::streams::TokenStream;
@@ -32,6 +33,9 @@ pub fn parse_statement(
         Token::TypeKeyword => {
             AbstractSyntaxTree::TypeAlias(parse_type_alias(token_stream)?)
         }
+        Token::Struct => AbstractSyntaxTree::StructDeclaration(
+            parse_struct_declaration(token_stream)?,
+        ),
         Token::EndOfFile => return Err(InterpreterError::EndOfFile),
         _ => AbstractSyntaxTree::Expr(parse_expr(token_stream)?),
     };

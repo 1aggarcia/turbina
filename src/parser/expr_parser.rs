@@ -6,6 +6,7 @@ use crate::models::{
 use crate::errors::{error, InterpreterError, Result};
 use crate::parser::let_parser::parse_let;
 use crate::parser::shared_parsers::{parse_id, parse_list, ListParserConfig};
+use crate::parser::struct_declaration_parser::parse_struct_declaration;
 use crate::parser::type_alias_parser::parse_type_alias;
 use crate::parser::type_declaration_parser::parse_type_declaration;
 use crate::parser::utils::{match_next, next_token_matches, skip_newlines};
@@ -86,6 +87,9 @@ fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
             Token::TypeKeyword => {
                 AbstractSyntaxTree::TypeAlias(parse_type_alias(tokens)?)
             }
+            Token::Struct => AbstractSyntaxTree::StructDeclaration(
+                parse_struct_declaration(tokens)?,
+            ),
             _ => AbstractSyntaxTree::Expr(parse_expr(tokens)?),
         };
         statements.push(statement);
@@ -539,6 +543,26 @@ mod test {
                 .map(parse_tokens)
                 .map(|result| result.unwrap())
                 .collect(),
+            };
+            let expected = Expr::CodeBlock(expected_block);
+            assert_eq!(test_parse_expr(tokens), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_code_block_with_struct_declaration() {
+            let tokens = force_tokenize(
+                "{
+                struct User {
+                    username: string,
+                    isAdmin: bool,
+                };
+            };",
+            );
+            let expected_block = CodeBlock {
+                statements: vec![parse_tokens(force_tokenize(
+                    "struct User { username: string, isAdmin: bool };",
+                ))
+                .unwrap()],
             };
             let expected = Expr::CodeBlock(expected_block);
             assert_eq!(test_parse_expr(tokens), Ok(expected));

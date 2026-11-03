@@ -176,6 +176,7 @@ fn symbol_to_token(symbol: &str) -> Token {
         "byte" => Token::Type(Type::Byte),
         "unknown" => Token::Type(Type::Unknown),
         "null" => Token::Null,
+        "struct" => Token::Struct,
         _ => Token::Id(symbol.to_string()),
     }
 }
@@ -261,6 +262,7 @@ mod tests {
     )]
     #[case::symbol("let", Token::Let)]
     #[case::symbol("import", Token::Import)]
+    #[case::symbol("struct", Token::Struct)]
     #[case::symbol("type", Token::TypeKeyword)]
     #[case::symbol_with_underscore(
         "multi_word_var_name",
