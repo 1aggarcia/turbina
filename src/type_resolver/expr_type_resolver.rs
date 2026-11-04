@@ -48,6 +48,7 @@ fn resolve_binary_expr_type(
                 )]),
                 parameter_types: &HashMap::new(),
                 type_aliases: &HashMap::new(),
+                struct_definitions: &HashMap::new(),
                 generic_type_parameters: &[],
                 name_to_bind: None,
                 parent: Some(context),
@@ -82,6 +83,7 @@ fn resolve_code_block_type(
 ) -> SubResult {
     let mut variable_types = HashMap::new();
     let mut type_aliases = HashMap::new();
+    let struct_definitions = HashMap::new();
     let parameter_types = HashMap::new();
 
     let default_type = Ok(Type::Null);
@@ -96,6 +98,7 @@ fn resolve_code_block_type(
             let mut statement_context = TypeContext {
                 variable_types: &variable_types,
                 parameter_types: &parameter_types,
+                struct_definitions: &struct_definitions,
                 type_aliases: &type_aliases,
                 generic_type_parameters: &[],
                 name_to_bind: None,
@@ -190,6 +193,7 @@ fn resolve_function_type(
         variable_types: &mut HashMap::new(),
         parameter_types: &param_types,
         type_aliases: &HashMap::new(),
+        struct_definitions: &HashMap::new(),
         generic_type_parameters: &function.type_params,
         name_to_bind: None,
         parent: Some(&context),
@@ -727,6 +731,8 @@ mod test {
     }
 
     mod code_block {
+        use std::collections::HashMap;
+
         use super::*;
 
         #[test]
@@ -839,6 +845,58 @@ mod test {
             let expected = ok_without_binding(Type::Null);
             assert_eq!(resolve_type_fresh(input), expected);
         }
+
+        #[test]
+        fn it_does_not_allow_global_struct_to_be_redefined() {
+            let mut program = Program::init_with_std_streams();
+            program.struct_definitions.insert(
+                "User".into(),
+                HashMap::from([("id".into(), Type::String)]),
+            );
+
+            let input = make_tree(
+                r#"{
+                    struct User { isAdmin: bool };
+                };"#,
+            );
+            let expected = InterpreterError::ReassignStructError {
+                struct_name: "User".into(),
+            };
+            assert_eq!(resolve_type(&program, &input), Err(expected.into()));
+        }
+
+        #[test]
+        #[ignore = "TODO: update local type context per statement"]
+        fn it_does_not_allow_struct_to_be_redefined_in_same_code_block() {
+            let input = make_tree(
+                r#"{
+                    {
+                        struct User { id: string };
+                        struct User { isAdmin: bool };
+                    }
+                };"#,
+            );
+            let expected = InterpreterError::ReassignStructError {
+                struct_name: "User".into(),
+            };
+            assert_eq!(resolve_type_fresh(input), Err(vec![expected]));
+        }
+    }
+
+    #[test]
+    fn it_allows_struct_to_be_redefined_in_separate_code_blocks() {
+        let input = make_tree(
+            r#"{
+                {
+                    struct User { id: string };
+                }
+                {
+                    struct User { isAdmin: bool };
+                }
+            };"#,
+        );
+        let expected = ok_without_binding(Type::Null);
+        assert_eq!(resolve_type_fresh(input), expected);
     }
 
     mod cond_expr {

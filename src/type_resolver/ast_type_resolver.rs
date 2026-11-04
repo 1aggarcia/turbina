@@ -21,6 +21,7 @@ pub fn resolve_type(
         variable_types: &program.type_context,
         parameter_types: &HashMap::new(),
         type_aliases: &program.type_aliases,
+        struct_definitions: &program.struct_definitions,
         generic_type_parameters: &[],
         name_to_bind: None,
         parent: None,

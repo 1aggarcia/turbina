@@ -1,13 +1,20 @@
 use crate::{
-    errors::MultiResult,
+    errors::{InterpreterError, MultiResult},
     models::{StructDeclaration, Type},
     type_resolver::{shared::TypeContext, TreeType},
 };
 
 pub fn resolve_struct_declaration_type(
-    _context: &TypeContext,
+    context: &TypeContext,
     struct_declaration: &StructDeclaration,
 ) -> MultiResult<TreeType> {
+    let struct_name = &struct_declaration.name;
+    if let Some(_) = context.lookup_struct(struct_name) {
+        return Err(vec![InterpreterError::ReassignStructError {
+            struct_name: struct_name.to_owned(),
+        }]);
+    }
+
     let result = TreeType {
         // struct declaration is not usable runtime data
         datatype: Type::Null,
@@ -16,6 +23,7 @@ pub fn resolve_struct_declaration_type(
         // Must be cloned since the struct definition lives for the entire
         // lifetime of the program, i.e. longer than the AST that created it
         struct_to_bind: Some(struct_declaration.clone()),
+        // TODO: update program state with return value
     };
     Ok(result)
 }
@@ -55,7 +63,6 @@ mod test {
         }
 
         #[test]
-        #[ignore = "Not implemented"]
         fn it_should_return_error_for_struct_already_declared() {
             let mut program = Program::init_with_std_streams();
             program.struct_definitions.insert(

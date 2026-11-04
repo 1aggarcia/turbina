@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::errors::MultiResult;
-use crate::models::{StructDeclaration, Type};
+use crate::models::{StructDeclaration, StructFields, Type};
 
 pub type SubResult = MultiResult<Type>;
 pub type ValidationResult = MultiResult<TreeType>;
@@ -33,6 +33,9 @@ pub struct TypeContext<'a> {
 
     /// type aliases created with the `type` keyword
     pub type_aliases: &'a HashMap<String, Type>,
+
+    /// structs defined with the `struct` keyword
+    pub struct_definitions: &'a HashMap<String, StructFields>,
 
     /// the names of type parameters declared in function definitions
     pub generic_type_parameters: &'a [String],
@@ -69,6 +72,15 @@ impl TypeContext<'_> {
             Some(t) => Some(t.clone()),
             None => self.parent.and_then(|parent_context| {
                 parent_context.lookup_type_alias(type_alias)
+            }),
+        }
+    }
+
+    pub fn lookup_struct(&self, struct_name: &str) -> Option<&StructFields> {
+        match self.struct_definitions.get(struct_name) {
+            Some(s) => Some(s),
+            None => self.parent.and_then(|parent_context| {
+                parent_context.lookup_struct(struct_name)
             }),
         }
     }
