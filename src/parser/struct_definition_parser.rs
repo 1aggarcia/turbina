@@ -1,6 +1,6 @@
 use crate::{
     errors::{InterpreterError, Result},
-    models::{StructDeclaration, Token, Type},
+    models::{StructDefinition, Token, Type},
     parser::{
         shared_parsers::{parse_id, parse_list, ListParserConfig},
         type_declaration_parser::parse_type_declaration,
@@ -10,12 +10,12 @@ use crate::{
 };
 
 /// ```text
-/// <struct_declaration> ::=
+/// <struct_definition> ::=
 ///     Struct "{" <struct_field> {"," <struct_field>} [","] "}"
 /// ```
-pub fn parse_struct_declaration(
+pub fn parse_struct_definition(
     tokens: &mut TokenStream,
-) -> Result<StructDeclaration> {
+) -> Result<StructDefinition> {
     match_next(tokens, Token::Struct)?;
     let struct_name = parse_id(tokens)?;
 
@@ -32,7 +32,7 @@ pub fn parse_struct_declaration(
         return Err(InterpreterError::EmptyStruct { name: struct_name });
     }
 
-    Ok(StructDeclaration {
+    Ok(StructDefinition {
         name: struct_name,
         fields: field_list.into_iter().collect(),
     })
@@ -55,20 +55,20 @@ mod test {
     use crate::parser::test_utils::*;
     use rstest::rstest;
 
-    mod struct_declaration {
+    mod struct_definition {
         use std::collections::HashMap;
 
         use crate::errors::{error, InterpreterError};
 
         use super::*;
 
-        fn test_parse_struct_declaration(
+        fn test_parse_struct_definition(
             tokens: Vec<Token>,
-        ) -> Result<StructDeclaration> {
+        ) -> Result<StructDefinition> {
             let ast = parse_tokens(tokens)?;
             match ast {
-                AbstractSyntaxTree::StructDeclaration(struct_declaration) => {
-                    Ok(struct_declaration)
+                AbstractSyntaxTree::StructDefinition(struct_definition) => {
+                    Ok(struct_definition)
                 }
                 other => panic!("Not a struct declaration: {:?}", other),
             }
@@ -92,14 +92,14 @@ mod test {
         )]
         fn it_parses_valid_struct_correctly(#[case] input: &str) {
             let tokens = force_tokenize(input);
-            let expected = StructDeclaration {
+            let expected = StructDefinition {
                 name: "User".into(),
                 fields: HashMap::from([
                     ("username".into(), Type::String),
                     ("isAdmin".into(), Type::Bool),
                 ]),
             };
-            assert_eq!(test_parse_struct_declaration(tokens), Ok(expected));
+            assert_eq!(test_parse_struct_definition(tokens), Ok(expected));
         }
 
         #[test]
@@ -108,7 +108,7 @@ mod test {
             let expected = InterpreterError::EmptyStruct {
                 name: "Empty".into(),
             };
-            assert_eq!(test_parse_struct_declaration(tokens), Err(expected));
+            assert_eq!(test_parse_struct_definition(tokens), Err(expected));
         }
 
         #[test]
@@ -117,7 +117,7 @@ mod test {
             let expected =
                 error::unexpected_token("identifier", Token::Newline);
 
-            assert_eq!(test_parse_struct_declaration(tokens), Err(expected));
+            assert_eq!(test_parse_struct_definition(tokens), Err(expected));
         }
     }
 }

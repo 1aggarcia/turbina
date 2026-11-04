@@ -6,7 +6,7 @@ use crate::models::{
 use crate::errors::{error, InterpreterError, Result};
 use crate::parser::let_parser::parse_let;
 use crate::parser::shared_parsers::{parse_id, parse_list, ListParserConfig};
-use crate::parser::struct_declaration_parser::parse_struct_declaration;
+use crate::parser::struct_definition_parser::parse_struct_definition;
 use crate::parser::type_alias_parser::parse_type_alias;
 use crate::parser::type_declaration_parser::parse_type_declaration;
 use crate::parser::utils::{match_next, next_token_matches, skip_newlines};
@@ -87,8 +87,8 @@ fn parse_code_block(tokens: &mut TokenStream) -> Result<CodeBlock> {
             Token::TypeKeyword => {
                 AbstractSyntaxTree::TypeAlias(parse_type_alias(tokens)?)
             }
-            Token::Struct => AbstractSyntaxTree::StructDeclaration(
-                parse_struct_declaration(tokens)?,
+            Token::Struct => AbstractSyntaxTree::StructDefinition(
+                parse_struct_definition(tokens)?,
             ),
             _ => AbstractSyntaxTree::Expr(parse_expr(tokens)?),
         };
@@ -549,7 +549,7 @@ mod test {
         }
 
         #[test]
-        fn it_parses_code_block_with_struct_declaration() {
+        fn it_parses_code_block_with_struct_definition() {
             let tokens = force_tokenize(
                 "{
                 struct User {

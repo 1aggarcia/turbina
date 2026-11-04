@@ -1,14 +1,14 @@
 use crate::{
     errors::{InterpreterError, MultiResult},
-    models::{StructDeclaration, Type},
+    models::{StructDefinition, Type},
     type_resolver::{shared::TypeContext, TreeType},
 };
 
-pub fn resolve_struct_declaration_type(
+pub fn resolve_struct_definition_type(
     context: &TypeContext,
-    struct_declaration: &StructDeclaration,
+    struct_definition: &StructDefinition,
 ) -> MultiResult<TreeType> {
-    let struct_name = &struct_declaration.name;
+    let struct_name = &struct_definition.name;
     if let Some(_) = context.lookup_struct(struct_name) {
         return Err(vec![InterpreterError::ReassignStructError {
             struct_name: struct_name.to_owned(),
@@ -22,7 +22,7 @@ pub fn resolve_struct_declaration_type(
         type_alias_to_bind: None,
         // Must be cloned since the struct definition lives for the entire
         // lifetime of the program, i.e. longer than the AST that created it
-        struct_to_bind: Some(struct_declaration.clone()),
+        struct_to_bind: Some(struct_definition.clone()),
     };
     Ok(result)
 }
@@ -34,18 +34,18 @@ mod test {
     use crate::type_resolver::resolve_type;
     use crate::type_resolver::shared::test_utils::*;
 
-    mod struct_declaration {
+    mod struct_definition {
         use super::*;
         use crate::{errors::InterpreterError, models::Program};
         use std::collections::HashMap;
 
         #[test]
-        fn it_should_return_tree_type_with_struct_declaration() {
+        fn it_should_return_tree_type_with_struct_definition() {
             let input = "struct User { username: string, isAdmin: bool };";
             let tree = make_tree(input);
 
             let result = resolve_type_fresh(tree);
-            let expected_declaration = StructDeclaration {
+            let expected_declaration = StructDefinition {
                 name: "User".into(),
                 fields: HashMap::from([
                     ("username".into(), Type::String),

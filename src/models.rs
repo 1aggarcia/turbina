@@ -474,7 +474,7 @@ pub enum AbstractSyntaxTree {
     Import(Import),
     Expr(Expr),
     TypeAlias(TypeAlias),
-    StructDeclaration(StructDeclaration),
+    StructDefinition(StructDefinition),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -569,7 +569,7 @@ pub struct TypeAlias {
 pub type StructFields = HashMap<String, Type>;
 
 #[derive(PartialEq, Debug, Clone)]
-pub struct StructDeclaration {
+pub struct StructDefinition {
     pub name: String,
     pub fields: StructFields,
 }

@@ -3,7 +3,7 @@ mod expr_parser;
 mod import_parser;
 mod let_parser;
 mod shared_parsers;
-mod struct_declaration_parser;
+mod struct_definition_parser;
 mod type_alias_parser;
 mod type_declaration_parser;
 mod utils;

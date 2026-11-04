@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::errors::MultiResult;
-use crate::models::{StructDeclaration, StructFields, Type};
+use crate::models::{StructDefinition, StructFields, Type};
 
 pub type SubResult = MultiResult<Type>;
 pub type ValidationResult = MultiResult<TreeType>;
@@ -19,7 +19,7 @@ pub struct TreeType {
     pub type_alias_to_bind: Option<(String, Type)>,
 
     // If present, struct field mapping should be bound to the struct name
-    pub struct_to_bind: Option<StructDeclaration>,
+    pub struct_to_bind: Option<StructDefinition>,
 }
 
 /// The types associated to all bindings in a typing scope.
