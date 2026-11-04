@@ -40,9 +40,7 @@ fn eval_statement(
         AbstractSyntaxTree::Import(_) => todo!("import evaluation"),
         AbstractSyntaxTree::Expr(node) => eval_expr(context, node),
         AbstractSyntaxTree::TypeAlias(_) => Literal::Null,
-        AbstractSyntaxTree::StructDefinition(_) => {
-            todo!("struct definition evaluation")
-        }
+        AbstractSyntaxTree::StructDefinition(_) => Literal::Null,
     }
 }
 
@@ -427,6 +425,14 @@ mod test_evalutate {
     #[test]
     fn it_returns_null_for_type_alias() {
         let input = make_tree("type X = int;");
+        let expected = Literal::Null;
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_returns_null_for_struct_definition() {
+        let input =
+            make_tree("struct User { username: string, isAdmin: bool };");
         let expected = Literal::Null;
         assert_eq!(evaluate_fresh(input), expected);
     }
