@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use crate::errors::MultiResult;
-use crate::models::Type;
+use crate::models::{StructDeclaration, Type};
 
 pub type SubResult = MultiResult<Type>;
 pub type ValidationResult = MultiResult<TreeType>;
 
+// TODO: named constructors for different use cases
 #[derive(PartialEq, Debug)]
 pub struct TreeType {
     pub datatype: Type,
@@ -16,6 +17,9 @@ pub struct TreeType {
     // Tuple of (type_alias, type). If present, type should be bound to the
     // type_alias in the global scope
     pub type_alias_to_bind: Option<(String, Type)>,
+
+    // If present, struct field mapping should be bound to the struct name
+    pub struct_to_bind: Option<StructDeclaration>,
 }
 
 /// The types associated to all bindings in a typing scope.
@@ -158,6 +162,7 @@ pub mod test_utils {
             datatype,
             name_to_bind: None,
             type_alias_to_bind: None,
+            struct_to_bind: None,
         })
     }
 
@@ -166,6 +171,7 @@ pub mod test_utils {
             datatype,
             name_to_bind: Some(id.into()),
             type_alias_to_bind: None,
+            struct_to_bind: None,
         })
     }
 }

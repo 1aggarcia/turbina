@@ -28,6 +28,7 @@ custom_error! {#[derive(PartialEq, Clone)] pub InterpreterError
     ReassignError { id: String } = "Reassign Error: Identifier '{id}' cannot be redefined",
     ReassignTypeError { type_alias: String, assigned_type: Type } =
         "Type alias '{type_alias}' cannot be redefined (alias for type '{assigned_type}')",
+    ReassignStructError { struct_name: String } = "Struct '{struct_name}' cannot be redefined",
     UnrecognizedToken { payload: String } = "Unrecognized Token: {payload}",
     ArgCount { got: usize, expected: usize } = "Passed {got} args to function but expected {expected}",
     EmptyStruct { name: String } = "Cannot declare empty struct: '{name}'",

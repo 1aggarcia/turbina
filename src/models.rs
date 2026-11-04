@@ -11,6 +11,7 @@ pub struct Program {
     pub bindings: HashMap<String, Literal>,
     pub type_context: HashMap<String, Type>,
     pub type_aliases: HashMap<String, Type>,
+    pub struct_definitions: HashMap<String, StructFields>,
     pub output: OutputStreams,
 }
 
@@ -47,10 +48,12 @@ impl Program {
         }
 
         let type_aliases = HashMap::<String, Type>::new();
+        let struct_definitions = HashMap::<String, StructFields>::new();
         Self {
             bindings,
             type_context,
             type_aliases,
+            struct_definitions,
             output,
         }
     }
@@ -240,7 +243,7 @@ pub enum Type {
     Nullable(Box<Type>),
     Func { input: Vec<Type>, output: Box<Type> },
     List(Box<Type>),
-    Struct(HashMap<String, Type>),
+    Struct(StructFields),
 
     // type variable
     Generic(String),
@@ -563,10 +566,12 @@ pub struct TypeAlias {
     pub datatype: Type,
 }
 
+pub type StructFields = HashMap<String, Type>;
+
 #[derive(PartialEq, Debug, Clone)]
 pub struct StructDeclaration {
     pub name: String,
-    pub fields: HashMap<String, Type>,
+    pub fields: StructFields,
 }
 
 #[cfg(test)]

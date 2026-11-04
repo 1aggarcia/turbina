@@ -60,6 +60,7 @@ pub fn resolve_import_type(
                 datatype: Type::Struct(program.type_context),
                 name_to_bind: Some(module_name.to_owned()),
                 type_alias_to_bind: None, // TODO: support importable type aliases
+                struct_to_bind: None,
             };
 
             Ok(tree_type)
@@ -175,6 +176,7 @@ mod test_resolve_import_type {
             datatype: expected_struct,
             name_to_bind: Some(VALID_MODULE.into()),
             type_alias_to_bind: None,
+            struct_to_bind: None,
         };
         assert_eq!(resolve_type(&program, &input), Ok(expected_tree));
     }

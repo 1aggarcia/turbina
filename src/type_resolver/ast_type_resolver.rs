@@ -5,6 +5,7 @@ use crate::type_resolver::expr_type_resolver::resolve_expr_type;
 use crate::type_resolver::import_type_resolver::resolve_import_type;
 use crate::type_resolver::let_type_resolver::resolve_let_type;
 use crate::type_resolver::shared::{TreeType, TypeContext, ValidationResult};
+use crate::type_resolver::struct_declaration_type_resolver::resolve_struct_declaration_type;
 use crate::type_resolver::type_alias_resolver::resolve_type_alias_type;
 
 /// Find syntax errors not caught while parsing
@@ -38,6 +39,7 @@ pub fn resolve_statement_type(
                 datatype,
                 name_to_bind: Some(node.id.clone()),
                 type_alias_to_bind: None,
+                struct_to_bind: None,
             })
         }
         AbstractSyntaxTree::Import(import) => {
@@ -48,13 +50,14 @@ pub fn resolve_statement_type(
                 datatype,
                 name_to_bind: None,
                 type_alias_to_bind: None,
+                struct_to_bind: None,
             })
         }
         AbstractSyntaxTree::TypeAlias(node) => {
             resolve_type_alias_type(context, node)
         }
-        AbstractSyntaxTree::StructDeclaration(_) => {
-            todo!("struct declaration type resolution")
+        AbstractSyntaxTree::StructDeclaration(struct_decl) => {
+            resolve_struct_declaration_type(context, struct_decl)
         }
     }
 }

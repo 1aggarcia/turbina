@@ -22,6 +22,7 @@ pub fn resolve_type_alias_type(
             node.type_alias.clone(),
             node.datatype.clone(),
         )),
+        struct_to_bind: None,
     };
     Ok(result)
 }
@@ -47,6 +48,7 @@ mod test {
             datatype: Type::Null,
             name_to_bind: None,
             type_alias_to_bind: Some(("X".into(), expected_type)),
+            struct_to_bind: None,
         };
         let actual = resolve_type_fresh(input);
         assert_eq!(actual, Ok(expected));
