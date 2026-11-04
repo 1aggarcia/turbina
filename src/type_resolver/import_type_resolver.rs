@@ -80,17 +80,18 @@ fn validate_next_statement(
 ) -> MultiResult<()> {
     let syntax_tree = parse_statement(token_stream)?;
     let tree_type = resolve_type(program, &syntax_tree)?;
-    if let Some(name) = &tree_type.name_to_bind {
-        program
-            .type_context
-            .insert(name.clone(), tree_type.datatype.clone());
+    if let Some(name) = tree_type.name_to_bind {
+        program.type_context.insert(name, tree_type.datatype);
     }
     // needed to execute the imported module properly, even though the type
     // aliases aren't visible to the importing program yet
-    if let Some((type_alias, datatype)) = &tree_type.type_alias_to_bind {
+    if let Some((type_alias, datatype)) = tree_type.type_alias_to_bind {
+        program.type_aliases.insert(type_alias, datatype);
+    }
+    if let Some(struct_definition) = tree_type.struct_to_bind {
         program
-            .type_aliases
-            .insert(type_alias.clone(), datatype.clone());
+            .struct_definitions
+            .insert(struct_definition.name, struct_definition.fields);
     }
     Ok(())
 }

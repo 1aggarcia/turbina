@@ -216,15 +216,18 @@ fn validate_next_statement(
     }
 
     let tree_type = resolve_type(program, &syntax_tree)?;
-    if let Some(name) = &tree_type.name_to_bind {
+    if let Some(name) = tree_type.name_to_bind {
         program
             .type_context
-            .insert(name.clone(), tree_type.datatype.clone());
+            .insert(name, tree_type.datatype.clone());
     }
-    if let Some((type_alias, datatype)) = &tree_type.type_alias_to_bind {
+    if let Some((type_alias, datatype)) = tree_type.type_alias_to_bind {
+        program.type_aliases.insert(type_alias, datatype);
+    }
+    if let Some(struct_definition) = tree_type.struct_to_bind {
         program
-            .type_aliases
-            .insert(type_alias.clone(), datatype.clone());
+            .struct_definitions
+            .insert(struct_definition.name, struct_definition.fields);
     }
     Ok((syntax_tree, Some(tree_type.datatype)))
 }

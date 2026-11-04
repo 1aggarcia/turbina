@@ -83,7 +83,7 @@ fn resolve_code_block_type(
 ) -> SubResult {
     let mut variable_types = HashMap::new();
     let mut type_aliases = HashMap::new();
-    let struct_definitions = HashMap::new();
+    let mut struct_definitions = HashMap::new();
     let parameter_types = HashMap::new();
 
     let default_type = Ok(Type::Null);
@@ -114,6 +114,10 @@ fn resolve_code_block_type(
                 tree_type.type_alias_to_bind
             {
                 type_aliases.insert(type_alias, type_alias_type);
+            }
+            if let Some(struct_definition) = tree_type.struct_to_bind {
+                struct_definitions
+                    .insert(struct_definition.name, struct_definition.fields);
             }
             Ok(tree_type.datatype)
         })
@@ -866,7 +870,6 @@ mod test {
         }
 
         #[test]
-        #[ignore = "TODO: update local type context per statement"]
         fn it_does_not_allow_struct_to_be_redefined_in_same_code_block() {
             let input = make_tree(
                 r#"{

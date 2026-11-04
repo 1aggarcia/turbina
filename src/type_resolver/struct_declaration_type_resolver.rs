@@ -23,7 +23,6 @@ pub fn resolve_struct_declaration_type(
         // Must be cloned since the struct definition lives for the entire
         // lifetime of the program, i.e. longer than the AST that created it
         struct_to_bind: Some(struct_declaration.clone()),
-        // TODO: update program state with return value
     };
     Ok(result)
 }
