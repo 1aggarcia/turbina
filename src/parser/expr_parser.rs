@@ -664,7 +664,9 @@ mod test {
     }
 
     mod term {
-        use crate::parser::test_utils::parse_tokens;
+        use std::collections::HashMap;
+
+        use crate::{models::StructTerm, parser::test_utils::parse_tokens};
 
         use super::*;
 
@@ -813,6 +815,23 @@ mod test {
             let expr = term_expr(Term::FuncCall(call));
             let expected = Ok(AbstractSyntaxTree::Expr(expr));
             assert_eq!(parse_tokens(tree), expected);
+        }
+
+        #[test]
+        #[ignore = "TODO: implement struct term parsing"]
+        fn it_parses_struct_term() {
+            let input = force_tokenize(r#"User { id: "12345" };"#);
+
+            let expected_literal = StructTerm {
+                name: "User".into(),
+                fields: HashMap::from([(
+                    "id".into(),
+                    term_expr(str_term("12345")),
+                )]),
+            };
+            let expected = term_tree(Term::Struct(expected_literal));
+
+            assert_eq!(parse_tokens(input), Ok(expected));
         }
     }
 }

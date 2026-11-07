@@ -271,6 +271,7 @@ fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
             }
             Ok(datatype)
         }
+        Term::Struct(_) => todo!("Struct term type resolution"),
     }
 }
 

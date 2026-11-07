@@ -210,6 +210,17 @@ impl std::fmt::Display for Literal {
                     .join(", ");
                 write!(f, "[{}]", string_representation)
             }
+            /*
+            Self::Struct(struct_literal) => {
+                let serialized_fields = struct_literal
+                    .fields
+                    .iter()
+                    .map(|(key, value)| format!("{}: {:?}", key, value))
+                    .collect::<Vec<String>>()
+                    .join(",\n");
+                write!(f, "{} {{{}}}", struct_literal.name, serialized_fields)
+            }
+            */
             Self::Null => write!(f, "null"),
         }
     }
@@ -492,6 +503,7 @@ pub enum Term {
     Minus(Box<Term>), // negate int terms
     NotNull(Box<Term>),
     List(Vec<Expr>),
+    Struct(StructTerm),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -572,6 +584,15 @@ pub type StructFields = HashMap<String, Type>;
 pub struct StructDefinition {
     pub name: String,
     pub fields: StructFields,
+}
+
+/// Representation of a struct literal in an AST.
+/// The fields still need to be evaluated at runtime to convert them from
+/// expressions to literals, so a separate `StructLiteral`` struct is needed.
+#[derive(PartialEq, Debug, Clone)]
+pub struct StructTerm {
+    pub name: String,
+    pub fields: HashMap<String, Expr>,
 }
 
 #[cfg(test)]

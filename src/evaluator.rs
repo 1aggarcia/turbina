@@ -221,6 +221,7 @@ fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
         Term::FuncCall(call) => eval_wrapped_func_call(context, call),
         Term::NotNull(term) => eval_term(context, *term),
         Term::List(list) => eval_list(context, list),
+        Term::Struct(_) => todo!("Struct term evaluation"),
     }
 }
 
