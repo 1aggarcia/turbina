@@ -255,7 +255,8 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
 ///     | Null
 ///     | Literal
 ///     | <list>
-///     | (Id | "(" <expr> ")") ["!"] {<arg_list> ["!"]}
+///     | Id [["!"] <func_call_body>] // will include struct case soon
+///     | "(" <expr> ")" ["!"] [<func_call_body>]
 ///
 /// <list> ::= "[" [<expr> {"," <expr>}] "]"
 /// ```
@@ -278,7 +279,7 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
         )?;
         return Ok(Term::List(elements));
     }
-    let callable = if let Token::Id(id) = first {
+    let mut callable = if let Token::Id(id) = first {
         Term::Id(id)
     } else if first == Token::OpenParens {
         skip_newlines(tokens);
@@ -292,50 +293,69 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
 
     if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
         tokens.pop()?;
-        complete_term_with_arg_list(callable.as_not_null(), tokens)
-    } else {
-        complete_term_with_arg_list(callable, tokens)
+        callable = callable.as_not_null();
     }
+
+    let has_func_call_body = next_token_matches(tokens, Token::OpenParens);
+    if has_func_call_body {
+        let func_call_bodies = parse_func_call_bodies(tokens)?;
+        callable = build_func_call(callable, func_call_bodies);
+    };
+    Ok(callable)
 }
 
-/// Try to construct a function call term with the function supplied as a
-/// callable term. If a function call cannot be constructed, the callable term is returned.
-///
-/// The `<arg_list>` below is preceded by the callable term and may be
-/// succeeded by the not-null assertion operator "!".
+struct FuncCallBody {
+    args: Vec<Expr>,
+    has_non_null_assertion: bool,
+}
+
 /// ```text
+/// <func_call_body> ::= {<arg_list> ["!"]}
+///
 /// <arg_list> ::= "(" [<expr> {"," <expr>}] ")"
 /// ```
-fn complete_term_with_arg_list(
-    callable: Term,
+fn parse_func_call_bodies(
     tokens: &mut TokenStream,
-) -> Result<Term> {
-    // we might be at the end of the stream, but that's allowed since
-    // callable is a valid term
-    if !next_token_matches(tokens, Token::OpenParens) {
-        return Ok(callable);
+) -> Result<Vec<FuncCallBody>> {
+    let mut result = Vec::<FuncCallBody>::new();
+    while next_token_matches(tokens, Token::OpenParens) {
+        let args = parse_list(
+            tokens,
+            ListParserConfig {
+                item_parser: parse_expr,
+                opening_token: Some(Token::OpenParens),
+                closing_token: Token::CloseParens,
+            },
+        )?;
+
+        let has_non_null_assertion =
+            next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not));
+        if has_non_null_assertion {
+            tokens.pop()?;
+        }
+
+        result.push(FuncCallBody {
+            args,
+            has_non_null_assertion,
+        });
     }
-    let args = parse_list(
-        tokens,
-        ListParserConfig {
-            item_parser: parse_expr,
-            opening_token: Some(Token::OpenParens),
-            closing_token: Token::CloseParens,
-        },
-    )?;
 
-    let func_call = FuncCall {
-        func: Box::new(callable),
-        args,
-    };
-    let callable = if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
-        tokens.pop()?;
-        Term::FuncCall(func_call).as_not_null()
-    } else {
-        Term::FuncCall(func_call)
-    };
+    Ok(result)
+}
 
-    complete_term_with_arg_list(callable, tokens)
+fn build_func_call(func: Term, func_call_bodies: Vec<FuncCallBody>) -> Term {
+    let mut outer_func = func;
+    for body in func_call_bodies {
+        let func_call = FuncCall {
+            func: Box::new(outer_func),
+            args: body.args,
+        };
+        outer_func = Term::FuncCall(func_call);
+        if body.has_non_null_assertion {
+            outer_func = outer_func.as_not_null();
+        }
+    }
+    outer_func
 }
 
 /// If the expression contains one term, unwrap the term.
