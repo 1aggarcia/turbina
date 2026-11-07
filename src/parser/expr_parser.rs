@@ -265,65 +265,65 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
 /// ```
 fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
     let first = tokens.pop()?;
-    if Token::Null == first {
-        return Ok(Term::Literal(Literal::Null));
-    }
-    if let Token::Literal(lit) = first {
-        return Ok(Term::Literal(lit));
-    }
-    if Token::OpenSquareBracket == first {
-        let elements = parse_list(
-            tokens,
-            ListParserConfig {
-                item_parser: parse_expr,
-                opening_token: None,
-                closing_token: Token::CloseSquareBracket,
-            },
-        )?;
-        return Ok(Term::List(elements));
-    }
-    if let Token::Id(id) = first {
-        if next_token_matches(tokens, Token::OpenCurlyBracket) {
-            let struct_body = parse_struct_body(tokens)?;
-            return Ok(Term::Struct(StructTerm {
-                name: id,
-                fields: struct_body,
-            }));
+    match first {
+        Token::Null => Ok(Term::Literal(Literal::Null)),
+        Token::Literal(lit) => Ok(Term::Literal(lit)),
+        Token::OpenSquareBracket => {
+            let elements = parse_list(
+                tokens,
+                ListParserConfig {
+                    item_parser: parse_expr,
+                    opening_token: None,
+                    closing_token: Token::CloseSquareBracket,
+                },
+            )?;
+            Ok(Term::List(elements))
         }
+        Token::Id(id) => {
+            if next_token_matches(tokens, Token::OpenCurlyBracket) {
+                let struct_body = parse_struct_body(tokens)?;
+                return Ok(Term::Struct(StructTerm {
+                    name: id,
+                    fields: struct_body,
+                }));
+            }
 
-        let mut callable = Term::Id(id);
-        if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
-            tokens.pop()?;
-            callable = callable.as_not_null();
+            let mut callable = Term::Id(id);
+            if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+                tokens.pop()?;
+                callable = callable.as_not_null();
+            }
+
+            let has_func_call_body =
+                next_token_matches(tokens, Token::OpenParens);
+            if has_func_call_body {
+                let func_call_bodies = parse_func_call_bodies(tokens)?;
+                callable = build_func_call(callable, func_call_bodies);
+            };
+            Ok(callable)
         }
+        Token::OpenParens => {
+            skip_newlines(tokens);
+            let expr: Expr = parse_expr(tokens)?;
+            skip_newlines(tokens);
+            match_next(tokens, Token::CloseParens)?;
+            let mut callable = Term::Expr(Box::new(expr));
 
-        let has_func_call_body = next_token_matches(tokens, Token::OpenParens);
-        if has_func_call_body {
-            let func_call_bodies = parse_func_call_bodies(tokens)?;
-            callable = build_func_call(callable, func_call_bodies);
-        };
-        return Ok(callable);
+            if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+                tokens.pop()?;
+                callable = callable.as_not_null();
+            }
+
+            let has_func_call_body =
+                next_token_matches(tokens, Token::OpenParens);
+            if has_func_call_body {
+                let func_call_bodies = parse_func_call_bodies(tokens)?;
+                callable = build_func_call(callable, func_call_bodies);
+            };
+            Ok(callable)
+        }
+        _ => Err(error::unexpected_token("identifier or expression", first)),
     }
-    if first == Token::OpenParens {
-        skip_newlines(tokens);
-        let expr: Expr = parse_expr(tokens)?;
-        skip_newlines(tokens);
-        match_next(tokens, Token::CloseParens)?;
-        let mut callable = Term::Expr(Box::new(expr));
-
-        if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
-            tokens.pop()?;
-            callable = callable.as_not_null();
-        }
-
-        let has_func_call_body = next_token_matches(tokens, Token::OpenParens);
-        if has_func_call_body {
-            let func_call_bodies = parse_func_call_bodies(tokens)?;
-            callable = build_func_call(callable, func_call_bodies);
-        };
-        return Ok(callable);
-    };
-    Err(error::unexpected_token("identifier or expression", first))
 }
 
 /// ```text
