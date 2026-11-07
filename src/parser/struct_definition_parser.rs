@@ -10,8 +10,8 @@ use crate::{
 };
 
 /// ```text
-/// <struct_definition> ::=
-///     Struct "{" <struct_field> {"," <struct_field>} [","] "}"
+/// <struct_definition> ::= Struct
+///     "{" <struct_field_definition> {"," <struct_field_definition>} [","] "}"
 /// ```
 pub fn parse_struct_definition(
     tokens: &mut TokenStream,
@@ -22,14 +22,16 @@ pub fn parse_struct_definition(
     let field_list = parse_list(
         tokens,
         ListParserConfig {
-            item_parser: parse_struct_field,
+            item_parser: parse_struct_field_definition,
             opening_token: Some(Token::OpenCurlyBracket),
             closing_token: Token::CloseCurlyBracket,
         },
     )?;
 
     if field_list.is_empty() {
-        return Err(InterpreterError::EmptyStruct { name: struct_name });
+        return Err(InterpreterError::EmptyStructDefinition {
+            name: struct_name,
+        });
     }
 
     Ok(StructDefinition {
@@ -41,7 +43,9 @@ pub fn parse_struct_definition(
 ///```text
 /// <struct_field> ::= Id <type_declaration>
 /// ```
-fn parse_struct_field(tokens: &mut TokenStream) -> Result<(String, Type)> {
+fn parse_struct_field_definition(
+    tokens: &mut TokenStream,
+) -> Result<(String, Type)> {
     let field_name = parse_id(tokens)?;
     let field_type = parse_type_declaration(tokens)?;
 
@@ -105,7 +109,7 @@ mod test {
         #[test]
         fn it_returns_error_for_struct_with_no_fields() {
             let tokens = force_tokenize("struct Empty {};");
-            let expected = InterpreterError::EmptyStruct {
+            let expected = InterpreterError::EmptyStructDefinition {
                 name: "Empty".into(),
             };
             assert_eq!(test_parse_struct_definition(tokens), Err(expected));

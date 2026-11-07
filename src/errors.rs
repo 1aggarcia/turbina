@@ -31,7 +31,8 @@ custom_error! {#[derive(PartialEq, Clone)] pub InterpreterError
     ReassignStructError { struct_name: String } = "Struct '{struct_name}' cannot be redefined",
     UnrecognizedToken { payload: String } = "Unrecognized Token: {payload}",
     ArgCount { got: usize, expected: usize } = "Passed {got} args to function but expected {expected}",
-    EmptyStruct { name: String } = "Cannot declare empty struct: '{name}'",
+    EmptyStructDefinition { name: String } = "Cannot declare empty struct: '{name}'",
+    EmptyStructLiteral = "Cannot instantiate empty struct",
 
     EndOfFile = "End of File: THIS SHOULD NOT BE SHOWN TO USERS",
 }

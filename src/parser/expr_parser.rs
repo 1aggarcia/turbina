@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use crate::models::{
     AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr,
-    FuncBody, FuncCall, Function, Literal, Term, Token, Type, UnaryOp,
+    FuncBody, FuncCall, Function, Literal, StructTerm, Term, Token, Type,
+    UnaryOp,
 };
 
 use crate::errors::{error, InterpreterError, Result};
@@ -255,7 +258,7 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
 ///     | Null
 ///     | Literal
 ///     | <list>
-///     | Id [["!"] <func_call_body>] // will include struct case soon
+///     | Id [<struct_body> | ["!"] <func_call_body>]
 ///     | "(" <expr> ")" ["!"] [<func_call_body>]
 ///
 /// <list> ::= "[" [<expr> {"," <expr>}] "]"
@@ -279,29 +282,79 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
         )?;
         return Ok(Term::List(elements));
     }
-    let mut callable = if let Token::Id(id) = first {
-        Term::Id(id)
-    } else if first == Token::OpenParens {
+    if let Token::Id(id) = first {
+        if next_token_matches(tokens, Token::OpenCurlyBracket) {
+            let struct_body = parse_struct_body(tokens)?;
+            return Ok(Term::Struct(StructTerm {
+                name: id,
+                fields: struct_body,
+            }));
+        }
+
+        let mut callable = Term::Id(id);
+        if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+            tokens.pop()?;
+            callable = callable.as_not_null();
+        }
+
+        let has_func_call_body = next_token_matches(tokens, Token::OpenParens);
+        if has_func_call_body {
+            let func_call_bodies = parse_func_call_bodies(tokens)?;
+            callable = build_func_call(callable, func_call_bodies);
+        };
+        return Ok(callable);
+    }
+    if first == Token::OpenParens {
         skip_newlines(tokens);
-        let expr = parse_expr(tokens)?;
+        let expr: Expr = parse_expr(tokens)?;
         skip_newlines(tokens);
         match_next(tokens, Token::CloseParens)?;
-        Term::Expr(Box::new(expr))
-    } else {
-        return Err(error::unexpected_token("identifier or expression", first));
-    };
+        let mut callable = Term::Expr(Box::new(expr));
 
-    if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
-        tokens.pop()?;
-        callable = callable.as_not_null();
+        if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+            tokens.pop()?;
+            callable = callable.as_not_null();
+        }
+
+        let has_func_call_body = next_token_matches(tokens, Token::OpenParens);
+        if has_func_call_body {
+            let func_call_bodies = parse_func_call_bodies(tokens)?;
+            callable = build_func_call(callable, func_call_bodies);
+        };
+        return Ok(callable);
+    };
+    Err(error::unexpected_token("identifier or expression", first))
+}
+
+/// ```text
+/// <struct_body> ::= "{" struct_field> {"," <struct_field>} [","] "}"
+/// ```
+fn parse_struct_body(
+    tokens: &mut TokenStream,
+) -> Result<HashMap<String, Expr>> {
+    let field_list = parse_list(
+        tokens,
+        ListParserConfig {
+            item_parser: parse_struct_field,
+            opening_token: Some(Token::OpenCurlyBracket),
+            closing_token: Token::CloseCurlyBracket,
+        },
+    )?;
+
+    if field_list.is_empty() {
+        return Err(InterpreterError::EmptyStructLiteral);
     }
 
-    let has_func_call_body = next_token_matches(tokens, Token::OpenParens);
-    if has_func_call_body {
-        let func_call_bodies = parse_func_call_bodies(tokens)?;
-        callable = build_func_call(callable, func_call_bodies);
-    };
-    Ok(callable)
+    Ok(field_list.into_iter().collect())
+}
+
+fn parse_struct_field(tokens: &mut TokenStream) -> Result<(String, Expr)> {
+    let key = parse_id(tokens)?;
+    match_next(tokens, Token::Colon)?;
+    skip_newlines(tokens);
+    let value = parse_expr(tokens)?;
+
+    Ok((key, value))
 }
 
 struct FuncCallBody {
@@ -837,21 +890,68 @@ mod test {
             assert_eq!(parse_tokens(tree), expected);
         }
 
-        #[test]
-        #[ignore = "TODO: implement struct term parsing"]
-        fn it_parses_struct_term() {
-            let input = force_tokenize(r#"User { id: "12345" };"#);
+        #[rstest]
+        #[case::one_line(r#"User { isAdmin: true, id: "12345" };"#)]
+        #[case::spaces_in_fields(r#"User { isAdmin : true, id  :"12345" };"#)]
+        #[case::fields_on_multiple_lines(
+            r#"User {
+                isAdmin: true,
+                id: "12345"
+            };"#
+        )]
+        #[case::fields_values_on_multiple_lines(
+            r#"User {
+                isAdmin:
+                
+                    true,
+
+                id:
+                
+                    "12345",
+            };"#
+        )]
+        fn it_parses_struct_term(#[case] input_str: &str) {
+            let input = force_tokenize(input_str);
 
             let expected_literal = StructTerm {
                 name: "User".into(),
-                fields: HashMap::from([(
-                    "id".into(),
-                    term_expr(str_term("12345")),
-                )]),
+                fields: HashMap::from([
+                    ("isAdmin".into(), term_expr(bool_term(true))),
+                    ("id".into(), term_expr(str_term("12345"))),
+                ]),
             };
             let expected = term_tree(Term::Struct(expected_literal));
 
             assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_empty_struct() {
+            let input = force_tokenize("Empty {};");
+            let expected = InterpreterError::EmptyStructLiteral;
+            assert_eq!(parse_tokens(input), Err(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_struct_with_incomplete_field() {
+            let input = force_tokenize("Test { field };");
+            let expected =
+                error::unexpected_token("Colon", Token::CloseCurlyBracket);
+            assert_eq!(parse_tokens(input), Err(expected));
+        }
+
+        #[test]
+        fn it_returns_error_for_struct_body_on_separate_line() {
+            let input = force_tokenize(
+                r#"
+                User
+
+                    { isAdmin: true, id: "12345" };
+            "#,
+            );
+            let expected =
+                InterpreterError::end_of_statement(Token::OpenCurlyBracket);
+            assert_eq!(parse_tokens(input), Err(expected));
         }
     }
 }
