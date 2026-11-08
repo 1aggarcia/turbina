@@ -377,7 +377,7 @@ fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
 /// - Check that the struct has a definition
 /// - Check that the struct does not have extra undefined fields
 /// - Check that the struct assigns all required fields
-/// - TODO: Check that the field types match defined types
+/// - Check that the field types match defined types
 ///
 /// TODO: Returns pointer type to the struct definition
 fn resolve_struct_term_type(
@@ -391,6 +391,7 @@ fn resolve_struct_term_type(
     };
 
     let mut extra_fields = Vec::<&str>::new();
+    let mut errors = Vec::<InterpreterError>::new();
 
     for (field_name, field_value) in &struct_term.fields {
         let Some(expected_type) = definition.get(field_name) else {
@@ -398,10 +399,16 @@ fn resolve_struct_term_type(
             continue;
         };
         let actual_type = resolve_expr_type(context, field_value)?;
-        if !actual_type.is_assignable_to(expected_type) {}
+        if !actual_type.is_assignable_to(expected_type) {
+            errors.push(InterpreterError::unexpected_struct_field_type(
+                &struct_term.name,
+                field_name,
+                expected_type,
+                &actual_type,
+            ));
+        }
     }
 
-    let mut errors = Vec::<InterpreterError>::new();
     if !extra_fields.is_empty() {
         extra_fields.sort();
         errors.push(InterpreterError::unexpected_struct_fields(
@@ -693,6 +700,36 @@ mod test {
                 // Should be sorted in error message
                 vec!["extra", "extra1"]
             )],
+        )]
+        #[case::field_with_wrong_type(
+            r#"User" {
+                id: 123,
+                name: "valid name",
+                isAdmin: true,
+            };"#,
+            vec![
+                InterpreterError::unexpected_struct_field_type(
+                    "User",
+                    "id",
+                    &Type::String,
+                    &Type::Int
+                ),
+            ],
+        )]
+        #[case::expression_of_wrong_type(
+            r#"User" {
+                id: (5 + (() -> 15)()),
+                name: "valid name",
+                isAdmin: true,
+            };"#,
+            vec![
+                InterpreterError::unexpected_struct_field_type(
+                    "User",
+                    "id",
+                    &Type::String,
+                    &Type::Int
+                ),
+            ],
         )]
         #[case::missing_and_extra_field(
             r#"User {

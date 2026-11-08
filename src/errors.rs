@@ -94,6 +94,19 @@ impl InterpreterError {
         );
         Self::TypeError { message }
     }
+
+    pub fn unexpected_struct_field_type(
+        struct_name: &str,
+        field: &str,
+        expected: &Type,
+        got: &Type,
+    ) -> Self {
+        let message =
+            format!(
+                "Expression of type '{got}' cannot be assigned to field '{field}' expecting type '{expected}' on struct '{struct_name}'",
+            );
+        Self::TypeError { message }
+    }
 }
 
 // allows implicit conversion using ? operator
