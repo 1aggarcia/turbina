@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{
     BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall,
-    Function, Literal, Term, Type,
+    Function, Literal, StructTerm, Term, Type,
 };
 use crate::type_resolver::resolve_statement_type;
 use crate::type_resolver::shared::{
@@ -263,6 +263,7 @@ fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
         Term::Minus(term) => validated_negated_int(context, term),
         Term::Expr(expr) => resolve_expr_type(context, expr),
         Term::FuncCall(call) => resolve_func_call_type(context, call),
+        Term::Struct(term) => resolve_struct_term_type(context, term),
         Term::List(list) => resolve_list_type(context, list),
         Term::NotNull(term) => {
             let datatype = resolve_term_type(context, term)?;
@@ -271,7 +272,6 @@ fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
             }
             Ok(datatype)
         }
-        Term::Struct(_) => todo!("Struct term type resolution"),
     }
 }
 
@@ -372,6 +372,64 @@ fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
     } else {
         Err(errors)
     }
+}
+
+/// - Check that the struct has a definition
+/// - Check that the struct does not have extra undefined fields
+/// - Check that the struct assigns all required fields
+/// - TODO: Check that the field types match defined types
+///
+/// TODO: Returns pointer type to the struct definition
+fn resolve_struct_term_type(
+    context: &TypeContext,
+    struct_term: &StructTerm,
+) -> SubResult {
+    let Some(definition) = context.lookup_struct(&struct_term.name) else {
+        return Err(vec![InterpreterError::UndefinedStructError {
+            name: struct_term.name.clone(),
+        }]);
+    };
+
+    let mut extra_fields = Vec::<&str>::new();
+
+    for (field_name, field_value) in &struct_term.fields {
+        let Some(expected_type) = definition.get(field_name) else {
+            extra_fields.push(field_name);
+            continue;
+        };
+        let actual_type = resolve_expr_type(context, field_value)?;
+        if !actual_type.is_assignable_to(expected_type) {}
+    }
+
+    let mut errors = Vec::<InterpreterError>::new();
+    if !extra_fields.is_empty() {
+        extra_fields.sort();
+        errors.push(InterpreterError::unexpected_struct_fields(
+            &struct_term.name,
+            extra_fields,
+        ));
+    }
+
+    let mut missing_fields: Vec<&str> = definition
+        .keys()
+        .filter(|field| !struct_term.fields.contains_key(*field))
+        .map(|field| field.as_str())
+        .collect();
+
+    if !missing_fields.is_empty() {
+        missing_fields.sort();
+        errors.push(InterpreterError::missing_struct_fields(
+            &struct_term.name,
+            missing_fields,
+        ));
+    }
+
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    // TODO: add new Type for struct definition pointer
+    Ok(Type::Null)
 }
 
 /// Determines the strictest type that applies to all elements in the list
@@ -589,6 +647,84 @@ mod test {
             let tree = make_tree("[];");
             let expected = Type::EmptyList;
             assert_eq!(resolve_type_fresh(tree), ok_without_binding(expected));
+        }
+    }
+
+    mod struct_terms {
+        use std::collections::HashMap;
+
+        use super::*;
+
+        #[test]
+        fn it_returns_error_if_struct_name_is_not_defined() {
+            let input = make_tree("Counter { count: 1 };");
+            let expected = InterpreterError::UndefinedStructError {
+                name: "Counter".into(),
+            };
+            assert_eq!(resolve_type_fresh(input), Err(vec![expected]));
+        }
+
+        #[rstest]
+        #[case::one_missing_field(
+            r#"User { isAdmin: false, id: "2" };"#,
+            vec![InterpreterError::missing_struct_fields(
+                "User",
+                vec!["name"],
+            )]
+        )]
+        #[case::two_missing_fields(
+            r#"User { isAdmin: false };"#,
+            vec![InterpreterError::missing_struct_fields(
+                "User",
+                // Should be sorted in error message
+                vec!["id", "name"],
+            )]
+        )]
+        #[case::extra_fields(
+            r#"User {
+                name: "User 2",
+                id: "2",
+                isAdmin: false,
+                extra: "This field is not allowed",
+                extra1: true,
+            };"#,
+            vec![InterpreterError::unexpected_struct_fields(
+                "User",
+                // Should be sorted in error message
+                vec!["extra", "extra1"]
+            )],
+        )]
+        #[case::missing_and_extra_field(
+            r#"User {
+                name: "User 2",
+                id: "2",
+                extra: "This field is not allowed",
+            };"#,
+            vec![
+                InterpreterError::unexpected_struct_fields(
+                "User",
+                vec!["extra"]
+            ),
+            InterpreterError::missing_struct_fields("User", vec!["isAdmin"])
+            ],
+        )]
+        fn it_returns_error_for_bad_struct(
+            #[case] input: &str,
+            #[case] expected: Vec<InterpreterError>,
+        ) {
+            let input_ast = make_tree(input);
+
+            let mut program = Program::init_with_std_streams();
+            program.struct_definitions.insert(
+                "User".into(),
+                HashMap::from([
+                    ("id".into(), Type::String),
+                    ("name".into(), Type::String),
+                    ("isAdmin".into(), Type::Bool),
+                ]),
+            );
+
+            assert_eq!(resolve_type(&program, &input_ast), Err(expected));
         }
     }
 

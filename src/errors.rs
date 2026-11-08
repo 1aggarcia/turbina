@@ -25,6 +25,7 @@ custom_error! {#[derive(PartialEq, Clone)] pub InterpreterError
     ModuleError { module: String, error: Box<InterpreterError> } = "Error in module '{module}': {error}",
     ReservedId { id: String } = "Identifier '{id}' is reserved, it cannot be redefined",
     UndefinedError { id: String } = "Undefined Error: Identifier '{id}' is undefined",
+    UndefinedStructError { name: String } = "Undefined Error: Struct '{name}' is not defined",
     ReassignError { id: String } = "Reassign Error: Identifier '{id}' cannot be redefined",
     ReassignTypeError { type_alias: String, assigned_type: Type } =
         "Type alias '{type_alias}' cannot be redefined (alias for type '{assigned_type}')",
@@ -58,6 +59,38 @@ impl InterpreterError {
     pub fn bad_return_type(declared: &Type, body: &Type) -> Self {
         let message = format!(
             "Function should return {declared}, but evaluates to {body}"
+        );
+        Self::TypeError { message }
+    }
+
+    pub fn missing_struct_fields(
+        struct_name: &str,
+        missing_fields: Vec<&str>,
+    ) -> Self {
+        let message = format!(
+            "Struct '{}' is missing field(s) {}",
+            struct_name,
+            missing_fields
+                .iter()
+                .map(|field| format!("'{field}'"))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+        Self::TypeError { message }
+    }
+
+    pub fn unexpected_struct_fields(
+        struct_name: &str,
+        unexpected_fields: Vec<&str>,
+    ) -> Self {
+        let message = format!(
+            "Field(s) {} are not defined on struct '{}'",
+            unexpected_fields
+                .iter()
+                .map(|field| format!("'{field}'"))
+                .collect::<Vec<String>>()
+                .join(", "),
+            struct_name,
         );
         Self::TypeError { message }
     }
@@ -143,5 +176,41 @@ pub mod error {
             module: module.into(),
             error: Box::new(error),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn missing_struct_fields_error_should_format_fields_correctly() {
+        let error = InterpreterError::missing_struct_fields(
+            "Test",
+            vec!["field1", "field2"],
+        );
+        assert_eq!(
+            error,
+            InterpreterError::TypeError {
+                message: "Struct 'Test' is missing field(s) 'field1', 'field2'"
+                    .into(),
+            }
+        )
+    }
+
+    #[test]
+    fn unexpected_struct_fields_error_should_format_fields_correctly() {
+        let error = InterpreterError::unexpected_struct_fields(
+            "Test",
+            vec!["field1", "field2"],
+        );
+        assert_eq!(
+            error,
+            InterpreterError::TypeError {
+                message:
+                    "Field(s) 'field1', 'field2' are not defined on struct 'Test'"
+                        .into(),
+            }
+        )
     }
 }
