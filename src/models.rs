@@ -255,6 +255,7 @@ pub enum Type {
     Func { input: Vec<Type>, output: Box<Type> },
     List(Box<Type>),
     Struct(StructFields),
+    StructV2(String), // Should eventually replace above type
 
     // type variable
     Generic(String),
@@ -284,6 +285,7 @@ impl fmt::Display for Type {
                 let formatted = format_struct(fields, 1);
                 write!(f, "{}", formatted)
             }
+            Type::StructV2(name) => write!(f, "{}", name),
             Type::Func { input, output } => {
                 // don't show parentheses for functions with one argument
                 if input.len() == 1 {
