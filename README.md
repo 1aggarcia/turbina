@@ -95,6 +95,29 @@ let map(nums: int[], func: ((int) -> int)) {
 let add(x: int) -> (y: int) -> x + y;
 ```
 
+**Structs**
+```rust
+struct BankAccount {
+    name: string,
+    accountNumber: int,
+    balance: int,
+    birthday: string
+};
+
+struct BankAccount { bank: string } // ERROR: Struct cannot be redefined
+
+let myAccount = BankAccount {
+    name: "Checkings",
+    accountNumber: 123456789,
+    balance: 1000,
+    birthday: "2026-11-08",
+};
+
+let getBalance(account: BankAccount) -> account.balance;
+
+getBalance(myAccount); // 1000
+```
+
 **Pipe Operator**
 ```rust
 // Passes the value on the left side to the right side with '_'
