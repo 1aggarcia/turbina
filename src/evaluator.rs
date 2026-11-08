@@ -5,7 +5,7 @@ use crate::{
     models::{
         AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CodeBlock, CondExpr,
         EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal,
-        Program, Scope, Term,
+        Program, Scope, StructLiteral, StructTerm, Term,
     },
 };
 
@@ -176,6 +176,23 @@ pub fn eval_func_call(
     eval_expr(&mut function_context, *function_body)
 }
 
+fn eval_struct_term(
+    context: &mut EvalContext,
+    struct_term: StructTerm,
+) -> Literal {
+    let evaluated_fields: HashMap<String, Literal> = struct_term
+        .fields
+        .into_iter()
+        .map(|(key, expr)| (key, eval_expr(context, expr)))
+        .collect();
+
+    let literal_struct = StructLiteral {
+        name: struct_term.name,
+        fields: evaluated_fields,
+    };
+    Literal::Struct(literal_struct)
+}
+
 /// Evaluates all expressions in the list passed in
 fn eval_list(context: &mut EvalContext, list: Vec<Expr>) -> Literal {
     let literals = list
@@ -220,8 +237,8 @@ fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
         Term::Expr(expr) => eval_expr(context, *expr),
         Term::FuncCall(call) => eval_wrapped_func_call(context, call),
         Term::NotNull(term) => eval_term(context, *term),
+        Term::Struct(struct_term) => eval_struct_term(context, struct_term),
         Term::List(list) => eval_list(context, list),
-        Term::Struct(_) => todo!("Struct term evaluation"),
     }
 }
 
@@ -435,6 +452,52 @@ mod test_evalutate {
         let input =
             make_tree("struct User { username: string, isAdmin: bool };");
         let expected = Literal::Null;
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_returns_evaluated_struct_fields_for_struct_term() {
+        let input = make_tree(r#"User { username: "User 1", isAdmin: true };"#);
+        let expected = Literal::Struct(StructLiteral {
+            name: "User".into(),
+            fields: HashMap::from([
+                ("username".into(), Literal::String("User 1".into())),
+                ("isAdmin".into(), Literal::Bool(true)),
+            ]),
+        });
+        assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_evaluates_structs_recursively() {
+        let input = make_tree(
+            r#"
+            Parent {
+                id: "test",
+                child: Child {
+                    math: 2 + 5,
+                    list: [20, 26],
+                },
+            };
+        "#,
+        );
+        let expected_child = StructLiteral {
+            name: "Child".into(),
+            fields: HashMap::from([
+                ("math".into(), Literal::Int(7)),
+                (
+                    "list".into(),
+                    Literal::List(vec![Literal::Int(20), Literal::Int(26)]),
+                ),
+            ]),
+        };
+        let expected = Literal::Struct(StructLiteral {
+            name: "Parent".into(),
+            fields: HashMap::from([
+                ("id".into(), Literal::String("test".into())),
+                ("child".into(), Literal::Struct(expected_child)),
+            ]),
+        });
         assert_eq!(evaluate_fresh(input), expected);
     }
 

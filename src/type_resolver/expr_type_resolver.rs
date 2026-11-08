@@ -289,6 +289,9 @@ fn get_literal_type(literal: &Literal) -> SubResult {
         Literal::Closure(closure) => {
             panic!("Closure created before evaluation: {:?}", closure)
         }
+        Literal::Struct(struct_literal) => {
+            Type::StructV2(struct_literal.name.clone())
+        }
     };
     Ok(datatype)
 }

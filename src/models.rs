@@ -188,6 +188,7 @@ pub enum Literal {
     Bool(bool),
     Closure(Closure),
     List(Vec<Literal>),
+    Struct(StructLiteral),
     Null,
 }
 
@@ -210,17 +211,10 @@ impl std::fmt::Display for Literal {
                     .join(", ");
                 write!(f, "[{}]", string_representation)
             }
-            /*
             Self::Struct(struct_literal) => {
-                let serialized_fields = struct_literal
-                    .fields
-                    .iter()
-                    .map(|(key, value)| format!("{}: {:?}", key, value))
-                    .collect::<Vec<String>>()
-                    .join(",\n");
-                write!(f, "{} {{{}}}", struct_literal.name, serialized_fields)
+                let serialized = format_struct_literal(struct_literal, 1);
+                write!(f, "{}", serialized)
             }
-            */
             Self::Null => write!(f, "null"),
         }
     }
@@ -312,6 +306,7 @@ impl fmt::Display for Type {
     }
 }
 
+// TODO: remove this and Type::Struct type
 fn format_struct(
     fields: &HashMap<String, Type>,
     indent_level: usize,
@@ -334,6 +329,36 @@ fn format_struct(
         .join(",\n");
 
     format!("{{\n{}\n{}}}", formatted_fields, base_indent)
+}
+
+fn format_struct_literal(
+    literal: &StructLiteral,
+    indent_level: usize,
+) -> String {
+    let base_indent = " ".repeat((indent_level - 1) * INDENT_SPACES);
+    let indent = " ".repeat(indent_level * INDENT_SPACES);
+
+    let mut sorted_fields = literal.fields.iter().collect::<Vec<_>>();
+    sorted_fields.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    let serialized_fields = sorted_fields
+        .into_iter()
+        .map(|(field, value)| {
+            let type_string = match value {
+                Literal::Struct(nested_struct) => {
+                    format_struct_literal(&nested_struct, indent_level + 1)
+                }
+                other => other.to_string(),
+            };
+            format!("{}{}: {}", indent, field, type_string)
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+
+    format!(
+        "{} {{\n{}\n{}}}",
+        literal.name, serialized_fields, base_indent
+    )
 }
 
 impl Type {
@@ -597,6 +622,12 @@ pub struct StructTerm {
     pub fields: HashMap<String, Expr>,
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub struct StructLiteral {
+    pub name: String,
+    pub fields: HashMap<String, Literal>,
+}
+
 #[cfg(test)]
 pub mod test_utils {
     use super::*;
@@ -712,6 +743,28 @@ r#"{
     }
 
     #[test]
+    fn test_display_formats_simple_struct_literal_readably() {
+        let fields = HashMap::<String, Literal>::from([
+            ("name".into(), Literal::String("1aggarcia".into())),
+            ("testByte".into(), Literal::Byte(15)),
+        ]);
+        let struct_literal = Literal::Struct(StructLiteral {
+            name: "Test".into(),
+            fields,
+        });
+
+        let expected =
+// Unindented to match the indentation of the output
+r#"Test {
+    name: "1aggarcia",
+    testByte: 0x0F
+}"#;
+
+        let result = format!("{}", struct_literal);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
     fn test_display_formats_nested_struct_readably() {
         let fields = HashMap::from([(
             "parent".into(),
@@ -732,6 +785,37 @@ r#"{
     }
 }"#
         );
+    }
+
+    #[test]
+    #[ignore = "TODO: add indentation to non-struct values"]
+    fn test_display_formats_nested_struct_literal_readably() {
+        let child = StructLiteral {
+            name: "Child".into(),
+            fields: HashMap::from([("value".into(), Literal::Int(20))]),
+        };
+        let middle = StructLiteral {
+            name: "Middle".into(),
+            fields: HashMap::from([(
+                "children".into(),
+                Literal::List(vec![Literal::Struct(child)]),
+            )]),
+        };
+        let parent = StructLiteral {
+            name: "Parent".into(),
+            fields: HashMap::from([("middle".into(), Literal::Struct(middle))]),
+        };
+        let expected =
+// Unindented to match the indentation of the output
+r#"Parent {
+    middle: Middle {
+        children: [Child {
+            // list fails to indent here
+            value: 20
+        }]
+    }
+}"#;
+        assert_eq!(format!("{}", Literal::Struct(parent)), expected);
     }
 }
 

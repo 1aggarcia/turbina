@@ -1,0 +1,5 @@
+Test POST request: HttpRequest {
+    body: "{ \"name\": \"New Post\"}",
+    headers: ["Content-Type: application/json"],
+    url: "https://jsonplaceholder.typicode.com/posts"
+}

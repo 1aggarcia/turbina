@@ -1,0 +1,17 @@
+struct HttpRequest {
+    url: string,
+    headers: string[],
+    body: string,
+};
+
+let main() {
+    let testPostRequest = HttpRequest {
+        url: "https://jsonplaceholder.typicode.com/posts",
+        headers: ["Content-Type: application/json"],
+        body: "{ \"name\": \"New Post\"}",
+    };
+
+    println("Test POST request: " + toString(testPostRequest));
+};
+
+main();
