@@ -379,7 +379,7 @@ fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
 /// - Check that the struct assigns all required fields
 /// - Check that the field types match defined types
 ///
-/// TODO: Returns pointer type to the struct definition
+/// Returns pointer type to the struct definition
 fn resolve_struct_term_type(
     context: &TypeContext,
     struct_term: &StructTerm,
@@ -435,8 +435,7 @@ fn resolve_struct_term_type(
         return Err(errors);
     }
 
-    // TODO: add new Type for struct definition pointer
-    Ok(Type::Null)
+    Ok(Type::StructV2(struct_term.name.clone()))
 }
 
 /// Determines the strictest type that applies to all elements in the list
@@ -762,6 +761,38 @@ mod test {
             );
 
             assert_eq!(resolve_type(&program, &input_ast), Err(expected));
+        }
+
+        #[rstest]
+        #[case::literals(
+            r#"User {
+                name: "User 1",
+                count: 15,
+                isAdmin: false,
+            };"#
+        )]
+        #[case::expressions(
+            r#"User {
+                name: "User" + " 1",
+                count: (5 * 3),
+                isAdmin: if (1 == 0) false else true,
+            };"#
+        )]
+        fn it_returns_struct_name_for_valid_struct(#[case] input: &str) {
+            let input_ast = make_tree(input);
+
+            let mut program = Program::init_with_std_streams();
+            program.struct_definitions.insert(
+                "User".into(),
+                HashMap::from([
+                    ("name".into(), Type::String),
+                    ("count".into(), Type::Int),
+                    ("isAdmin".into(), Type::Bool),
+                ]),
+            );
+
+            let expected = ok_without_binding(Type::StructV2("User".into()));
+            assert_eq!(resolve_type(&program, &input_ast), expected);
         }
     }
 
