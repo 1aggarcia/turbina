@@ -235,7 +235,7 @@ fn parse_param(tokens: &mut TokenStream) -> Result<(String, Type)> {
 }
 
 /// ```text
-/// <term> ::= "!" <term> | ["-"] <base_term>
+/// <term> ::= "!" <term> | ["-"] <primary_expr>
 /// ```
 fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
     let first = tokens.peek()?;
@@ -247,10 +247,32 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
     }
     if first == Token::BinaryOp(BinaryOp::Minus) {
         tokens.pop()?;
-        let base_term = parse_base_term(tokens)?;
+        let base_term = parse_postfix_expr(tokens)?;
         return Ok(Term::negative_int(base_term));
     }
-    parse_base_term(tokens)
+    parse_postfix_expr(tokens)
+}
+
+/// ```text
+/// <postfix_expr> ::= <base_term> ["!"] { <postfix_suffix> }
+///
+/// <postfix_suffix> ::= <func_call_body>
+/// ```
+fn parse_postfix_expr(tokens: &mut TokenStream) -> Result<Term> {
+    let mut result = parse_base_term(tokens)?;
+
+    if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+        tokens.pop()?;
+        result = result.as_not_null();
+    }
+
+    let has_postfix_suffix = next_token_matches(tokens, Token::OpenParens);
+    if has_postfix_suffix {
+        let func_call_bodies = parse_func_call_bodies(tokens)?;
+        result = build_func_call(result, func_call_bodies);
+    };
+
+    Ok(result)
 }
 
 /// ```text
@@ -258,8 +280,8 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
 ///     | Null
 ///     | Literal
 ///     | <list>
-///     | Id [<struct_body> | ["!"] <func_call_body>]
-///     | "(" <expr> ")" ["!"] [<func_call_body>]
+///     | Id [<struct_body>]
+///     | "(" <expr> ")"
 ///
 /// <list> ::= "[" [<expr> {"," <expr>}] "]"
 /// ```
@@ -288,39 +310,15 @@ fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
                 }));
             }
 
-            let mut callable = Term::Id(id);
-            if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
-                tokens.pop()?;
-                callable = callable.as_not_null();
-            }
-
-            let has_func_call_body =
-                next_token_matches(tokens, Token::OpenParens);
-            if has_func_call_body {
-                let func_call_bodies = parse_func_call_bodies(tokens)?;
-                callable = build_func_call(callable, func_call_bodies);
-            };
-            Ok(callable)
+            Ok(Term::Id(id))
         }
         Token::OpenParens => {
             skip_newlines(tokens);
             let expr: Expr = parse_expr(tokens)?;
             skip_newlines(tokens);
             match_next(tokens, Token::CloseParens)?;
-            let mut callable = Term::Expr(Box::new(expr));
-
-            if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
-                tokens.pop()?;
-                callable = callable.as_not_null();
-            }
-
-            let has_func_call_body =
-                next_token_matches(tokens, Token::OpenParens);
-            if has_func_call_body {
-                let func_call_bodies = parse_func_call_bodies(tokens)?;
-                callable = build_func_call(callable, func_call_bodies);
-            };
-            Ok(callable)
+            let result = Term::Expr(Box::new(expr));
+            Ok(result)
         }
         _ => Err(error::unexpected_token("identifier or expression", first)),
     }
@@ -361,6 +359,9 @@ struct FuncCallBody {
     args: Vec<Expr>,
     has_non_null_assertion: bool,
 }
+
+// TODO: make the below only process one func call, handle lists
+// and non-null assertions in parse_postfix_expr
 
 /// ```text
 /// <func_call_body> ::= {<arg_list> ["!"]}
@@ -827,6 +828,7 @@ mod test {
                 args: vec![]
             })
         )]
+        #[case::literal("null!;", Term::Literal(Literal::Null))]
         fn it_parses_not_null_assertion(
             #[case] input: &str,
             #[case] not_null: Term,
@@ -835,15 +837,6 @@ mod test {
             let expected = term_tree(not_null.as_not_null());
 
             assert_eq!(parse_tokens(tokens), Ok(expected));
-        }
-
-        #[test]
-        fn it_returns_error_for_not_null_literal() {
-            let tokens = force_tokenize("null!;");
-            let expected = InterpreterError::end_of_statement(Token::UnaryOp(
-                UnaryOp::Not,
-            ));
-            assert_eq!(parse_tokens(tokens), Err(expected));
         }
 
         #[test]

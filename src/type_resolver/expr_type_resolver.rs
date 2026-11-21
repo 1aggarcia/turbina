@@ -265,13 +265,7 @@ fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
         Term::FuncCall(call) => resolve_func_call_type(context, call),
         Term::Struct(term) => resolve_struct_term_type(context, term),
         Term::List(list) => resolve_list_type(context, list),
-        Term::NotNull(term) => {
-            let datatype = resolve_term_type(context, term)?;
-            if let Type::Nullable(inner_type) = datatype {
-                return Ok(*inner_type);
-            }
-            Ok(datatype)
-        }
+        Term::NotNull(term) => resolve_not_null_type(context, term),
     }
 }
 
@@ -486,6 +480,24 @@ fn find_union_type(type1: Type, type2: Type) -> Type {
     }
 }
 
+/// Perform non-null assertion, or error if null is being asserted as not-null
+fn resolve_not_null_type(
+    context: &TypeContext,
+    not_null_term: &Box<Term>,
+) -> SubResult {
+    let datatype = resolve_term_type(context, not_null_term)?;
+    let inner_type: Type = match datatype {
+        Type::Nullable(t) => *t,
+        other => other,
+    };
+
+    if inner_type == Type::Null {
+        Err(InterpreterError::null_as_not_null().into())
+    } else {
+        Ok(inner_type)
+    }
+}
+
 /// Get the return type of a binary operator if the left and right operand
 /// types are valid, otherwise return a validation error
 fn binary_op_return_type(
@@ -595,7 +607,7 @@ mod test {
         #[rstest]
         #[case(Type::String, Type::String)]
         #[case(Type::Int.as_nullable(), Type::Int)]
-        fn it_performs_non_null_assertion(
+        fn it_performs_non_null_assertion_on_id(
             #[case] symbol_type: Type,
             #[case] casted_type: Type,
         ) {
@@ -607,6 +619,22 @@ mod test {
                 resolve_type(&program, &tree),
                 ok_without_binding(casted_type)
             );
+        }
+
+        #[test]
+        fn it_performs_non_null_assertion_on_literal() {
+            let input = make_tree("5!;");
+            assert_eq!(
+                resolve_type_fresh(input),
+                ok_without_binding(Type::Int)
+            );
+        }
+
+        #[test]
+        fn it_returns_error_for_non_null_assertion_on_null() {
+            let input = make_tree("null!;");
+            let expected = vec![InterpreterError::null_as_not_null()];
+            assert_eq!(resolve_type_fresh(input), Err(expected));
         }
 
         #[test]

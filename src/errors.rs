@@ -107,6 +107,12 @@ impl InterpreterError {
             );
         Self::TypeError { message }
     }
+
+    pub fn null_as_not_null() -> Self {
+        Self::TypeError {
+            message: "Cannot assert null as not null".into(),
+        }
+    }
 }
 
 // allows implicit conversion using ? operator
