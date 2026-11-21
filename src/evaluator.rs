@@ -236,6 +236,7 @@ fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
         Term::Not(t) | Term::Minus(t) => eval_negated(context, *t),
         Term::Expr(expr) => eval_expr(context, *expr),
         Term::FuncCall(call) => eval_wrapped_func_call(context, call),
+        Term::FieldAccess(_) => todo!(),
         Term::NotNull(term) => eval_term(context, *term),
         Term::Struct(struct_term) => eval_struct_term(context, struct_term),
         Term::List(list) => eval_list(context, list),

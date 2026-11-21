@@ -9,6 +9,16 @@ pub fn next_token_matches(stream: &mut TokenStream, token: Token) -> bool {
     stream.peek() == Ok(token)
 }
 
+/// Test if the next token in the stream matches one of many given tokens
+/// without consuming it. If the stream is empty, this returns false
+pub fn next_token_matches_any(
+    stream: &mut TokenStream,
+    tokens: Vec<Token>,
+) -> bool {
+    let next = stream.peek();
+    tokens.into_iter().any(|token| next == Ok(token))
+}
+
 /// Take the next token from the stream and compare it to the expected token.
 /// If they do not match, return a syntax error
 pub fn match_next(stream: &mut TokenStream, expected: Token) -> Result<()> {

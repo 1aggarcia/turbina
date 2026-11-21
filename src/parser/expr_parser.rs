@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::models::{
     AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr,
-    FuncBody, FuncCall, Function, Literal, StructTerm, Term, Token, Type,
-    UnaryOp,
+    FieldAccess, FuncBody, FuncCall, Function, Literal, StructTerm, Term,
+    Token, Type, UnaryOp,
 };
 
 use crate::errors::{error, InterpreterError, Result};
@@ -12,7 +12,9 @@ use crate::parser::shared_parsers::{parse_id, parse_list, ListParserConfig};
 use crate::parser::struct_definition_parser::parse_struct_definition;
 use crate::parser::type_alias_parser::parse_type_alias;
 use crate::parser::type_declaration_parser::parse_type_declaration;
-use crate::parser::utils::{match_next, next_token_matches, skip_newlines};
+use crate::parser::utils::{
+    match_next, next_token_matches, next_token_matches_any, skip_newlines,
+};
 use crate::streams::TokenStream;
 
 /// ```text
@@ -254,9 +256,7 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
 }
 
 /// ```text
-/// <postfix_expr> ::= <base_term> ["!"] { <postfix_suffix> }
-///
-/// <postfix_suffix> ::= <func_call_body>
+/// <postfix_expr> ::= <base_term> ["!"] { <postfix_suffix> ["!"] }
 /// ```
 fn parse_postfix_expr(tokens: &mut TokenStream) -> Result<Term> {
     let mut result = parse_base_term(tokens)?;
@@ -266,10 +266,50 @@ fn parse_postfix_expr(tokens: &mut TokenStream) -> Result<Term> {
         result = result.as_not_null();
     }
 
-    let has_postfix_suffix = next_token_matches(tokens, Token::OpenParens);
-    if has_postfix_suffix {
-        let func_call_bodies = parse_func_call_bodies(tokens)?;
-        result = build_func_call(result, func_call_bodies);
+    skip_newlines(tokens);
+    while has_postfix_suffix(tokens) {
+        result = parse_postfix_suffix(tokens, result)?;
+
+        skip_newlines(tokens);
+        if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
+            tokens.pop()?;
+            result = result.as_not_null();
+        }
+        skip_newlines(tokens);
+    }
+
+    Ok(result)
+}
+
+fn has_postfix_suffix(tokens: &mut TokenStream) -> bool {
+    next_token_matches_any(tokens, vec![Token::OpenParens, Token::Dot])
+}
+
+/// ```text
+/// <postfix_suffix> ::=
+///     <func_call_body>
+///     | "." Id
+/// ```
+fn parse_postfix_suffix(tokens: &mut TokenStream, term: Term) -> Result<Term> {
+    let next = tokens.peek()?;
+    let result = match next {
+        Token::OpenParens => {
+            let func_call_bodies = parse_func_call_bodies(tokens)?;
+            build_func_call(term, func_call_bodies)
+        }
+        Token::Dot => {
+            tokens.pop()?;
+            skip_newlines(tokens);
+
+            let field = parse_id(tokens)?;
+            Term::FieldAccess(FieldAccess {
+                r#struct: Box::new(term),
+                field,
+            })
+        }
+        other => {
+            return Err(error::unexpected_token("Open parens or dot", other));
+        }
     };
 
     Ok(result)
@@ -734,6 +774,117 @@ mod test {
             let input = force_tokenize("<>() -> null;");
             let err = InterpreterError::EmptyTypeList;
             assert_eq!(test_parse_function(input), Err(err));
+        }
+    }
+
+    mod postfix_expr {
+        use super::*;
+
+        #[rstest]
+        #[case::id_struct(
+            "user.name;",
+            Term::Id("user".into())
+        )]
+        #[case::literal_struct(
+            r#"User { name: "Bob" }.name;"#,
+            Term::Struct(StructTerm {
+                name: "User".into(),
+                fields: HashMap::from([
+                    ("name".into(), term_expr(str_term("Bob")))
+                ])
+            })
+        )]
+        #[case::expr_in_parenthesis(
+            "(15).name;",
+            Term::Expr(Box::new(term_expr(int_term(15))))
+        )]
+        fn it_parses_one_field_access(
+            #[case] input: &str,
+            #[case] expected_struct: Term,
+        ) {
+            let input = force_tokenize(input);
+
+            let expected_field_access = FieldAccess {
+                r#struct: Box::new(expected_struct),
+                field: "name".into(),
+            };
+            let expected = term_tree(Term::FieldAccess(expected_field_access));
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[rstest]
+        #[case::oneline("globalState.admins.metadata.isRegistered;")]
+        #[case::with_spaces("globalState . admins . metadata . isRegistered;")]
+        #[case::with_newlines(
+            r#"
+            globalState
+                .admins
+                
+                .
+                
+                metadata.
+                isRegistered;
+            "#
+        )]
+        fn it_parses_multiple_field_accesses(#[case] input_str: &str) {
+            let input = force_tokenize(input_str);
+
+            let admins_access = FieldAccess {
+                r#struct: Box::new(Term::Id("globalState".into())),
+                field: "admins".into(),
+            };
+
+            let metadata_access = FieldAccess {
+                r#struct: Box::new(Term::FieldAccess(admins_access)),
+                field: "metadata".into(),
+            };
+
+            let is_registered_access = FieldAccess {
+                r#struct: Box::new(Term::FieldAccess(metadata_access)),
+                field: "isRegistered".into(),
+            };
+
+            let expected = term_tree(Term::FieldAccess(is_registered_access));
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_field_accesses_with_non_null_assertions() {
+            let input = force_tokenize("globalState!.admins!.metadata!;");
+
+            let admins_access = FieldAccess {
+                r#struct: Box::new(
+                    Term::Id("globalState".into()).as_not_null(),
+                ),
+                field: "admins".into(),
+            };
+
+            let metadata_access = FieldAccess {
+                r#struct: Box::new(
+                    Term::FieldAccess(admins_access).as_not_null(),
+                ),
+                field: "metadata".into(),
+            };
+
+            let expected =
+                term_tree(Term::FieldAccess(metadata_access).as_not_null());
+            assert_eq!(parse_tokens(input), Ok(expected));
+        }
+
+        #[test]
+        fn it_parses_function_call_on_field_access() {
+            let input = force_tokenize("user.getName();");
+
+            let expected_access = FieldAccess {
+                r#struct: Box::new(Term::Id("user".into())),
+                field: "getName".into(),
+            };
+            let expected_func_call = FuncCall {
+                func: Box::new(Term::FieldAccess(expected_access)),
+                args: vec![],
+            };
+            let expected = term_tree(Term::FuncCall(expected_func_call));
+            assert_eq!(parse_tokens(input), Ok(expected));
         }
     }
 

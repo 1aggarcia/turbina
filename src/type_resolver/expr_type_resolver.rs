@@ -263,6 +263,7 @@ fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
         Term::Minus(term) => validated_negated_int(context, term),
         Term::Expr(expr) => resolve_expr_type(context, expr),
         Term::FuncCall(call) => resolve_func_call_type(context, call),
+        Term::FieldAccess(_) => todo!(),
         Term::Struct(term) => resolve_struct_term_type(context, term),
         Term::List(list) => resolve_list_type(context, list),
         Term::NotNull(term) => resolve_not_null_type(context, term),

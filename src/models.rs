@@ -525,6 +525,7 @@ pub enum Term {
     Literal(Literal),
     Id(String),
     FuncCall(FuncCall),
+    FieldAccess(FieldAccess),
     Expr(Box<Expr>),
     Not(Box<Term>),   // negate boolean terms
     Minus(Box<Term>), // negate int terms
@@ -538,6 +539,12 @@ pub struct FuncCall {
     // a function might be a variety of expressions, so we use the blanket type `Term`
     pub func: Box<Term>,
     pub args: Vec<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FieldAccess {
+    pub r#struct: Box<Term>,
+    pub field: String,
 }
 
 // to make construction easier
