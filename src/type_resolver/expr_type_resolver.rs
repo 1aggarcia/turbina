@@ -722,7 +722,7 @@ mod test {
     }
 
     mod struct_terms {
-        use std::collections::HashMap;
+        use crate::models::test_utils::field_map;
 
         use super::*;
 
@@ -818,10 +818,10 @@ mod test {
             let mut program = Program::init_with_std_streams();
             program.struct_definitions.insert(
                 "User".into(),
-                HashMap::from([
-                    ("id".into(), Type::String),
-                    ("name".into(), Type::String),
-                    ("isAdmin".into(), Type::Bool),
+                field_map([
+                    ("id", Type::String),
+                    ("name", Type::String),
+                    ("isAdmin", Type::Bool),
                 ]),
             );
 
@@ -849,10 +849,10 @@ mod test {
             let mut program = Program::init_with_std_streams();
             program.struct_definitions.insert(
                 "User".into(),
-                HashMap::from([
-                    ("name".into(), Type::String),
-                    ("count".into(), Type::Int),
-                    ("isAdmin".into(), Type::Bool),
+                field_map([
+                    ("name", Type::String),
+                    ("count", Type::Int),
+                    ("isAdmin", Type::Bool),
                 ]),
             );
 
@@ -862,7 +862,7 @@ mod test {
     }
 
     mod field_access {
-        use crate::models::test_utils::struct_type;
+        use crate::models::test_utils::field_map;
 
         use super::*;
 
@@ -898,10 +898,9 @@ mod test {
             let input = make_tree("point.x;");
 
             let mut program = Program::init_with_std_streams();
-            // TODO: test util for struct type constructor
             program.struct_definitions.insert(
                 "Point".into(),
-                struct_type([("y", Type::Int), ("z", Type::Int)]),
+                field_map([("y", Type::Int), ("z", Type::Int)]),
             );
             program
                 .type_context
@@ -917,10 +916,9 @@ mod test {
             let input = make_tree("point.x;");
 
             let mut program = Program::init_with_std_streams();
-            // TODO: test util for struct type constructor
             program.struct_definitions.insert(
                 "Point".into(),
-                struct_type([("x", Type::Int), ("y", Type::Int)]),
+                field_map([("x", Type::Int), ("y", Type::Int)]),
             );
             program
                 .type_context
@@ -1075,7 +1073,7 @@ mod test {
     }
 
     mod code_block {
-        use std::collections::HashMap;
+        use crate::models::test_utils::field_map;
 
         use super::*;
 
@@ -1193,10 +1191,9 @@ mod test {
         #[test]
         fn it_does_not_allow_global_struct_to_be_redefined() {
             let mut program = Program::init_with_std_streams();
-            program.struct_definitions.insert(
-                "User".into(),
-                HashMap::from([("id".into(), Type::String)]),
-            );
+            program
+                .struct_definitions
+                .insert("User".into(), field_map([("id", Type::String)]));
 
             let input = make_tree(
                 r#"{
@@ -1286,8 +1283,9 @@ mod test {
     }
 
     mod func_call {
+        use crate::models::test_utils::field_map;
+
         use super::*;
-        use std::collections::HashMap;
 
         #[test]
         fn it_returns_error_for_undefined_function() {
@@ -1400,13 +1398,13 @@ mod test {
         #[case::list(generic_t().as_list(), Type::Bool.as_list())]
         #[case::nullable(generic_t().as_nullable(), Type::Bool.as_nullable())]
         #[case::recursive(
-            Type::Struct(HashMap::from([
-                ("x".to_string(), generic_t()),
-                ("y".to_string(), generic_t().as_list()),
+            Type::Struct(field_map([
+                ("x", generic_t()),
+                ("y", generic_t().as_list()),
             ])),
-            Type::Struct(HashMap::from([
-                ("x".to_string(), Type::Bool),
-                ("y".to_string(), Type::Bool.as_list()),
+            Type::Struct(field_map([
+                ("x", Type::Bool),
+                ("y", Type::Bool.as_list()),
             ])),
         )]
         fn it_infers_correct_return_type_from_generic_function_arguments(

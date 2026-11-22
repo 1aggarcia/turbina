@@ -695,15 +695,38 @@ pub mod test_utils {
         Expr::Binary(BinaryExpr { first, rest })
     }
 
-    pub fn struct_type<const N: usize>(
-        mapping: [(&str, Type); N],
-    ) -> HashMap<String, Type> {
-        HashMap::<String, Type>::from(mapping.map(|(k, v)| (k.to_string(), v)))
+    /// Generically convert a field map keyed by &str to one keyed by String
+    pub fn field_map<T, const N: usize>(
+        mapping: [(&str, T); N],
+    ) -> HashMap<String, T> {
+        HashMap::<String, T>::from(mapping.map(|(k, v)| (k.to_string(), v)))
+    }
+
+    pub fn struct_literal<const N: usize>(
+        name: &str,
+        fields: [(&str, Literal); N],
+    ) -> Literal {
+        Literal::Struct(StructLiteral {
+            name: name.to_string(),
+            fields: field_map(fields),
+        })
+    }
+
+    pub fn struct_term<const N: usize>(
+        name: &str,
+        fields: [(&str, Expr); N],
+    ) -> Term {
+        Term::Struct(StructTerm {
+            name: name.to_string(),
+            fields: field_map(fields),
+        })
     }
 }
 
 #[cfg(test)]
 mod test_type {
+    use crate::models::test_utils::{field_map, struct_literal};
+
     use super::*;
 
     #[test]
@@ -728,9 +751,9 @@ mod test_type {
 
     #[test]
     fn test_display_formats_simple_struct_readably() {
-        let fields = HashMap::from([
-            ("names".into(), Type::String.as_list()),
-            ("square".into(), Type::func(&[Type::Int], Type::Int)),
+        let fields = field_map([
+            ("names", Type::String.as_list()),
+            ("square", Type::func(&[Type::Int], Type::Int)),
         ]);
         let struct_type = Type::Struct(fields);
 
@@ -779,11 +802,11 @@ r#"Test {
 
     #[test]
     fn test_display_formats_nested_struct_readably() {
-        let fields = HashMap::from([(
-            "parent".into(),
-            Type::Struct(HashMap::from([(
-                "middle".into(),
-                Type::Struct(HashMap::from([("child".into(), Type::Unknown)])),
+        let fields = field_map([(
+            "parent",
+            Type::Struct(field_map([(
+                "middle",
+                Type::Struct(field_map([("child", Type::Unknown)])),
             )])),
         )]);
         let struct_type = Type::Struct(fields);
@@ -803,21 +826,12 @@ r#"Test {
     #[test]
     #[ignore = "TODO: add indentation to non-struct values"]
     fn test_display_formats_nested_struct_literal_readably() {
-        let child = StructLiteral {
-            name: "Child".into(),
-            fields: HashMap::from([("value".into(), Literal::Int(20))]),
-        };
-        let middle = StructLiteral {
-            name: "Middle".into(),
-            fields: HashMap::from([(
-                "children".into(),
-                Literal::List(vec![Literal::Struct(child)]),
-            )]),
-        };
-        let parent = StructLiteral {
-            name: "Parent".into(),
-            fields: HashMap::from([("middle".into(), Literal::Struct(middle))]),
-        };
+        let child = struct_literal("Child", [("value", Literal::Int(20))]);
+        let middle = struct_literal(
+            "Middle",
+            [("children", Literal::List(vec![child]))],
+        );
+        let parent = struct_literal("Parent", [("middle", middle)]);
         let expected =
 // Unindented to match the indentation of the output
 r#"Parent {
@@ -828,7 +842,7 @@ r#"Parent {
         }]
     }
 }"#;
-        assert_eq!(format!("{}", Literal::Struct(parent)), expected);
+        assert_eq!(format!("{}", parent), expected);
     }
 }
 

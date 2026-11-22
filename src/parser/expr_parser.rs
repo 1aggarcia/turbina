@@ -787,12 +787,10 @@ mod test {
         )]
         #[case::literal_struct(
             r#"User { name: "Bob" }.name;"#,
-            Term::Struct(StructTerm {
-                name: "User".into(),
-                fields: HashMap::from([
-                    ("name".into(), term_expr(str_term("Bob")))
-                ])
-            })
+            struct_term(
+                "User",
+                [("name", term_expr(str_term("Bob")))]
+            ),
         )]
         #[case::expr_in_parenthesis(
             "(15).name;",
@@ -889,9 +887,7 @@ mod test {
     }
 
     mod term {
-        use std::collections::HashMap;
-
-        use crate::{models::StructTerm, parser::test_utils::parse_tokens};
+        use crate::parser::test_utils::parse_tokens;
 
         use super::*;
 
@@ -1057,14 +1053,14 @@ mod test {
         fn it_parses_struct_term(#[case] input_str: &str) {
             let input = force_tokenize(input_str);
 
-            let expected_literal = StructTerm {
-                name: "User".into(),
-                fields: HashMap::from([
-                    ("isAdmin".into(), term_expr(bool_term(true))),
-                    ("id".into(), term_expr(str_term("12345"))),
-                ]),
-            };
-            let expected = term_tree(Term::Struct(expected_literal));
+            let expected_term = struct_term(
+                "User",
+                [
+                    ("isAdmin", term_expr(bool_term(true))),
+                    ("id", term_expr(str_term("12345"))),
+                ],
+            );
+            let expected = term_tree(expected_term);
 
             assert_eq!(parse_tokens(input), Ok(expected));
         }

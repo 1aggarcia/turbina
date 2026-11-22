@@ -36,7 +36,10 @@ mod test {
 
     mod struct_definition {
         use super::*;
-        use crate::{errors::InterpreterError, models::Program};
+        use crate::{
+            errors::InterpreterError,
+            models::{test_utils::field_map, Program},
+        };
         use std::collections::HashMap;
 
         #[test]
@@ -66,10 +69,7 @@ mod test {
             let mut program = Program::init_with_std_streams();
             program.struct_definitions.insert(
                 "User".into(),
-                HashMap::from([
-                    ("id".into(), Type::String),
-                    ("email".into(), Type::String),
-                ]),
+                field_map([("id", Type::String), ("email", Type::String)]),
             );
 
             let input = "struct User { username: string, isAdmin: bool };";

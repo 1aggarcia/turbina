@@ -99,9 +99,9 @@ fn validate_next_statement(
 #[cfg(test)]
 mod test_resolve_import_type {
     use super::*;
-    use std::collections::HashMap;
 
     use crate::errors::{error, InterpreterError};
+    use crate::models::test_utils::field_map;
     use crate::models::Program;
     use crate::parser::test_utils::*;
     use crate::type_resolver::resolve_type;
@@ -162,14 +162,11 @@ mod test_resolve_import_type {
         assert_eq!(program.type_context.get(VALID_MODULE), None);
 
         // Types come from the test data file
-        let expected_struct = Type::Struct(HashMap::from([
-            ("validConstant".into(), Type::Int),
+        let expected_struct = Type::Struct(field_map([
+            ("validConstant", Type::Int),
+            ("validFunction", Type::func(&[Type::Bool], Type::Bool)),
             (
-                "validFunction".into(),
-                Type::func(&[Type::Bool], Type::Bool),
-            ),
-            (
-                "functionReferencingValidConstant".into(),
+                "functionReferencingValidConstant",
                 Type::func(&[Type::Int], Type::Int),
             ),
         ]));

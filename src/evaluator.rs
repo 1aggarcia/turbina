@@ -459,13 +459,14 @@ mod test_evalutate {
     #[test]
     fn it_returns_evaluated_struct_fields_for_struct_term() {
         let input = make_tree(r#"User { username: "User 1", isAdmin: true };"#);
-        let expected = Literal::Struct(StructLiteral {
-            name: "User".into(),
-            fields: HashMap::from([
-                ("username".into(), Literal::String("User 1".into())),
-                ("isAdmin".into(), Literal::Bool(true)),
-            ]),
-        });
+        let expected = struct_literal(
+            "User",
+            [
+                ("username", Literal::String("User 1".into())),
+                ("isAdmin", Literal::Bool(true)),
+            ],
+        );
+
         assert_eq!(evaluate_fresh(input), expected);
     }
 
@@ -482,23 +483,23 @@ mod test_evalutate {
             };
         "#,
         );
-        let expected_child = StructLiteral {
-            name: "Child".into(),
-            fields: HashMap::from([
-                ("math".into(), Literal::Int(7)),
+        let expected_child = struct_literal(
+            "Child",
+            [
+                ("math", Literal::Int(7)),
                 (
-                    "list".into(),
+                    "list",
                     Literal::List(vec![Literal::Int(20), Literal::Int(26)]),
                 ),
-            ]),
-        };
-        let expected = Literal::Struct(StructLiteral {
-            name: "Parent".into(),
-            fields: HashMap::from([
-                ("id".into(), Literal::String("test".into())),
-                ("child".into(), Literal::Struct(expected_child)),
-            ]),
-        });
+            ],
+        );
+        let expected = struct_literal(
+            "Parent",
+            [
+                ("id", Literal::String("test".into())),
+                ("child", expected_child),
+            ],
+        );
         assert_eq!(evaluate_fresh(input), expected);
     }
 
