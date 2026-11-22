@@ -24,7 +24,7 @@ let y = "a string";  // type is inferred
 let a: int = 1;
 let b: bool = true;
 let c: string = "a string";
-let d: byte = 0xBBb;
+let d: byte = 187b;
 
 // lists
 let e: int[] = [1, 2, 3];
@@ -61,9 +61,10 @@ let concat2(a: string, b: string) -> a + b
 // declared return type
 let factorial(x: int): int {
     if (x == 0) {
-        return 1;
+        1
+    } else {
+        x * factorial(x - 1)
     }
-    return x * factorial(x - 1);
 }
 
 // alternatively
