@@ -12,6 +12,7 @@ let main() {
     };
 
     println("Test POST request: " + toString(testPostRequest));
+    println("Url from request: " + testPostRequest.url);
 };
 
 main();

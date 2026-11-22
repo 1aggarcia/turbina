@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::{
-    errors::Result,
+    errors::{InterpreterError, Result},
     models::{
         AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CodeBlock, CondExpr,
-        EvalContext, Expr, FuncBody, FuncCall, Function, LetNode, Literal,
-        Program, Scope, StructLiteral, StructTerm, Term,
+        EvalContext, Expr, FieldAccess, FuncBody, FuncCall, Function, LetNode,
+        Literal, Program, Scope, StructLiteral, StructTerm, Term,
     },
 };
 
@@ -176,6 +176,29 @@ pub fn eval_func_call(
     eval_expr(&mut function_context, *function_body)
 }
 
+fn eval_field_access(
+    context: &mut EvalContext,
+    field_access: FieldAccess,
+) -> Result<Literal> {
+    let struct_literal = eval_term(context, *field_access.r#struct);
+    let Literal::Struct(inner_struct) = struct_literal else {
+        return Err(InterpreterError::SyntaxError {
+            message: "Cannot access field of non-struct literal".into(),
+        });
+    };
+
+    let value = inner_struct.fields.get(&field_access.field).ok_or(
+        InterpreterError::SyntaxError {
+            message: format!(
+                "Struct does not have field '{}'",
+                field_access.field
+            ),
+        },
+    )?;
+
+    Ok(value.clone())
+}
+
 fn eval_struct_term(
     context: &mut EvalContext,
     struct_term: StructTerm,
@@ -236,7 +259,9 @@ fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
         Term::Not(t) | Term::Minus(t) => eval_negated(context, *t),
         Term::Expr(expr) => eval_expr(context, *expr),
         Term::FuncCall(call) => eval_wrapped_func_call(context, call),
-        Term::FieldAccess(_) => todo!(),
+        Term::FieldAccess(field_access) => {
+            eval_field_access(context, field_access).unwrap()
+        }
         Term::NotNull(term) => eval_term(context, *term),
         Term::Struct(struct_term) => eval_struct_term(context, struct_term),
         Term::List(list) => eval_list(context, list),
@@ -383,7 +408,10 @@ fn literal_to_string(literal: Literal) -> Option<String> {
 
 #[cfg(test)]
 mod test_evalutate {
-    use crate::{models::test_utils::*, parser::test_utils::make_tree};
+    use crate::{
+        models::{test_utils::*, Type},
+        parser::test_utils::make_tree,
+    };
 
     use super::*;
     use rstest::rstest;
@@ -501,6 +529,23 @@ mod test_evalutate {
             ],
         );
         assert_eq!(evaluate_fresh(input), expected);
+    }
+
+    #[test]
+    fn it_retreives_struct_field() {
+        let input = make_tree("point.x;");
+
+        let mut program = Program::init_with_std_streams();
+        program.bindings.insert(
+            "point".into(),
+            struct_literal("Point", [("x", Literal::Int(3))]),
+        );
+        program
+            .struct_definitions
+            .insert("Point".into(), field_map([("x", Type::Int)]));
+
+        let expected = Literal::Int(3);
+        assert_eq!(force_evaluate(&mut program, &input), expected);
     }
 
     #[test]

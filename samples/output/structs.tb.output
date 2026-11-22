@@ -3,3 +3,4 @@ Test POST request: HttpRequest {
     headers: ["Content-Type: application/json"],
     url: "https://jsonplaceholder.typicode.com/posts"
 }
+Url from request: https://jsonplaceholder.typicode.com/posts
