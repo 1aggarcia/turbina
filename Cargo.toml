@@ -14,7 +14,6 @@ custom_error = "1.9.2"
 once_cell = "1.20.2"
 rand = "0.9.0"
 regex = "1.11.1"
-rstest = "0.24.0"
 
 # dependencies for WASM integration into JS
 wasm-bindgen = "0.2.100"
@@ -29,3 +28,6 @@ libc = "0.2.191"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rustyline = "17.0.2"
 ureq = "3.4.2"
+
+[dev-dependencies]
+rstest = "0.24.0"
