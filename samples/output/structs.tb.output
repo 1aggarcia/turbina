@@ -1,6 +1,11 @@
-Test POST request: HttpRequest {
-    body: "{ \"name\": \"New Post\"}",
-    headers: ["Content-Type: application/json"],
-    url: "https://jsonplaceholder.typicode.com/posts"
+Current account: BankAccount {
+    accountNumber: 123456789,
+    balance: 1000,
+    birthday: "2026-11-08",
+    name: "Checkings"
 }
-Url from request: https://jsonplaceholder.typicode.com/posts
+
+Widthdrawal Amount: 15
+
+Request URL: https://www.example.com/123456789/balance
+Request body: { "newBalance": 985 }

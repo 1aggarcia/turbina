@@ -2,7 +2,7 @@ use crate::errors::{error, InterpreterError};
 use crate::models::{LetNode, Type};
 use crate::type_resolver::expr_type_resolver::resolve_expr_type;
 use crate::type_resolver::shared::{
-    replace_generic_types, SubResult, TypeContext,
+    resolve_type_declaration_type, SubResult, TypeContext,
 };
 
 /// Check that the expression type does not conflict with the declared type
@@ -18,9 +18,7 @@ pub fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
 
     let expr_type = resolve_expr_type(context, &node.value)?;
     let declared_type = match node.datatype.clone() {
-        Some(t) => {
-            replace_generic_types(t, &|alias| context.lookup_type_alias(alias))
-        }
+        Some(t) => resolve_type_declaration_type(context, t),
         None => return Ok(expr_type),
     };
 
@@ -54,6 +52,8 @@ mod test {
     use rstest::rstest;
 
     mod bindings {
+        use crate::models::test_utils::field_map;
+
         use super::*;
 
         #[rstest]
@@ -99,14 +99,30 @@ mod test {
             "x",
             Type::String.as_nullable().as_list(),
         )]
+        #[case::struct_with_declared_type(
+            r#"let x: User = User { name: "Admin" };"#,
+            "x",
+            Type::StructV2("User".into()),
+        )]
+        #[case::struct_function(
+            r#"let x: (() -> User) = () -> User { name: "Admin" };"#,
+            "x",
+            Type::func(&[], Type::StructV2("User".into())),
+        )]
         fn it_returns_correct_type(
             #[case] input: &str,
             #[case] symbol: &str,
             #[case] datatype: Type,
         ) {
             let tree = make_tree(input);
+
+            let mut program = Program::init_with_std_streams();
+            program
+                .struct_definitions
+                .insert("User".into(), field_map([("name", Type::String)]));
+
             assert_eq!(
-                resolve_type_fresh(tree),
+                resolve_type(&program, &tree),
                 ok_with_binding(symbol, datatype)
             );
         }

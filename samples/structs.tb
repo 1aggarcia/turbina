@@ -4,15 +4,51 @@ struct HttpRequest {
     body: string,
 };
 
-let main() {
-    let testPostRequest = HttpRequest {
-        url: "https://jsonplaceholder.typicode.com/posts",
+struct BankAccount {
+    name: string,
+    accountNumber: int,
+    balance: int,
+    birthday: string
+};
+
+let generateRequest(account: BankAccount): HttpRequest ->
+    HttpRequest {
+        url:
+            "https://www.example.com/"
+            + toString(account.accountNumber)
+            + "/balance",
         headers: ["Content-Type: application/json"],
-        body: "{ \"name\": \"New Post\"}",
+        body: "{ \"newBalance\": " + toString(account.balance) + " }",
     };
 
-    println("Test POST request: " + toString(testPostRequest));
-    println("Url from request: " + testPostRequest.url);
+let getRequestUrl(request: HttpRequest): string -> request.url;
+let getRequestBody(request: HttpRequest): string -> request.body;
+
+let widthdraw(account: BankAccount, amount: int) ->
+    BankAccount {
+        name: account.name,
+        accountNumber: account.accountNumber,
+        balance: account.balance - amount,
+        birthday: account.birthday
+    };
+
+let main() {
+    let myAccount: BankAccount = BankAccount {
+        name: "Checkings",
+        accountNumber: 123456789,
+        balance: 1000,
+        birthday: "2026-11-08",
+    };
+    println("Current account: " + toString(myAccount));
+    println("");
+
+    let widthdrawalAmount = 15;
+    println("Widthdrawal Amount: " + toString(widthdrawalAmount));
+    println("");
+
+    let patchRequest = generateRequest(widthdraw(myAccount, widthdrawalAmount));
+    println("Request URL: " + getRequestUrl(patchRequest)); 
+    println("Request body: " + getRequestBody(patchRequest));   
 };
 
 main();

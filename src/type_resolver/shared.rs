@@ -110,6 +110,26 @@ impl TypeContext<'_> {
     }
 }
 
+/// Replace generic type with a type alias or struct type if one is defined
+/// with the name of the generic type. Leaves all other types untouched.
+/// Behavior is undefined if a type alias and struct share the same name.
+pub fn resolve_type_declaration_type(
+    context: &TypeContext,
+    datatype: Type,
+) -> Type {
+    let mut result = replace_generic_types(datatype, &|alias| {
+        context.lookup_type_alias(alias)
+    });
+
+    result = replace_generic_types(result, &|struct_name| {
+        context
+            .lookup_struct(struct_name)
+            .map(|_| Type::StructV2(struct_name.to_string()))
+    });
+
+    result
+}
+
 /// Recursively replace all generic types/type aliases in the input datatype
 /// with literal types defined by the passed in lookup function. If no literal
 /// type is found, the generic is left in place.

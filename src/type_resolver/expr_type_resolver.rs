@@ -7,7 +7,8 @@ use crate::models::{
 };
 use crate::type_resolver::resolve_statement_type;
 use crate::type_resolver::shared::{
-    replace_generic_types, SubResult, TypeContext,
+    replace_generic_types, resolve_type_declaration_type, SubResult,
+    TypeContext,
 };
 
 pub fn resolve_expr_type(context: &TypeContext, expr: &Expr) -> SubResult {
@@ -175,9 +176,9 @@ fn resolve_function_type(
     let mut param_errors = Vec::<InterpreterError>::new();
 
     for (id, declared_datatype) in function.params.clone() {
-        let datatype = replace_generic_types(declared_datatype, &|alias| {
-            context.lookup_type_alias(alias)
-        });
+        let datatype =
+            resolve_type_declaration_type(&context, declared_datatype);
+
         if context.contains_parameter(&id) {
             param_errors.push(InterpreterError::ReassignError { id });
             continue;
@@ -206,9 +207,7 @@ fn resolve_function_type(
 
     if let Some(declared_return_type) = function.return_type.clone() {
         let return_type =
-            replace_generic_types(declared_return_type, &|alias| {
-                context.lookup_type_alias(alias)
-            });
+            resolve_type_declaration_type(context, declared_return_type);
         if let Err(err) = validate_type_reference(&return_type) {
             return Err(err.into());
         }
@@ -1461,7 +1460,9 @@ mod test {
     }
 
     mod function {
-        use crate::parser::test_utils::make_tree;
+        use crate::{
+            models::test_utils::field_map, parser::test_utils::make_tree,
+        };
 
         use super::*;
 
@@ -1488,17 +1489,41 @@ mod test {
             &[generic_t()],
             generic_t()
         )]
+        #[case::func_accepting_struct(
+            "(user: User) -> user.name;",
+            &[Type::StructV2("User".into())],
+            Type::String,
+        )]
+        #[case::func_returning_struct(
+            r#"(): User -> User { name: "Admin" };"#,
+            &[],
+            Type::StructV2("User".into()),
+        )]
+        #[case::func_accepting_struct_list(
+            "(users: User[]?) -> users!;",
+            &[Type::StructV2("User".into()).as_list().as_nullable()],
+            Type::StructV2("User".into()).as_list(),
+        )]
         fn it_returns_correct_function_type(
             #[case] input: &str,
             #[case] parameter_types: &[Type],
             #[case] return_type: Type,
         ) {
             let tree = make_tree(input);
+
+            let mut program = Program::init_with_std_streams();
+            program
+                .struct_definitions
+                .insert("User".into(), field_map([("name", Type::String)]));
+
             let expected = Type::Func {
                 input: parameter_types.to_vec(),
                 output: Box::new(return_type),
             };
-            assert_eq!(resolve_type_fresh(tree), ok_without_binding(expected));
+            assert_eq!(
+                resolve_type(&program, &tree),
+                ok_without_binding(expected)
+            );
         }
 
         #[test]
