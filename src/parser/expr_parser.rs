@@ -408,10 +408,6 @@ fn parse_struct_body(
         },
     )?;
 
-    if field_list.is_empty() {
-        return Err(InterpreterError::EmptyStructLiteral);
-    }
-
     Ok(field_list.into_iter().collect())
 }
 
@@ -1051,13 +1047,6 @@ mod test {
             let expected = unary_expr_tree(expected_unary_expr);
 
             assert_eq!(parse_tokens(input), Ok(expected));
-        }
-
-        #[test]
-        fn it_returns_error_for_empty_struct() {
-            let input = force_tokenize("Empty {};");
-            let expected = InterpreterError::EmptyStructLiteral;
-            assert_eq!(parse_tokens(input), Err(expected));
         }
 
         #[test]
