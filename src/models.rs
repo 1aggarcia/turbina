@@ -694,6 +694,12 @@ pub mod test_utils {
     pub fn bin_expr(first: Term, rest: Vec<(BinaryOp, Term)>) -> Expr {
         Expr::Binary(BinaryExpr { first, rest })
     }
+
+    pub fn struct_type<const N: usize>(
+        mapping: [(&str, Type); N],
+    ) -> HashMap<String, Type> {
+        HashMap::<String, Type>::from(mapping.map(|(k, v)| (k.to_string(), v)))
+    }
 }
 
 #[cfg(test)]

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{
-    BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FuncBody, FuncCall,
-    Function, Literal, StructTerm, Term, Type,
+    BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FieldAccess, FuncBody,
+    FuncCall, Function, Literal, StructTerm, Term, Type,
 };
 use crate::type_resolver::resolve_statement_type;
 use crate::type_resolver::shared::{
@@ -263,7 +263,9 @@ fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
         Term::Minus(term) => validated_negated_int(context, term),
         Term::Expr(expr) => resolve_expr_type(context, expr),
         Term::FuncCall(call) => resolve_func_call_type(context, call),
-        Term::FieldAccess(_) => todo!(),
+        Term::FieldAccess(field_access) => {
+            resolve_field_access_type(context, field_access)
+        }
         Term::Struct(term) => resolve_struct_term_type(context, term),
         Term::List(list) => resolve_list_type(context, list),
         Term::NotNull(term) => resolve_not_null_type(context, term),
@@ -370,6 +372,37 @@ fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
     } else {
         Err(errors)
     }
+}
+
+/// - Check that the left hand side is a struct
+/// - Check that the right hand side references a field defined on the struct
+///
+/// Returns type of the field being accessed
+fn resolve_field_access_type(
+    context: &TypeContext,
+    field_access: &FieldAccess,
+) -> SubResult {
+    let struct_type = resolve_term_type(context, &*field_access.r#struct)?;
+    let Type::StructV2(struct_name) = struct_type else {
+        return Err(
+            InterpreterError::cannot_read_struct_field(&struct_type).into()
+        );
+    };
+    let Some(struct_definition) = context.lookup_struct(&struct_name) else {
+        return Err(InterpreterError::UndefinedStructError {
+            name: struct_name,
+        }
+        .into());
+    };
+    let Some(field_type) = struct_definition.get(&field_access.field) else {
+        return Err(InterpreterError::unexpected_struct_fields(
+            &struct_name,
+            vec![&field_access.field],
+        )
+        .into());
+    };
+
+    Ok(field_type.clone())
 }
 
 /// - Check that the struct has a definition
@@ -825,6 +858,76 @@ mod test {
 
             let expected = ok_without_binding(Type::StructV2("User".into()));
             assert_eq!(resolve_type(&program, &input_ast), expected);
+        }
+    }
+
+    mod field_access {
+        use crate::models::test_utils::struct_type;
+
+        use super::*;
+
+        #[test]
+        fn it_returns_error_if_lhs_is_not_a_struct() {
+            let input = make_tree("point.x;");
+
+            let mut program = Program::init_with_std_streams();
+            program.type_context.insert("point".into(), Type::Int);
+
+            let expected =
+                InterpreterError::cannot_read_struct_field(&Type::Int);
+            assert_eq!(resolve_type(&program, &input), Err(vec![expected]));
+        }
+
+        #[test]
+        fn it_returns_error_if_lhs_struct_is_not_defined() {
+            let input = make_tree("point.x;");
+
+            let mut program = Program::init_with_std_streams();
+            program
+                .type_context
+                .insert("point".into(), Type::StructV2("Point".into()));
+
+            let expected = InterpreterError::UndefinedStructError {
+                name: "Point".into(),
+            };
+            assert_eq!(resolve_type(&program, &input), Err(vec![expected]));
+        }
+
+        #[test]
+        fn it_returns_error_if_field_does_not_exist_on_struct() {
+            let input = make_tree("point.x;");
+
+            let mut program = Program::init_with_std_streams();
+            // TODO: test util for struct type constructor
+            program.struct_definitions.insert(
+                "Point".into(),
+                struct_type([("y", Type::Int), ("z", Type::Int)]),
+            );
+            program
+                .type_context
+                .insert("point".into(), Type::StructV2("Point".into()));
+
+            let expected =
+                InterpreterError::unexpected_struct_fields("Point", vec!["x"]);
+            assert_eq!(resolve_type(&program, &input), Err(vec![expected]));
+        }
+
+        #[test]
+        fn it_returns_field_type_if_valid() {
+            let input = make_tree("point.x;");
+
+            let mut program = Program::init_with_std_streams();
+            // TODO: test util for struct type constructor
+            program.struct_definitions.insert(
+                "Point".into(),
+                struct_type([("x", Type::Int), ("y", Type::Int)]),
+            );
+            program
+                .type_context
+                .insert("point".into(), Type::StructV2("Point".into()));
+
+            let expected = ok_without_binding(Type::Int);
+            assert_eq!(resolve_type(&program, &input), expected);
         }
     }
 

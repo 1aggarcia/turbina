@@ -67,9 +67,12 @@ impl InterpreterError {
         struct_name: &str,
         missing_fields: Vec<&str>,
     ) -> Self {
+        let use_singular_form = missing_fields.len() == 1;
+
         let message = format!(
-            "Struct '{}' is missing field(s) {}",
+            "Struct '{}' is missing required {} {}",
             struct_name,
+            if use_singular_form { "field" } else { "fields" },
             missing_fields
                 .iter()
                 .map(|field| format!("'{field}'"))
@@ -83,14 +86,17 @@ impl InterpreterError {
         struct_name: &str,
         unexpected_fields: Vec<&str>,
     ) -> Self {
+        let use_singular_form = unexpected_fields.len() == 1;
+
         let message = format!(
-            "Field(s) {} are not defined on struct '{}'",
+            "Struct '{}' does not define {} {}",
+            struct_name,
+            if use_singular_form { "field" } else { "fields" },
             unexpected_fields
                 .iter()
                 .map(|field| format!("'{field}'"))
                 .collect::<Vec<String>>()
                 .join(", "),
-            struct_name,
         );
         Self::TypeError { message }
     }
@@ -112,6 +118,14 @@ impl InterpreterError {
         Self::TypeError {
             message: "Cannot assert null as not null".into(),
         }
+    }
+
+    pub fn cannot_read_struct_field(expr_type: &Type) -> Self {
+        let message = format!(
+            "Cannot access field from a non-struct expression ({}).",
+            expr_type
+        );
+        Self::TypeError { message }
     }
 }
 
@@ -200,35 +214,50 @@ pub mod error {
 
 #[cfg(test)]
 mod test {
+    use rstest::rstest;
+
     use super::*;
 
-    #[test]
-    fn missing_struct_fields_error_should_format_fields_correctly() {
-        let error = InterpreterError::missing_struct_fields(
-            "Test",
-            vec!["field1", "field2"],
-        );
+    #[rstest]
+    #[case::singular(
+        vec!["field1"],
+        "Struct 'Test' is missing required field 'field1'"
+    )]
+    #[case::plural(
+        vec!["field1", "field2"],
+        "Struct 'Test' is missing required fields 'field1', 'field2'"
+    )]
+    fn missing_struct_fields_error_should_format_fields_correctly(
+        #[case] fields: Vec<&str>,
+        #[case] expected: &str,
+    ) {
+        let error = InterpreterError::missing_struct_fields("Test", fields);
         assert_eq!(
             error,
             InterpreterError::TypeError {
-                message: "Struct 'Test' is missing field(s) 'field1', 'field2'"
-                    .into(),
+                message: expected.into(),
             }
         )
     }
 
-    #[test]
-    fn unexpected_struct_fields_error_should_format_fields_correctly() {
-        let error = InterpreterError::unexpected_struct_fields(
-            "Test",
-            vec!["field1", "field2"],
-        );
+    #[rstest]
+    #[case::singular(
+        vec!["field1"],
+        "Struct 'Test' does not define field 'field1'"
+    )]
+    #[case::plural(
+        vec!["field1", "field2"],
+        "Struct 'Test' does not define fields 'field1', 'field2'"
+    )]
+    fn unexpected_struct_fields_error_should_format_fields_correctly(
+        #[case] fields: Vec<&str>,
+        #[case] expected: &str,
+    ) {
+        let error = InterpreterError::unexpected_struct_fields("Test", fields);
         assert_eq!(
             error,
             InterpreterError::TypeError {
-                message:
-                    "Field(s) 'field1', 'field2' are not defined on struct 'Test'"
-                        .into(),
+                message: expected.into(),
             }
         )
     }
