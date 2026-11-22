@@ -268,7 +268,7 @@ fn parse_postfix_expr(tokens: &mut TokenStream) -> Result<UnaryExpr> {
 
     skip_newlines(tokens);
     while has_postfix_suffix(tokens) {
-        result = parse_postfix_suffix(tokens, result)?;
+        result = append_postfix_suffix(tokens, result)?;
 
         skip_newlines(tokens);
         if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
@@ -286,36 +286,62 @@ fn has_postfix_suffix(tokens: &mut TokenStream) -> bool {
 }
 
 /// ```text
-/// <postfix_suffix> ::=
-///     <func_call_body>
-///     | "." Id
+/// <postfix_suffix> ::= <func_call> | <field_access>
 /// ```
-fn parse_postfix_suffix(
+fn append_postfix_suffix(
     tokens: &mut TokenStream,
-    unary_expr: UnaryExpr,
+    current: UnaryExpr,
 ) -> Result<UnaryExpr> {
     let next = tokens.peek()?;
-    let result = match next {
-        Token::OpenParens => {
-            let func_call_bodies = parse_func_call_bodies(tokens)?;
-            build_func_call(unary_expr, func_call_bodies)
-        }
-        Token::Dot => {
-            tokens.pop()?;
-            skip_newlines(tokens);
+    match next {
+        Token::OpenParens => append_func_call(tokens, current),
+        Token::Dot => append_field_access(tokens, current),
+        other => Err(error::unexpected_token(
+            "Function call or field access",
+            other,
+        )),
+    }
+}
 
-            let field = parse_id(tokens)?;
-            UnaryExpr::FieldAccess(FieldAccess {
-                r#struct: Box::new(unary_expr),
-                field,
-            })
-        }
-        other => {
-            return Err(error::unexpected_token("Open parens or dot", other));
-        }
+/// ```text
+/// <func_call> ::= "(" [<expr> {"," <expr>}] ")"
+/// ```
+fn append_func_call(
+    tokens: &mut TokenStream,
+    current: UnaryExpr,
+) -> Result<UnaryExpr> {
+    let args = parse_list(
+        tokens,
+        ListParserConfig {
+            item_parser: parse_expr,
+            opening_token: Some(Token::OpenParens),
+            closing_token: Token::CloseParens,
+        },
+    )?;
+    let func_call = FuncCall {
+        func: Box::new(current),
+        args,
+    };
+    Ok(UnaryExpr::FuncCall(func_call))
+}
+
+/// ```text
+/// <field_access> ::= "." Id
+/// ```
+fn append_field_access(
+    tokens: &mut TokenStream,
+    current: UnaryExpr,
+) -> Result<UnaryExpr> {
+    match_next(tokens, Token::Dot)?;
+    skip_newlines(tokens);
+
+    let field = parse_id(tokens)?;
+    let field_access = FieldAccess {
+        r#struct: Box::new(current),
+        field,
     };
 
-    Ok(result)
+    Ok(UnaryExpr::FieldAccess(field_access))
 }
 
 /// ```text
@@ -396,66 +422,6 @@ fn parse_struct_field(tokens: &mut TokenStream) -> Result<(String, Expr)> {
     let value = parse_expr(tokens)?;
 
     Ok((key, value))
-}
-
-struct FuncCallBody {
-    args: Vec<Expr>,
-    has_non_null_assertion: bool,
-}
-
-// TODO: make the below only process one func call, handle lists
-// and non-null assertions in parse_postfix_expr
-
-/// ```text
-/// <func_call_body> ::= {<arg_list> ["!"]}
-///
-/// <arg_list> ::= "(" [<expr> {"," <expr>}] ")"
-/// ```
-fn parse_func_call_bodies(
-    tokens: &mut TokenStream,
-) -> Result<Vec<FuncCallBody>> {
-    let mut result = Vec::<FuncCallBody>::new();
-    while next_token_matches(tokens, Token::OpenParens) {
-        let args = parse_list(
-            tokens,
-            ListParserConfig {
-                item_parser: parse_expr,
-                opening_token: Some(Token::OpenParens),
-                closing_token: Token::CloseParens,
-            },
-        )?;
-
-        let has_non_null_assertion =
-            next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not));
-        if has_non_null_assertion {
-            tokens.pop()?;
-        }
-
-        result.push(FuncCallBody {
-            args,
-            has_non_null_assertion,
-        });
-    }
-
-    Ok(result)
-}
-
-fn build_func_call(
-    func: UnaryExpr,
-    func_call_bodies: Vec<FuncCallBody>,
-) -> UnaryExpr {
-    let mut outer_func = func;
-    for body in func_call_bodies {
-        let func_call = FuncCall {
-            func: Box::new(outer_func),
-            args: body.args,
-        };
-        outer_func = UnaryExpr::FuncCall(func_call);
-        if body.has_non_null_assertion {
-            outer_func = outer_func.as_not_null();
-        }
-    }
-    outer_func
 }
 
 /// If the expression contains one unary expr, unwrap it.
