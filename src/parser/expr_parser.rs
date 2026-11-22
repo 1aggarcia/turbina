@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::models::{
     AbstractSyntaxTree, BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr,
-    FieldAccess, FuncBody, FuncCall, Function, Literal, StructTerm, Term,
-    Token, Type, UnaryOp,
+    FieldAccess, FuncBody, FuncCall, Function, Literal, StructPrimaryExpr,
+    Token, Type, UnaryExpr, UnaryOp,
 };
 
 use crate::errors::{error, InterpreterError, Result};
@@ -181,7 +181,7 @@ static MAX_EXPRESSION_PRECEDENCE: u8 = 4;
 /// <expr_lvl_0> ::= <expr_lvl_1> {(And | Or) <expr_lvl_1>}
 /// <expr_lvl_1> :: = <expr_lvl_2> {(== | != | < | <= | > | >=) <expr_lvl_2>}
 /// <expr_lvl_2> :: = <expr_lvl_3> {(+ | - | "|" | ^) <expr_lvl_3>}
-/// <expr_lvl_3> :: = <term> {(* | / | % | & | >> | <<) <term>}
+/// <expr_lvl_3> :: = <unary_expr> {(* | / | % | & | >> | <<) <unary_expr>}
 /// ```
 /// Operator precedence is expressed by giving levels to each expression; e.g.
 /// `<expr_lvl_2>` has precedence above `<expr_lvl_3>` but not `<expr_lvl_1>`.
@@ -192,7 +192,7 @@ fn parse_binary_expr(
 ) -> Result<BinaryExpr> {
     if precedence > MAX_EXPRESSION_PRECEDENCE {
         let expr = BinaryExpr {
-            first: parse_term(tokens)?,
+            first: parse_unary_expr(tokens)?,
             rest: vec![],
         };
         return Ok(expr);
@@ -209,7 +209,7 @@ fn parse_binary_expr(
         };
         skip_newlines(tokens);
         let expr = parse_binary_expr(tokens, precedence + 1)?;
-        rest.push((operator, expr_as_term(expr)));
+        rest.push((operator, expr_as_unary_expr(expr)));
     }
 
     // avoid re-wrapping expressions as another expression if possible
@@ -217,7 +217,7 @@ fn parse_binary_expr(
         return Ok(first);
     }
     Ok(BinaryExpr {
-        first: expr_as_term(first),
+        first: expr_as_unary_expr(first),
         rest,
     })
 }
@@ -237,20 +237,20 @@ fn parse_param(tokens: &mut TokenStream) -> Result<(String, Type)> {
 }
 
 /// ```text
-/// <term> ::= "!" <term> | ["-"] <postfix_expr>
+/// <unary_expr> ::= "!" <unary_expr> | ["-"] <postfix_expr>
 /// ```
-fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
+fn parse_unary_expr(tokens: &mut TokenStream) -> Result<UnaryExpr> {
     let first = tokens.peek()?;
 
     if first == Token::UnaryOp(UnaryOp::Not) {
         tokens.pop()?;
-        let inner_term = parse_term(tokens)?;
-        return Ok(Term::negated_bool(inner_term));
+        let inner_unary_expr = parse_unary_expr(tokens)?;
+        return Ok(UnaryExpr::negated_bool(inner_unary_expr));
     }
     if first == Token::BinaryOp(BinaryOp::Minus) {
         tokens.pop()?;
         let postfix_expr = parse_postfix_expr(tokens)?;
-        return Ok(Term::negative_int(postfix_expr));
+        return Ok(UnaryExpr::negative_int(postfix_expr));
     }
     parse_postfix_expr(tokens)
 }
@@ -258,7 +258,7 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
 /// ```text
 /// <postfix_expr> ::= <primary_expr> ["!"] { <postfix_suffix> ["!"] }
 /// ```
-fn parse_postfix_expr(tokens: &mut TokenStream) -> Result<Term> {
+fn parse_postfix_expr(tokens: &mut TokenStream) -> Result<UnaryExpr> {
     let mut result = parse_primary_expr(tokens)?;
 
     if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
@@ -290,20 +290,23 @@ fn has_postfix_suffix(tokens: &mut TokenStream) -> bool {
 ///     <func_call_body>
 ///     | "." Id
 /// ```
-fn parse_postfix_suffix(tokens: &mut TokenStream, term: Term) -> Result<Term> {
+fn parse_postfix_suffix(
+    tokens: &mut TokenStream,
+    unary_expr: UnaryExpr,
+) -> Result<UnaryExpr> {
     let next = tokens.peek()?;
     let result = match next {
         Token::OpenParens => {
             let func_call_bodies = parse_func_call_bodies(tokens)?;
-            build_func_call(term, func_call_bodies)
+            build_func_call(unary_expr, func_call_bodies)
         }
         Token::Dot => {
             tokens.pop()?;
             skip_newlines(tokens);
 
             let field = parse_id(tokens)?;
-            Term::FieldAccess(FieldAccess {
-                r#struct: Box::new(term),
+            UnaryExpr::FieldAccess(FieldAccess {
+                r#struct: Box::new(unary_expr),
                 field,
             })
         }
@@ -325,11 +328,11 @@ fn parse_postfix_suffix(tokens: &mut TokenStream, term: Term) -> Result<Term> {
 ///
 /// <list> ::= "[" [<expr> {"," <expr>}] "]"
 /// ```
-fn parse_primary_expr(tokens: &mut TokenStream) -> Result<Term> {
+fn parse_primary_expr(tokens: &mut TokenStream) -> Result<UnaryExpr> {
     let first = tokens.pop()?;
     match first {
-        Token::Null => Ok(Term::Literal(Literal::Null)),
-        Token::Literal(lit) => Ok(Term::Literal(lit)),
+        Token::Null => Ok(UnaryExpr::Literal(Literal::Null)),
+        Token::Literal(lit) => Ok(UnaryExpr::Literal(lit)),
         Token::OpenSquareBracket => {
             let elements = parse_list(
                 tokens,
@@ -339,25 +342,25 @@ fn parse_primary_expr(tokens: &mut TokenStream) -> Result<Term> {
                     closing_token: Token::CloseSquareBracket,
                 },
             )?;
-            Ok(Term::List(elements))
+            Ok(UnaryExpr::List(elements))
         }
         Token::Id(id) => {
             if next_token_matches(tokens, Token::OpenCurlyBracket) {
                 let struct_body = parse_struct_body(tokens)?;
-                return Ok(Term::Struct(StructTerm {
+                return Ok(UnaryExpr::Struct(StructPrimaryExpr {
                     name: id,
                     fields: struct_body,
                 }));
             }
 
-            Ok(Term::Id(id))
+            Ok(UnaryExpr::Id(id))
         }
         Token::OpenParens => {
             skip_newlines(tokens);
             let expr: Expr = parse_expr(tokens)?;
             skip_newlines(tokens);
             match_next(tokens, Token::CloseParens)?;
-            let result = Term::Expr(Box::new(expr));
+            let result = UnaryExpr::Expr(Box::new(expr));
             Ok(result)
         }
         _ => Err(error::unexpected_token("identifier or expression", first)),
@@ -437,14 +440,17 @@ fn parse_func_call_bodies(
     Ok(result)
 }
 
-fn build_func_call(func: Term, func_call_bodies: Vec<FuncCallBody>) -> Term {
+fn build_func_call(
+    func: UnaryExpr,
+    func_call_bodies: Vec<FuncCallBody>,
+) -> UnaryExpr {
     let mut outer_func = func;
     for body in func_call_bodies {
         let func_call = FuncCall {
             func: Box::new(outer_func),
             args: body.args,
         };
-        outer_func = Term::FuncCall(func_call);
+        outer_func = UnaryExpr::FuncCall(func_call);
         if body.has_non_null_assertion {
             outer_func = outer_func.as_not_null();
         }
@@ -452,13 +458,13 @@ fn build_func_call(func: Term, func_call_bodies: Vec<FuncCallBody>) -> Term {
     outer_func
 }
 
-/// If the expression contains one term, unwrap the term.
-/// Otherwise, wrap the expression into a term
-fn expr_as_term(expr: BinaryExpr) -> Term {
+/// If the expression contains one unary expr, unwrap it.
+/// Otherwise, wrap the expression into a unary expr
+fn expr_as_unary_expr(expr: BinaryExpr) -> UnaryExpr {
     if expr.rest.is_empty() {
         expr.first
     } else {
-        Term::Expr(Box::new(Expr::Binary(expr)))
+        UnaryExpr::Expr(Box::new(Expr::Binary(expr)))
     }
 }
 
@@ -515,8 +521,10 @@ mod test {
         fn it_parses_string_plus_string() {
             let input = force_tokenize("\"a\" + \"b\";");
 
-            let expected =
-                bin_expr(str_term("a"), vec![(BinaryOp::Plus, str_term("b"))]);
+            let expected = bin_expr(
+                str_unary_expr("a"),
+                vec![(BinaryOp::Plus, str_unary_expr("b"))],
+            );
             assert_eq!(test_parse_expr(input), Ok(expected));
         }
 
@@ -524,11 +532,13 @@ mod test {
         fn it_parses_expression_in_parens() {
             let input = force_tokenize("3 * (2 - 5);");
 
-            let inner_expr =
-                bin_expr(int_term(2), vec![(BinaryOp::Minus, int_term(5))]);
+            let inner_expr = bin_expr(
+                int_unary_expr(2),
+                vec![(BinaryOp::Minus, int_unary_expr(5))],
+            );
             let expected = bin_expr(
-                int_term(3),
-                vec![(BinaryOp::Star, Term::Expr(Box::new(inner_expr)))],
+                int_unary_expr(3),
+                vec![(BinaryOp::Star, UnaryExpr::Expr(Box::new(inner_expr)))],
             );
             assert_eq!(test_parse_expr(input), Ok(expected));
         }
@@ -537,14 +547,18 @@ mod test {
         fn it_respects_boolean_operator_precedence() {
             let input = force_tokenize("1 == 0 || 1 != 0;");
 
-            let left =
-                bin_expr(int_term(1), vec![(BinaryOp::Equals, int_term(0))]);
-            let right =
-                bin_expr(int_term(1), vec![(BinaryOp::NotEq, int_term(0))]);
+            let left = bin_expr(
+                int_unary_expr(1),
+                vec![(BinaryOp::Equals, int_unary_expr(0))],
+            );
+            let right = bin_expr(
+                int_unary_expr(1),
+                vec![(BinaryOp::NotEq, int_unary_expr(0))],
+            );
 
             let expected = bin_expr(
-                Term::Expr(Box::new(left)),
-                vec![(BinaryOp::Or, Term::Expr(Box::new(right)))],
+                UnaryExpr::Expr(Box::new(left)),
+                vec![(BinaryOp::Or, UnaryExpr::Expr(Box::new(right)))],
             );
             assert_eq!(test_parse_expr(input), Ok(expected));
         }
@@ -554,9 +568,9 @@ mod test {
             let input = force_tokenize("if (cond) \"abc\" else \"def\";");
 
             let expected = Expr::Cond(CondExpr {
-                cond: Box::new(term_expr(Term::Id("cond".into()))),
-                if_true: Box::new(term_expr(str_term("abc"))),
-                if_false: Box::new(term_expr(str_term("def"))),
+                cond: Box::new(unary_expr(UnaryExpr::Id("cond".into()))),
+                if_true: Box::new(unary_expr(str_unary_expr("abc"))),
+                if_false: Box::new(unary_expr(str_unary_expr("def"))),
             });
 
             assert_eq!(test_parse_expr(input), Ok(expected));
@@ -567,16 +581,16 @@ mod test {
             let input = force_tokenize("x() + y();");
 
             let x_call = FuncCall {
-                func: Box::new(Term::Id("x".into())),
+                func: Box::new(UnaryExpr::Id("x".into())),
                 args: vec![],
             };
             let y_call = FuncCall {
-                func: Box::new(Term::Id("y".into())),
+                func: Box::new(UnaryExpr::Id("y".into())),
                 args: vec![],
             };
             let expr = BinaryExpr {
-                first: Term::FuncCall(x_call),
-                rest: vec![(BinaryOp::Plus, Term::FuncCall(y_call))],
+                first: UnaryExpr::FuncCall(x_call),
+                rest: vec![(BinaryOp::Plus, UnaryExpr::FuncCall(y_call))],
             };
             let expected = Expr::Binary(expr);
 
@@ -595,8 +609,8 @@ mod test {
             #[case] left_val: i32,
             #[case] right_val: i32,
         ) {
-            let left = int_term(left_val);
-            let right = int_term(right_val);
+            let left = int_unary_expr(left_val);
+            let right = int_unary_expr(right_val);
             let expected = bin_expr(left, vec![(operator, right)]);
             assert_eq!(test_parse_expr(input), Ok(expected));
         }
@@ -704,24 +718,24 @@ mod test {
         }
 
         #[rstest]
-        #[case::thunk("() -> 3;", vec![], vec![], None, int_term(3))]
+        #[case::thunk("() -> 3;", vec![], vec![], None, int_unary_expr(3))]
         #[case::many_params("(x: int, y: string) -> 3;",
             vec![],
             vec![("x", Type::Int), ("y".into(), Type::String)],
             None,
-            int_term(3)
+            int_unary_expr(3)
         )]
         #[case::declared_return_type("(): bool -> true;",
             vec![],
             vec![],
             Some(Type::Bool),
-            Term::Literal(Literal::Bool(true))
+            UnaryExpr::Literal(Literal::Bool(true))
         )]
         #[case::one_generic_type("<T>(x: T) -> x;",
             vec!["T"],
             vec![("x", Type::Generic("T".into()))],
             None,
-            Term::Id("x".into())
+            UnaryExpr::Id("x".into())
         )]
         #[case::many_generic_types("<A, B, C> (a: A, b: B, c: C): C -> null;",
             vec!["A", "B", "C"],
@@ -731,20 +745,20 @@ mod test {
                 ("c", Type::Generic("C".into())),
             ],
             Some(Type::Generic("C".into())),
-            Term::Literal(Literal::Null)
+            UnaryExpr::Literal(Literal::Null)
         )]
         #[case::implicit_param_types("(x, y) -> false;",
             vec![],
             vec![("x", Type::Unknown), ("y", Type::Unknown)],
             None,
-            bool_term(false)
+            bool_unary_expr(false)
         )]
         fn it_parses_function(
             #[case] input: &str,
             #[case] type_params: Vec<&str>,
             #[case] params: Vec<(&str, Type)>,
             #[case] return_type: Option<Type>,
-            #[case] body_term: Term,
+            #[case] body_expr: UnaryExpr,
         ) {
             let tokens = force_tokenize(input);
             let expected = Function {
@@ -757,7 +771,7 @@ mod test {
                     .map(|(p, t)| (p.to_owned(), t))
                     .collect(),
                 return_type,
-                body: FuncBody::Expr(Box::new(term_expr(body_term))),
+                body: FuncBody::Expr(Box::new(unary_expr(body_expr))),
             };
             assert_eq!(test_parse_function(tokens), Ok(expected));
         }
@@ -783,22 +797,22 @@ mod test {
         #[rstest]
         #[case::id_struct(
             "user.name;",
-            Term::Id("user".into())
+            UnaryExpr::Id("user".into())
         )]
         #[case::literal_struct(
             r#"User { name: "Bob" }.name;"#,
-            struct_term(
+            struct_primary_expr(
                 "User",
-                [("name", term_expr(str_term("Bob")))]
+                [("name", unary_expr(str_unary_expr("Bob")))]
             ),
         )]
         #[case::expr_in_parenthesis(
             "(15).name;",
-            Term::Expr(Box::new(term_expr(int_term(15))))
+            UnaryExpr::Expr(Box::new(unary_expr(int_unary_expr(15))))
         )]
         fn it_parses_one_field_access(
             #[case] input: &str,
-            #[case] expected_struct: Term,
+            #[case] expected_struct: UnaryExpr,
         ) {
             let input = force_tokenize(input);
 
@@ -806,7 +820,8 @@ mod test {
                 r#struct: Box::new(expected_struct),
                 field: "name".into(),
             };
-            let expected = term_tree(Term::FieldAccess(expected_field_access));
+            let expected =
+                unary_expr_tree(UnaryExpr::FieldAccess(expected_field_access));
             assert_eq!(parse_tokens(input), Ok(expected));
         }
 
@@ -828,21 +843,22 @@ mod test {
             let input = force_tokenize(input_str);
 
             let admins_access = FieldAccess {
-                r#struct: Box::new(Term::Id("globalState".into())),
+                r#struct: Box::new(UnaryExpr::Id("globalState".into())),
                 field: "admins".into(),
             };
 
             let metadata_access = FieldAccess {
-                r#struct: Box::new(Term::FieldAccess(admins_access)),
+                r#struct: Box::new(UnaryExpr::FieldAccess(admins_access)),
                 field: "metadata".into(),
             };
 
             let is_registered_access = FieldAccess {
-                r#struct: Box::new(Term::FieldAccess(metadata_access)),
+                r#struct: Box::new(UnaryExpr::FieldAccess(metadata_access)),
                 field: "isRegistered".into(),
             };
 
-            let expected = term_tree(Term::FieldAccess(is_registered_access));
+            let expected =
+                unary_expr_tree(UnaryExpr::FieldAccess(is_registered_access));
             assert_eq!(parse_tokens(input), Ok(expected));
         }
 
@@ -852,20 +868,21 @@ mod test {
 
             let admins_access = FieldAccess {
                 r#struct: Box::new(
-                    Term::Id("globalState".into()).as_not_null(),
+                    UnaryExpr::Id("globalState".into()).as_not_null(),
                 ),
                 field: "admins".into(),
             };
 
             let metadata_access = FieldAccess {
                 r#struct: Box::new(
-                    Term::FieldAccess(admins_access).as_not_null(),
+                    UnaryExpr::FieldAccess(admins_access).as_not_null(),
                 ),
                 field: "metadata".into(),
             };
 
-            let expected =
-                term_tree(Term::FieldAccess(metadata_access).as_not_null());
+            let expected = unary_expr_tree(
+                UnaryExpr::FieldAccess(metadata_access).as_not_null(),
+            );
             assert_eq!(parse_tokens(input), Ok(expected));
         }
 
@@ -874,27 +891,31 @@ mod test {
             let input = force_tokenize("user.getName();");
 
             let expected_access = FieldAccess {
-                r#struct: Box::new(Term::Id("user".into())),
+                r#struct: Box::new(UnaryExpr::Id("user".into())),
                 field: "getName".into(),
             };
             let expected_func_call = FuncCall {
-                func: Box::new(Term::FieldAccess(expected_access)),
+                func: Box::new(UnaryExpr::FieldAccess(expected_access)),
                 args: vec![],
             };
-            let expected = term_tree(Term::FuncCall(expected_func_call));
+            let expected =
+                unary_expr_tree(UnaryExpr::FuncCall(expected_func_call));
             assert_eq!(parse_tokens(input), Ok(expected));
         }
     }
 
-    mod term {
+    mod unary_expr {
         use crate::parser::test_utils::parse_tokens;
 
         use super::*;
 
         #[rstest]
-        #[case(int_token(2), term_tree(int_term(2)))]
-        #[case(string_token("prueba test"), term_tree(str_term("prueba test")))]
-        #[case(id_token("name"), term_tree(Term::Id("name".into())))]
+        #[case(int_token(2), unary_expr_tree(int_unary_expr(2)))]
+        #[case(
+            string_token("prueba test"),
+            unary_expr_tree(str_unary_expr("prueba test"))
+        )]
+        #[case(id_token("name"), unary_expr_tree(UnaryExpr::Id("name".into())))]
         fn it_parses_one_token_to_one_node(
             #[case] token: Token,
             #[case] node: AbstractSyntaxTree,
@@ -920,9 +941,9 @@ mod test {
             #[case] input: Vec<Token>,
             #[case] negative_num: i32,
         ) {
-            let inner_term = int_term(negative_num * -1);
-            let term = Term::negative_int(inner_term);
-            let expected = term_tree(term);
+            let inner_expr = int_unary_expr(negative_num * -1);
+            let outer_expr = UnaryExpr::negative_int(inner_expr);
+            let expected = unary_expr_tree(outer_expr);
             assert_eq!(parse_tokens(input), Ok(expected));
         }
 
@@ -931,18 +952,19 @@ mod test {
             let input = force_tokenize("-(9);");
 
             // the parentheses creates this unfortunate indirection in the AST
-            let nine = term_expr(int_term(9));
-            let nine_as_term = Term::Expr(Box::new(nine));
-            let negative_nine = Term::negative_int(nine_as_term);
-            let expected_tree = term_tree(negative_nine);
+            let nine = unary_expr(int_unary_expr(9));
+            let nine_as_unary_expr = UnaryExpr::Expr(Box::new(nine));
+            let negative_nine = UnaryExpr::negative_int(nine_as_unary_expr);
+            let expected_tree = unary_expr_tree(negative_nine);
 
             assert_eq!(parse_tokens(input), Ok(expected_tree));
         }
 
         #[test]
         fn it_parses_negated_boolean() {
-            let term = Term::negated_bool(Term::Id("someVariable".into()));
-            let expected = term_tree(term);
+            let expr =
+                UnaryExpr::negated_bool(UnaryExpr::Id("someVariable".into()));
+            let expected = unary_expr_tree(expr);
             assert_eq!(
                 parse_tokens(force_tokenize("!someVariable;")),
                 Ok(expected)
@@ -951,37 +973,37 @@ mod test {
 
         #[test]
         fn it_parses_many_negations() {
-            let term = Term::negated_bool(Term::negated_bool(
-                Term::negated_bool(Term::Id("x".into())),
+            let expr = UnaryExpr::negated_bool(UnaryExpr::negated_bool(
+                UnaryExpr::negated_bool(UnaryExpr::Id("x".into())),
             ));
-            let expected = term_tree(term);
+            let expected = unary_expr_tree(expr);
             assert_eq!(parse_tokens(force_tokenize("!!!x;")), Ok(expected));
         }
 
         #[rstest]
-        #[case::id("x!;", Term::Id("x".into()))]
+        #[case::id("x!;", UnaryExpr::Id("x".into()))]
         #[case::expression(
             "(3 + 4)!;",
-            Term::Expr(
+            UnaryExpr::Expr(
                 Box::new(
-                    bin_expr(int_term(3), vec![(BinaryOp::Plus, int_term(4))])
+                    bin_expr(int_unary_expr(3), vec![(BinaryOp::Plus, int_unary_expr(4))])
                 )
             )
         )]
         #[case::function_call(
             "f!()!;",
-            Term::FuncCall(FuncCall {
-                func: Box::new(Term::Id("f".into()).as_not_null()),
+            UnaryExpr::FuncCall(FuncCall {
+                func: Box::new(UnaryExpr::Id("f".into()).as_not_null()),
                 args: vec![]
             })
         )]
-        #[case::literal("null!;", Term::Literal(Literal::Null))]
+        #[case::literal("null!;", UnaryExpr::Literal(Literal::Null))]
         fn it_parses_not_null_assertion(
             #[case] input: &str,
-            #[case] not_null: Term,
+            #[case] not_null: UnaryExpr,
         ) {
             let tokens = force_tokenize(input);
-            let expected = term_tree(not_null.as_not_null());
+            let expected = unary_expr_tree(not_null.as_not_null());
 
             assert_eq!(parse_tokens(tokens), Ok(expected));
         }
@@ -1004,28 +1026,28 @@ mod test {
 
         #[rstest]
         #[case::empty("doSomething();", FuncCall {
-            func: Box::new(Term::Id("doSomething".into())), args: vec![]
+            func: Box::new(UnaryExpr::Id("doSomething".into())), args: vec![]
         })]
         #[case::one_arg("print(3);", FuncCall {
-            func: Box::new(Term::Id("print".into())), args: vec![term_expr(int_term(3))]
+            func: Box::new(UnaryExpr::Id("print".into())), args: vec![unary_expr(int_unary_expr(3))]
         })]
         #[case::many_args("list(1, 2, 3);", FuncCall {
-            func: Box::new(Term::Id("list".into())),
-            args: [1, 2, 3].iter().map(|i| term_expr(int_term(*i))).collect()
+            func: Box::new(UnaryExpr::Id("list".into())),
+            args: [1, 2, 3].iter().map(|i| unary_expr(int_unary_expr(*i))).collect()
         })]
         #[case::curried_function("x(1)(2);", FuncCall {
-            func: Box::new(Term::FuncCall(FuncCall {
-                func: Box::new(Term::Id("x".into())),
-                args: vec![term_expr(int_term(1))],
+            func: Box::new(UnaryExpr::FuncCall(FuncCall {
+                func: Box::new(UnaryExpr::Id("x".into())),
+                args: vec![unary_expr(int_unary_expr(1))],
             })),
-            args: vec![term_expr(int_term(2))],
+            args: vec![unary_expr(int_unary_expr(2))],
         })]
         fn it_parses_function_call(
             #[case] input: &str,
             #[case] call: FuncCall,
         ) {
             let tree = force_tokenize(input);
-            let expr = term_expr(Term::FuncCall(call));
+            let expr = unary_expr(UnaryExpr::FuncCall(call));
             let expected = Ok(AbstractSyntaxTree::Expr(expr));
             assert_eq!(parse_tokens(tree), expected);
         }
@@ -1050,17 +1072,17 @@ mod test {
                     "12345",
             };"#
         )]
-        fn it_parses_struct_term(#[case] input_str: &str) {
+        fn it_parses_struct_unary_expr(#[case] input_str: &str) {
             let input = force_tokenize(input_str);
 
-            let expected_term = struct_term(
+            let expected_unary_expr = struct_primary_expr(
                 "User",
                 [
-                    ("isAdmin", term_expr(bool_term(true))),
-                    ("id", term_expr(str_term("12345"))),
+                    ("isAdmin", unary_expr(bool_unary_expr(true))),
+                    ("id", unary_expr(str_unary_expr("12345"))),
                 ],
             );
-            let expected = term_tree(expected_term);
+            let expected = unary_expr_tree(expected_unary_expr);
 
             assert_eq!(parse_tokens(input), Ok(expected));
         }

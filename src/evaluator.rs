@@ -5,7 +5,7 @@ use crate::{
     models::{
         AbstractSyntaxTree, BinaryExpr, BinaryOp, Closure, CodeBlock, CondExpr,
         EvalContext, Expr, FieldAccess, FuncBody, FuncCall, Function, LetNode,
-        Literal, Program, Scope, StructLiteral, StructTerm, Term,
+        Literal, Program, Scope, StructLiteral, StructPrimaryExpr, UnaryExpr,
     },
 };
 
@@ -67,16 +67,16 @@ fn eval_expr(context: &mut EvalContext, expr: Expr) -> Literal {
     }
 }
 
-/// Reduce a sequence of terms and operators to a single literal
+/// Reduce a sequence of unary expressions and operators to a single literal
 fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
-    let mut result = eval_term(context, expr.first);
+    let mut result = eval_unary_expr(context, expr.first);
 
-    for (op, term) in expr.rest {
+    for (op, unary_expr) in expr.rest {
         if op == BinaryOp::Pipe {
             // create a local variable under "_" to pipe into the right side
             context.scope.bindings.insert("_".into(), result.clone());
         }
-        let new_arg = eval_term(context, term);
+        let new_arg = eval_unary_expr(context, unary_expr);
         // cleanup temp variable so that it isn't leaked
         if op == BinaryOp::Pipe {
             context.scope.bindings.remove("_");
@@ -180,7 +180,7 @@ fn eval_field_access(
     context: &mut EvalContext,
     field_access: FieldAccess,
 ) -> Result<Literal> {
-    let struct_literal = eval_term(context, *field_access.r#struct);
+    let struct_literal = eval_unary_expr(context, *field_access.r#struct);
     let Literal::Struct(inner_struct) = struct_literal else {
         return Err(InterpreterError::SyntaxError {
             message: "Cannot access field of non-struct literal".into(),
@@ -199,18 +199,18 @@ fn eval_field_access(
     Ok(value.clone())
 }
 
-fn eval_struct_term(
+fn eval_struct_primary_expr(
     context: &mut EvalContext,
-    struct_term: StructTerm,
+    struct_expr: StructPrimaryExpr,
 ) -> Literal {
-    let evaluated_fields: HashMap<String, Literal> = struct_term
+    let evaluated_fields: HashMap<String, Literal> = struct_expr
         .fields
         .into_iter()
         .map(|(key, expr)| (key, eval_expr(context, expr)))
         .collect();
 
     let literal_struct = StructLiteral {
-        name: struct_term.name,
+        name: struct_expr.name,
         fields: evaluated_fields,
     };
     Literal::Struct(literal_struct)
@@ -225,10 +225,16 @@ fn eval_list(context: &mut EvalContext, list: Vec<Expr>) -> Literal {
     Literal::List(literals)
 }
 
-fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
+fn eval_unary_expr(
+    context: &mut EvalContext,
+    unary_expr: UnaryExpr,
+) -> Literal {
     #[inline(always)]
-    fn eval_negated(context: &mut EvalContext, inner_term: Term) -> Literal {
-        let inner_result = eval_term(context, inner_term);
+    fn eval_negated(
+        context: &mut EvalContext,
+        inner_expr: UnaryExpr,
+    ) -> Literal {
+        let inner_result = eval_unary_expr(context, inner_expr);
         match inner_result {
             Literal::Bool(bool) => Literal::Bool(!bool),
             Literal::Int(int) => Literal::Int(-int),
@@ -241,7 +247,8 @@ fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
         context: &mut EvalContext,
         call: FuncCall,
     ) -> Literal {
-        let Literal::Closure(closure) = eval_term(context, *call.func.clone())
+        let Literal::Closure(closure) =
+            eval_unary_expr(context, *call.func.clone())
         else {
             panic!("bad type: {:?}", call.func);
         };
@@ -253,18 +260,20 @@ fn eval_term(context: &mut EvalContext, term: Term) -> Literal {
         eval_func_call(context, closure, args)
     }
 
-    match term {
-        Term::Literal(lit) => lit,
-        Term::Id(id) => eval_id(context, &id),
-        Term::Not(t) | Term::Minus(t) => eval_negated(context, *t),
-        Term::Expr(expr) => eval_expr(context, *expr),
-        Term::FuncCall(call) => eval_wrapped_func_call(context, call),
-        Term::FieldAccess(field_access) => {
+    match unary_expr {
+        UnaryExpr::Literal(lit) => lit,
+        UnaryExpr::Id(id) => eval_id(context, &id),
+        UnaryExpr::Not(t) | UnaryExpr::Minus(t) => eval_negated(context, *t),
+        UnaryExpr::Expr(expr) => eval_expr(context, *expr),
+        UnaryExpr::FuncCall(call) => eval_wrapped_func_call(context, call),
+        UnaryExpr::FieldAccess(field_access) => {
             eval_field_access(context, field_access).unwrap()
         }
-        Term::NotNull(term) => eval_term(context, *term),
-        Term::Struct(struct_term) => eval_struct_term(context, struct_term),
-        Term::List(list) => eval_list(context, list),
+        UnaryExpr::NotNull(expr) => eval_unary_expr(context, *expr),
+        UnaryExpr::Struct(struct_primary_expr) => {
+            eval_struct_primary_expr(context, struct_primary_expr)
+        }
+        UnaryExpr::List(list) => eval_list(context, list),
     }
 }
 
@@ -421,7 +430,7 @@ mod test_evalutate {
     #[case(Literal::Int(5))]
     #[case(Literal::String("so many tesssssts".to_string()))]
     fn it_returns_input_on_literals(#[case] literal: Literal) {
-        let input = term_tree(Term::Literal(literal.clone()));
+        let input = unary_expr_tree(UnaryExpr::Literal(literal.clone()));
         assert_eq!(evaluate_fresh(input), literal);
     }
 
@@ -485,7 +494,7 @@ mod test_evalutate {
     }
 
     #[test]
-    fn it_returns_evaluated_struct_fields_for_struct_term() {
+    fn it_returns_evaluated_struct_fields_for_struct_expr() {
         let input = make_tree(r#"User { username: "User 1", isAdmin: true };"#);
         let expected = struct_literal(
             "User",

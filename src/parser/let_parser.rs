@@ -46,7 +46,9 @@ mod test {
     use super::*;
     use crate::errors::{error, InterpreterError};
     use crate::models::test_utils::*;
-    use crate::models::{AbstractSyntaxTree, BinaryOp, Literal, Term, Type};
+    use crate::models::{
+        AbstractSyntaxTree, BinaryOp, Literal, Type, UnaryExpr,
+    };
     use crate::parser::test_utils::*;
     use rstest::rstest;
 
@@ -81,41 +83,41 @@ mod test {
         #[case::int_literal("let x = 4;", LetNode {
             id: "x".to_string(),
             datatype: None,
-            value: term_expr(int_term(4)),
+            value: unary_expr(int_unary_expr(4)),
         })]
         #[case::simple_expression("let two = 6 / 3;", LetNode {
             id: "two".to_string(),
             datatype: None,
             value: bin_expr(
-                int_term(6),
-                vec![(BinaryOp::Slash, int_term(3))]
+                int_unary_expr(6),
+                vec![(BinaryOp::Slash, int_unary_expr(3))]
             ),
         })]
         #[case::declared_type("let twoStrings: string = \"a\" + \"b\";", LetNode {
             id: "twoStrings".to_string(),
             datatype: Some(Type::String),
             value: bin_expr(
-            str_term("a"),
-                vec![(BinaryOp::Plus, str_term("b"))]
+            str_unary_expr("a"),
+                vec![(BinaryOp::Plus, str_unary_expr("b"))]
             ),
         })]
         #[case::nullable_type("let nullableData: string? = null;", LetNode {
             id: "nullableData".into(),
             datatype: Some(Type::String.as_nullable()),
-            value: bin_expr(Term::Literal(Literal::Null), vec![]),
+            value: bin_expr(UnaryExpr::Literal(Literal::Null), vec![]),
         })]
         #[case::list_type("let nums: int[] = [1, 2];", LetNode {
             id: "nums".into(),
             datatype: Some(Type::Int.as_list()),
-            value: term_expr(Term::List(vec![
-                term_expr(int_term(1)),
-                term_expr(int_term(2)),
+            value: unary_expr(UnaryExpr::List(vec![
+                unary_expr(int_unary_expr(1)),
+                unary_expr(int_unary_expr(2)),
             ]))
         })]
         #[case::nested_list_type("let x: string[][][] = [];", LetNode {
             id: "x".into(),
             datatype: Some(Type::String.as_list().as_list().as_list()),
-            value: term_expr(Term::List(vec![])),
+            value: unary_expr(UnaryExpr::List(vec![])),
         })]
         #[case::nested_list_and_nullable_types("let x: int?[][]?[] = [];", LetNode {
             id: "x".into(),
@@ -125,7 +127,7 @@ mod test {
                     .as_list().as_nullable()
                     .as_list()
             ),
-            value: term_expr(Term::List(vec![])),
+            value: unary_expr(UnaryExpr::List(vec![])),
         })]
         #[case::multiple_lines(r#"
             let x: string =
@@ -133,7 +135,7 @@ mod test {
         "#, LetNode {
             id: "x".into(),
             datatype: Some(Type::String),
-            value: term_expr(str_term("some expression too long for one line"))
+            value: unary_expr(str_unary_expr("some expression too long for one line"))
         })]
         fn it_parses_var_binding(
             #[case] input: &str,
@@ -195,7 +197,7 @@ mod test {
             let expected = LetNode {
                 id: "f".into(),
                 datatype: Some(function_type),
-                value: bin_expr(Term::Literal(Literal::Null), vec![]),
+                value: bin_expr(UnaryExpr::Literal(Literal::Null), vec![]),
             };
 
             assert_eq!(test_parse_let(tokens), Ok(expected));

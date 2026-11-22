@@ -1,6 +1,6 @@
 use crate::models::{
     BinaryExpr, Closure, EvalContext, Expr, FuncBody, FuncCall, Function,
-    Literal, Term, Type,
+    Literal, UnaryExpr, Type,
 };
 
 /*
@@ -24,12 +24,12 @@ pub fn create_result_from_success(
     context: &EvalContext,
 ) -> Literal {
     let func_call = FuncCall {
-        func: Box::new(Term::Id("handleSuccess".into())),
+        func: Box::new(UnaryExpr::Id("handleSuccess".into())),
         args: data
             .into_iter()
             .map(|literal| {
                 Expr::Binary(BinaryExpr {
-                    first: Term::Literal(literal),
+                    first: UnaryExpr::Literal(literal),
                     rest: vec![],
                 })
             })
@@ -51,9 +51,9 @@ pub fn create_result_from_error(
     context: &EvalContext,
 ) -> Literal {
     let func_call = FuncCall {
-        func: Box::new(Term::Id("handleError".into())),
+        func: Box::new(UnaryExpr::Id("handleError".into())),
         args: vec![Expr::Binary(BinaryExpr {
-            first: Term::Literal(error),
+            first: UnaryExpr::Literal(error),
             rest: vec![],
         })],
     };
@@ -70,7 +70,7 @@ fn create_result_from_func_call(
     context: &EvalContext,
 ) -> Literal {
     let func_body = FuncBody::Expr(Box::new(Expr::Binary(BinaryExpr {
-        first: Term::FuncCall(func_call),
+        first: UnaryExpr::FuncCall(func_call),
         rest: vec![],
     })));
     let function = Function {

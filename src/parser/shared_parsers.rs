@@ -52,7 +52,7 @@ pub fn parse_list<T>(
 #[cfg(test)]
 mod test {
     use crate::models::test_utils::*;
-    use crate::models::{BinaryOp, Expr, FuncBody, Function, Term};
+    use crate::models::{BinaryOp, Expr, FuncBody, Function, UnaryExpr};
     use crate::parser::test_utils::*;
     use rstest::rstest;
 
@@ -68,13 +68,13 @@ mod test {
             #[case] expected: &[i32],
         ) {
             let tokens = force_tokenize(input);
-            let list_term = Term::List(
+            let list_expr = UnaryExpr::List(
                 expected
                     .iter()
-                    .map(|num| term_expr(int_term(*num)))
+                    .map(|num| unary_expr(int_unary_expr(*num)))
                     .collect(),
             );
-            assert_eq!(parse_tokens(tokens), Ok(term_tree(list_term)));
+            assert_eq!(parse_tokens(tokens), Ok(unary_expr_tree(list_expr)));
         }
 
         #[test]
@@ -82,17 +82,19 @@ mod test {
             let tokens = force_tokenize("[false && true, () -> 15];");
             let expected_list = vec![
                 bin_expr(
-                    bool_term(false),
-                    vec![(BinaryOp::And, bool_term(true))],
+                    bool_unary_expr(false),
+                    vec![(BinaryOp::And, bool_unary_expr(true))],
                 ),
                 Expr::Function(Function {
                     type_params: vec![],
                     params: vec![],
                     return_type: None,
-                    body: FuncBody::Expr(Box::new(term_expr(int_term(15)))),
+                    body: FuncBody::Expr(Box::new(unary_expr(int_unary_expr(
+                        15,
+                    )))),
                 }),
             ];
-            let expected_tree = term_tree(Term::List(expected_list));
+            let expected_tree = unary_expr_tree(UnaryExpr::List(expected_list));
             assert_eq!(parse_tokens(tokens), Ok(expected_tree));
         }
     }

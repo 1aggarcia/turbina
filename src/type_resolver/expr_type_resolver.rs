@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::errors::{error, InterpreterError, MultiResult};
 use crate::models::{
     BinaryExpr, BinaryOp, CodeBlock, CondExpr, Expr, FieldAccess, FuncBody,
-    FuncCall, Function, Literal, StructTerm, Term, Type,
+    FuncCall, Function, Literal, StructPrimaryExpr, Type, UnaryExpr,
 };
 use crate::type_resolver::resolve_statement_type;
 use crate::type_resolver::shared::{
@@ -19,7 +19,7 @@ pub fn resolve_expr_type(context: &TypeContext, expr: &Expr) -> SubResult {
     }
 }
 
-/// Check that the types for every term in the expression are valid
+/// Check that the types for every unary expression in the expression are valid
 fn resolve_binary_expr_type(
     context: &TypeContext,
     expr: &BinaryExpr,
@@ -27,12 +27,12 @@ fn resolve_binary_expr_type(
     let mut errors = Vec::<InterpreterError>::new();
     let mut result = None;
 
-    match resolve_term_type(context, &expr.first) {
+    match resolve_unary_expr_type(context, &expr.first) {
         Ok(t) => result = Some(t),
         Err(e) => errors.extend(e),
     }
 
-    for (op, term) in &expr.rest {
+    for (op, unary_expr) in &expr.rest {
         let result_type = match result {
             Some(ref t) => t.clone(),
             None => continue,
@@ -56,13 +56,14 @@ fn resolve_binary_expr_type(
         } else {
             context
         };
-        let new_type = match resolve_term_type(operator_context, &term) {
-            Ok(t) => t,
-            Err(e) => {
-                errors.extend(e);
-                continue;
-            }
-        };
+        let new_type =
+            match resolve_unary_expr_type(operator_context, &unary_expr) {
+                Ok(t) => t,
+                Err(e) => {
+                    errors.extend(e);
+                    continue;
+                }
+            };
 
         match binary_op_return_type(result_type, *op, new_type) {
             Ok(t) => result = Some(t),
@@ -255,20 +256,23 @@ fn resolve_function_type(
 ///
 /// For non-literals, check that they exist and their type matches any
 /// unary operators applied (! and -).
-fn resolve_term_type(context: &TypeContext, term: &Term) -> SubResult {
-    match term {
-        Term::Literal(lit) => get_literal_type(lit),
-        Term::Id(id) => resolve_id_type(context, &id),
-        Term::Not(term) => resolve_negated_bool_type(context, term),
-        Term::Minus(term) => validated_negated_int(context, term),
-        Term::Expr(expr) => resolve_expr_type(context, expr),
-        Term::FuncCall(call) => resolve_func_call_type(context, call),
-        Term::FieldAccess(field_access) => {
+fn resolve_unary_expr_type(
+    context: &TypeContext,
+    unary_expr: &UnaryExpr,
+) -> SubResult {
+    match unary_expr {
+        UnaryExpr::Literal(lit) => get_literal_type(lit),
+        UnaryExpr::Id(id) => resolve_id_type(context, &id),
+        UnaryExpr::Not(expr) => resolve_negated_bool_type(context, expr),
+        UnaryExpr::Minus(expr) => validated_negated_int(context, expr),
+        UnaryExpr::Expr(expr) => resolve_expr_type(context, expr),
+        UnaryExpr::FuncCall(call) => resolve_func_call_type(context, call),
+        UnaryExpr::FieldAccess(field_access) => {
             resolve_field_access_type(context, field_access)
         }
-        Term::Struct(term) => resolve_struct_term_type(context, term),
-        Term::List(list) => resolve_list_type(context, list),
-        Term::NotNull(term) => resolve_not_null_type(context, term),
+        UnaryExpr::Struct(expr) => resolve_struct_primary_expr(context, expr),
+        UnaryExpr::List(list) => resolve_list_type(context, list),
+        UnaryExpr::NotNull(expr) => resolve_not_null_type(context, expr),
     }
 }
 
@@ -299,24 +303,24 @@ fn resolve_id_type(context: &TypeContext, id: &String) -> SubResult {
     context.lookup(id).ok_or(error::undefined_id(id).into())
 }
 
-/// Check that the passed in term is a boolean
+/// Check that the passed in unary expression is a boolean
 fn resolve_negated_bool_type(
     context: &TypeContext,
-    inner_term: &Term,
+    unary_expr: &UnaryExpr,
 ) -> SubResult {
-    let datatype = resolve_term_type(context, inner_term)?;
+    let datatype = resolve_unary_expr_type(context, unary_expr)?;
     match datatype {
         Type::Bool => Ok(datatype),
         _ => Err(vec![error::unary_op_type("!", datatype)]),
     }
 }
 
-/// Check that the passed in term is an int
+/// Check that the passed in unary expression is an int
 fn validated_negated_int(
     context: &TypeContext,
-    inner_term: &Term,
+    unary_expr: &UnaryExpr,
 ) -> SubResult {
-    let datatype = resolve_term_type(context, inner_term)?;
+    let datatype = resolve_unary_expr_type(context, unary_expr)?;
     match datatype {
         Type::Int => Ok(datatype),
         _ => Err(vec![error::unary_op_type("-", datatype)]),
@@ -328,7 +332,7 @@ fn validated_negated_int(
 /// - Determine the literal types to assign to generics in the return type
 fn resolve_func_call_type(context: &TypeContext, call: &FuncCall) -> SubResult {
     let (param_types, output_type) =
-        match resolve_term_type(context, &call.func)? {
+        match resolve_unary_expr_type(context, &call.func)? {
             Type::Func { input, output } => (input, output),
             _ => {
                 let err = InterpreterError::not_a_function(&call.func);
@@ -382,7 +386,8 @@ fn resolve_field_access_type(
     context: &TypeContext,
     field_access: &FieldAccess,
 ) -> SubResult {
-    let struct_type = resolve_term_type(context, &*field_access.r#struct)?;
+    let struct_type =
+        resolve_unary_expr_type(context, &*field_access.r#struct)?;
     let Type::StructV2(struct_name) = struct_type else {
         return Err(
             InterpreterError::cannot_read_struct_field(&struct_type).into()
@@ -411,20 +416,21 @@ fn resolve_field_access_type(
 /// - Check that the field types match defined types
 ///
 /// Returns pointer type to the struct definition
-fn resolve_struct_term_type(
+fn resolve_struct_primary_expr(
     context: &TypeContext,
-    struct_term: &StructTerm,
+    struct_primary_expr: &StructPrimaryExpr,
 ) -> SubResult {
-    let Some(definition) = context.lookup_struct(&struct_term.name) else {
+    let Some(definition) = context.lookup_struct(&struct_primary_expr.name)
+    else {
         return Err(vec![InterpreterError::UndefinedStructError {
-            name: struct_term.name.clone(),
+            name: struct_primary_expr.name.clone(),
         }]);
     };
 
     let mut extra_fields = Vec::<&str>::new();
     let mut errors = Vec::<InterpreterError>::new();
 
-    for (field_name, field_value) in &struct_term.fields {
+    for (field_name, field_value) in &struct_primary_expr.fields {
         let Some(expected_type) = definition.get(field_name) else {
             extra_fields.push(field_name);
             continue;
@@ -432,7 +438,7 @@ fn resolve_struct_term_type(
         let actual_type = resolve_expr_type(context, field_value)?;
         if !actual_type.is_assignable_to(expected_type) {
             errors.push(InterpreterError::unexpected_struct_field_type(
-                &struct_term.name,
+                &struct_primary_expr.name,
                 field_name,
                 expected_type,
                 &actual_type,
@@ -443,21 +449,21 @@ fn resolve_struct_term_type(
     if !extra_fields.is_empty() {
         extra_fields.sort();
         errors.push(InterpreterError::unexpected_struct_fields(
-            &struct_term.name,
+            &struct_primary_expr.name,
             extra_fields,
         ));
     }
 
     let mut missing_fields: Vec<&str> = definition
         .keys()
-        .filter(|field| !struct_term.fields.contains_key(*field))
+        .filter(|field| !struct_primary_expr.fields.contains_key(*field))
         .map(|field| field.as_str())
         .collect();
 
     if !missing_fields.is_empty() {
         missing_fields.sort();
         errors.push(InterpreterError::missing_struct_fields(
-            &struct_term.name,
+            &struct_primary_expr.name,
             missing_fields,
         ));
     }
@@ -466,7 +472,7 @@ fn resolve_struct_term_type(
         return Err(errors);
     }
 
-    Ok(Type::StructV2(struct_term.name.clone()))
+    Ok(Type::StructV2(struct_primary_expr.name.clone()))
 }
 
 /// Determines the strictest type that applies to all elements in the list
@@ -517,9 +523,9 @@ fn find_union_type(type1: Type, type2: Type) -> Type {
 /// Perform non-null assertion, or error if null is being asserted as not-null
 fn resolve_not_null_type(
     context: &TypeContext,
-    not_null_term: &Box<Term>,
+    unary_expr: &Box<UnaryExpr>,
 ) -> SubResult {
-    let datatype = resolve_term_type(context, not_null_term)?;
+    let datatype = resolve_unary_expr_type(context, unary_expr)?;
     let inner_type: Type = match datatype {
         Type::Nullable(t) => *t,
         other => other,
@@ -604,14 +610,14 @@ fn binary_op_return_type(
 #[cfg(test)]
 mod test {
     use crate::errors::{error, InterpreterError};
-    use crate::models::test_utils::term_tree;
-    use crate::models::{BinaryOp, Literal, Program, Term, Type};
+    use crate::models::test_utils::unary_expr_tree;
+    use crate::models::{BinaryOp, Literal, Program, Type, UnaryExpr};
     use crate::parser::test_utils::make_tree;
     use crate::type_resolver::resolve_type;
     use crate::type_resolver::shared::test_utils::*;
     use rstest::rstest;
 
-    mod term {
+    mod unary_expr {
         use super::*;
 
         #[rstest]
@@ -622,7 +628,7 @@ mod test {
             #[case] literal: Literal,
             #[case] expected: Type,
         ) {
-            let tree = term_tree(Term::Literal(literal.clone()));
+            let tree = unary_expr_tree(UnaryExpr::Literal(literal.clone()));
             assert_eq!(resolve_type_fresh(tree), ok_without_binding(expected));
         }
 
@@ -721,7 +727,7 @@ mod test {
         }
     }
 
-    mod struct_terms {
+    mod struct_primary_expr {
         use crate::models::test_utils::field_map;
 
         use super::*;
@@ -1303,7 +1309,7 @@ mod test {
             program.type_context.insert("five".into(), Type::Int);
 
             let err =
-                InterpreterError::not_a_function(&Term::Id("five".into()));
+                InterpreterError::not_a_function(&UnaryExpr::Id("five".into()));
             assert_eq!(resolve_type(&program, &tree), Err(vec![err]));
         }
 

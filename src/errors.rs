@@ -1,7 +1,7 @@
 extern crate custom_error;
 use custom_error::custom_error;
 
-use crate::models::{Term, Token, Type};
+use crate::models::{Token, Type, UnaryExpr};
 
 pub type Result<T> = std::result::Result<T, InterpreterError>;
 pub type MultiResult<T> = std::result::Result<T, Vec<InterpreterError>>;
@@ -39,10 +39,10 @@ custom_error! {#[derive(PartialEq, Clone)] pub InterpreterError
 }
 
 impl InterpreterError {
-    pub fn not_a_function(term: &Term) -> Self {
+    pub fn not_a_function(unary_expr: &UnaryExpr) -> Self {
         Self::TypeError {
             message: format!(
-                "Tried to call '{term:?}', but it is not a function"
+                "Tried to call '{unary_expr:?}', but it is not a function"
             ),
         }
     }

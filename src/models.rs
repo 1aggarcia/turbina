@@ -521,43 +521,47 @@ pub struct Import {
 }
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum Term {
+pub enum UnaryExpr {
+    // Primary Expressions
     Literal(Literal),
+    List(Vec<Expr>),
     Id(String),
+    Struct(StructPrimaryExpr),
+    Expr(Box<Expr>),
+
+    // Postfix Expressions
     FuncCall(FuncCall),
     FieldAccess(FieldAccess),
-    Expr(Box<Expr>),
-    Not(Box<Term>),   // negate boolean terms
-    Minus(Box<Term>), // negate int terms
-    NotNull(Box<Term>),
-    List(Vec<Expr>),
-    Struct(StructTerm),
+    NotNull(Box<UnaryExpr>),
+
+    // Top Level Unary Expressions
+    Not(Box<UnaryExpr>),   // negate boolean expressions
+    Minus(Box<UnaryExpr>), // negate int expressions
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FuncCall {
-    // a function might be a variety of expressions, so we use the blanket type `Term`
-    pub func: Box<Term>,
+    pub func: Box<UnaryExpr>,
     pub args: Vec<Expr>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FieldAccess {
-    pub r#struct: Box<Term>,
+    pub r#struct: Box<UnaryExpr>,
     pub field: String,
 }
 
 // to make construction easier
-impl Term {
-    pub fn negative_int(term: Term) -> Self {
-        Self::Minus(Box::new(term))
+impl UnaryExpr {
+    pub fn negative_int(expr: UnaryExpr) -> Self {
+        Self::Minus(Box::new(expr))
     }
 
-    pub fn negated_bool(term: Term) -> Self {
-        Self::Not(Box::new(term))
+    pub fn negated_bool(expr: UnaryExpr) -> Self {
+        Self::Not(Box::new(expr))
     }
 
-    /// Returns the term wrapped as `NotNull`
+    /// Returns the expression wrapped as `NotNull`
     pub fn as_not_null(self) -> Self {
         Self::NotNull(Box::new(self))
     }
@@ -574,8 +578,8 @@ pub enum Expr {
 /// For variable length expressions on binary operators
 #[derive(Debug, PartialEq, Clone)]
 pub struct BinaryExpr {
-    pub first: Term,
-    pub rest: Vec<(BinaryOp, Term)>,
+    pub first: UnaryExpr,
+    pub rest: Vec<(BinaryOp, UnaryExpr)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -624,7 +628,7 @@ pub struct StructDefinition {
 /// The fields still need to be evaluated at runtime to convert them from
 /// expressions to literals, so a separate `StructLiteral`` struct is needed.
 #[derive(PartialEq, Debug, Clone)]
-pub struct StructTerm {
+pub struct StructPrimaryExpr {
     pub name: String,
     pub fields: HashMap<String, Expr>,
 }
@@ -671,27 +675,30 @@ pub mod test_utils {
         Token::Type(datatype)
     }
 
-    pub fn int_term(int: i32) -> Term {
-        Term::Literal(Literal::Int(int))
+    pub fn int_unary_expr(int: i32) -> UnaryExpr {
+        UnaryExpr::Literal(Literal::Int(int))
     }
 
-    pub fn str_term(string: &str) -> Term {
-        Term::Literal(Literal::String(string.into()))
+    pub fn str_unary_expr(string: &str) -> UnaryExpr {
+        UnaryExpr::Literal(Literal::String(string.into()))
     }
 
-    pub fn bool_term(boolean: bool) -> Term {
-        Term::Literal(Literal::Bool(boolean))
+    pub fn bool_unary_expr(boolean: bool) -> UnaryExpr {
+        UnaryExpr::Literal(Literal::Bool(boolean))
     }
 
-    pub fn term_tree(term: Term) -> AbstractSyntaxTree {
-        AbstractSyntaxTree::Expr(term_expr(term))
+    pub fn unary_expr_tree(expr: UnaryExpr) -> AbstractSyntaxTree {
+        AbstractSyntaxTree::Expr(unary_expr(expr))
     }
 
-    pub fn term_expr(term: Term) -> Expr {
-        bin_expr(term, vec![])
+    pub fn unary_expr(expr: UnaryExpr) -> Expr {
+        bin_expr(expr, vec![])
     }
 
-    pub fn bin_expr(first: Term, rest: Vec<(BinaryOp, Term)>) -> Expr {
+    pub fn bin_expr(
+        first: UnaryExpr,
+        rest: Vec<(BinaryOp, UnaryExpr)>,
+    ) -> Expr {
         Expr::Binary(BinaryExpr { first, rest })
     }
 
@@ -712,11 +719,11 @@ pub mod test_utils {
         })
     }
 
-    pub fn struct_term<const N: usize>(
+    pub fn struct_primary_expr<const N: usize>(
         name: &str,
         fields: [(&str, Expr); N],
-    ) -> Term {
-        Term::Struct(StructTerm {
+    ) -> UnaryExpr {
+        UnaryExpr::Struct(StructPrimaryExpr {
             name: name.to_string(),
             fields: field_map(fields),
         })
