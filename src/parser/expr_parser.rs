@@ -237,7 +237,7 @@ fn parse_param(tokens: &mut TokenStream) -> Result<(String, Type)> {
 }
 
 /// ```text
-/// <term> ::= "!" <term> | ["-"] <primary_expr>
+/// <term> ::= "!" <term> | ["-"] <postfix_expr>
 /// ```
 fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
     let first = tokens.peek()?;
@@ -249,17 +249,17 @@ fn parse_term(tokens: &mut TokenStream) -> Result<Term> {
     }
     if first == Token::BinaryOp(BinaryOp::Minus) {
         tokens.pop()?;
-        let base_term = parse_postfix_expr(tokens)?;
-        return Ok(Term::negative_int(base_term));
+        let postfix_expr = parse_postfix_expr(tokens)?;
+        return Ok(Term::negative_int(postfix_expr));
     }
     parse_postfix_expr(tokens)
 }
 
 /// ```text
-/// <postfix_expr> ::= <base_term> ["!"] { <postfix_suffix> ["!"] }
+/// <postfix_expr> ::= <primary_expr> ["!"] { <postfix_suffix> ["!"] }
 /// ```
 fn parse_postfix_expr(tokens: &mut TokenStream) -> Result<Term> {
-    let mut result = parse_base_term(tokens)?;
+    let mut result = parse_primary_expr(tokens)?;
 
     if next_token_matches(tokens, Token::UnaryOp(UnaryOp::Not)) {
         tokens.pop()?;
@@ -316,7 +316,7 @@ fn parse_postfix_suffix(tokens: &mut TokenStream, term: Term) -> Result<Term> {
 }
 
 /// ```text
-/// <base_term> ::=
+/// <primary_expr> ::=
 ///     | Null
 ///     | Literal
 ///     | <list>
@@ -325,7 +325,7 @@ fn parse_postfix_suffix(tokens: &mut TokenStream, term: Term) -> Result<Term> {
 ///
 /// <list> ::= "[" [<expr> {"," <expr>}] "]"
 /// ```
-fn parse_base_term(tokens: &mut TokenStream) -> Result<Term> {
+fn parse_primary_expr(tokens: &mut TokenStream) -> Result<Term> {
     let first = tokens.pop()?;
     match first {
         Token::Null => Ok(Term::Literal(Literal::Null)),
