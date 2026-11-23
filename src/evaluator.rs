@@ -33,67 +33,72 @@ pub fn evaluate(
     // TODO: remove reference, this should be able to consume the tree
     let owned_tree: AbstractSyntaxTree = tree.clone();
 
-    // TODO: integrate result type into helpers below for runtime errors
-    Ok(eval_statement(&mut global_context, owned_tree))
+    eval_statement(&mut global_context, owned_tree)
 }
 
 fn eval_statement(
     context: &mut EvalContext,
     statement: AbstractSyntaxTree,
-) -> Literal {
+) -> Result<Literal> {
     match statement {
         AbstractSyntaxTree::Let(node) => eval_let(context, node),
         AbstractSyntaxTree::Import(_) => todo!("import evaluation"),
         AbstractSyntaxTree::Expr(node) => eval_expr(context, node),
-        AbstractSyntaxTree::TypeAlias(_) => Literal::Null,
-        AbstractSyntaxTree::StructDefinition(_) => Literal::Null,
+        AbstractSyntaxTree::TypeAlias(_) => Ok(Literal::Null),
+        AbstractSyntaxTree::StructDefinition(_) => Ok(Literal::Null),
     }
 }
 
 /// Bind an expression to a name
-fn eval_let(context: &mut EvalContext, node: LetNode) -> Literal {
+fn eval_let(context: &mut EvalContext, node: LetNode) -> Result<Literal> {
     if context.scope.bindings.contains_key(&node.id) {
-        panic!("variable '{}' already defined", node.id);
+        return Err(runtime_error!("variable '{}' already defined", node.id));
     }
-    let literal_value = eval_expr(context, node.value);
+    let literal_value = eval_expr(context, node.value)?;
     context
         .scope
         .bindings
         .insert(node.id, literal_value.clone());
 
-    return literal_value;
+    Ok(literal_value)
 }
 
-fn eval_expr(context: &mut EvalContext, expr: Expr) -> Literal {
+fn eval_expr(context: &mut EvalContext, expr: Expr) -> Result<Literal> {
     match expr {
         Expr::Binary(b) => eval_binary_expr(context, b),
         Expr::CodeBlock(b) => eval_code_block(context, b),
         Expr::Cond(c) => eval_cond_expr(context, c),
-        Expr::Function(f) => eval_function(context, f),
+        Expr::Function(f) => Ok(eval_function(context, f)),
     }
 }
 
 /// Reduce a sequence of unary expressions and operators to a single literal
-fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
-    let mut result = eval_unary_expr(context, expr.first).unwrap();
+fn eval_binary_expr(
+    context: &mut EvalContext,
+    expr: BinaryExpr,
+) -> Result<Literal> {
+    let mut result = eval_unary_expr(context, expr.first)?;
 
     for (op, unary_expr) in expr.rest {
         if op == BinaryOp::Pipe {
             // create a local variable under "_" to pipe into the right side
             context.scope.bindings.insert("_".into(), result.clone());
         }
-        let new_arg = eval_unary_expr(context, unary_expr).unwrap();
+        let new_arg = eval_unary_expr(context, unary_expr)?;
         // cleanup temp variable so that it isn't leaked
         if op == BinaryOp::Pipe {
             context.scope.bindings.remove("_");
         }
-        result = eval_binary_op(result, &op, new_arg);
+        result = eval_binary_op(result, &op, new_arg)?;
     }
 
-    return result;
+    return Ok(result);
 }
 
-fn eval_code_block(context: &mut EvalContext, block: CodeBlock) -> Literal {
+fn eval_code_block(
+    context: &mut EvalContext,
+    block: CodeBlock,
+) -> Result<Literal> {
     let mut local_scope = if context.scope.is_local_scope() {
         // clone the current scope so that closures can use it
         // TODO: rethink closures and eliminate need to cloning
@@ -108,21 +113,28 @@ fn eval_code_block(context: &mut EvalContext, block: CodeBlock) -> Literal {
             parent: Some(&context.scope),
         },
     };
-    block
+    let result = block
         .statements
         .into_iter()
         .fold(Literal::Null, |_, statement| {
-            eval_statement(&mut local_context, statement)
-        })
+            eval_statement(&mut local_context, statement).unwrap()
+        });
+    Ok(result)
 }
 
-fn eval_cond_expr(context: &mut EvalContext, expr: CondExpr) -> Literal {
-    let cond_result = eval_expr(context, *expr.cond);
-    match cond_result {
-        Literal::Bool(true) => eval_expr(context, *expr.if_true),
-        Literal::Bool(false) => eval_expr(context, *expr.if_false),
-        _ => panic!("TYPE CHECKER FAILED: condition did not evaluate to bool: {cond_result:?}"),
-    }
+fn eval_cond_expr(
+    context: &mut EvalContext,
+    expr: CondExpr,
+) -> Result<Literal> {
+    let cond_result = eval_expr(context, *expr.cond)?;
+    let result = match cond_result {
+        Literal::Bool(true) => eval_expr(context, *expr.if_true)?,
+        Literal::Bool(false) => eval_expr(context, *expr.if_false)?,
+        _ => return Err(runtime_error!(
+            "TYPE CHECKER FAILED: condition did not evaluate to bool: {cond_result:?}"
+        )),
+    };
+    Ok(result)
 }
 
 /// Returns a closure with the passed in function and parent scope saved to it
@@ -148,7 +160,7 @@ pub fn eval_func_call(
     context: &mut EvalContext,
     closure: Closure,
     args: Vec<Literal>,
-) -> Literal {
+) -> Result<Literal> {
     let Closure {
         function,
         mut parent_scope,
@@ -162,7 +174,7 @@ pub fn eval_func_call(
                     parent: Some(&context.scope.get_global_scope()),
                 },
             };
-            return native_func(args, &mut function_context);
+            return Ok(native_func(args, &mut function_context));
         }
         FuncBody::Expr(expr) => expr,
     };
@@ -212,7 +224,7 @@ fn eval_struct_primary_expr(
     let evaluated_fields: HashMap<String, Literal> = struct_expr
         .fields
         .into_iter()
-        .map(|(key, expr)| (key, eval_expr(context, expr)))
+        .map(|(key, expr)| (key, eval_expr(context, expr).unwrap()))
         .collect();
 
     let literal_struct = StructLiteral {
@@ -226,7 +238,7 @@ fn eval_struct_primary_expr(
 fn eval_list(context: &mut EvalContext, list: Vec<Expr>) -> Result<Literal> {
     let literals = list
         .into_iter()
-        .map(|expr| eval_expr(context, expr))
+        .map(|expr| eval_expr(context, expr).unwrap())
         .collect();
     Ok(Literal::List(literals))
 }
@@ -267,17 +279,17 @@ fn eval_unary_expr(
         let args: Vec<Literal> = call
             .args
             .into_iter()
-            .map(|a| eval_expr(context, a))
+            .map(|a| eval_expr(context, a).unwrap())
             .collect();
 
-        Ok(eval_func_call(context, closure, args))
+        eval_func_call(context, closure, args)
     }
 
     match unary_expr {
         UnaryExpr::Literal(lit) => Ok(lit),
         UnaryExpr::Id(id) => eval_id(context, &id),
         UnaryExpr::Not(t) | UnaryExpr::Minus(t) => eval_negated(context, *t),
-        UnaryExpr::Expr(expr) => Ok(eval_expr(context, *expr)),
+        UnaryExpr::Expr(expr) => eval_expr(context, *expr),
         UnaryExpr::FuncCall(call) => eval_wrapped_func_call(context, call),
         UnaryExpr::FieldAccess(field_access) => {
             eval_field_access(context, field_access)
@@ -307,116 +319,133 @@ fn eval_binary_op(
     left: Literal,
     operator: &BinaryOp,
     right: Literal,
-) -> Literal {
+) -> Result<Literal> {
     use BinaryOp::*;
     macro_rules! eval_bitwise_op {
         ($left:expr, $right:expr, $operator:tt) => {
             match ($left, $right) {
                 (Literal::Byte(a), Literal::Byte(b)) => Literal::Byte(a $operator b),
                 (Literal::Int(a), Literal::Int(b)) => Literal::Int(a $operator b),
-                (a, b) => panic!("unsupported arguments for operator: {a}, {b}"),
+                (a, b) => return Err(runtime_error!("unsupported arguments for operator: {a}, {b}")),
             }
         };
     }
 
-    // TODO: return error for invalid combos instead of panicking
-    match operator {
-        Plus => eval_plus(left, right),
-        Minus => Literal::Int(literal_as_int(left) - literal_as_int(right)),
-        Star => Literal::Int(literal_as_int(left) * literal_as_int(right)),
-        Slash => Literal::Int(literal_as_int(left) / literal_as_int(right)),
-        Percent => Literal::Int(literal_as_int(left) % literal_as_int(right)),
+    let result: Literal = match operator {
+        Plus => eval_plus(left, right)?,
+        Minus => Literal::Int(literal_as_int(left)? - literal_as_int(right)?),
+        Star => Literal::Int(literal_as_int(left)? * literal_as_int(right)?),
+        Slash => Literal::Int(literal_as_int(left)? / literal_as_int(right)?),
+        Percent => Literal::Int(literal_as_int(left)? % literal_as_int(right)?),
 
         GreaterThan => {
-            Literal::Bool(literal_as_int(left) > literal_as_int(right))
+            Literal::Bool(literal_as_int(left)? > literal_as_int(right)?)
         }
         GreaterThanOrEqual => {
-            Literal::Bool(literal_as_int(left) >= literal_as_int(right))
+            Literal::Bool(literal_as_int(left)? >= literal_as_int(right)?)
         }
-        LessThan => Literal::Bool(literal_as_int(left) < literal_as_int(right)),
+        LessThan => {
+            Literal::Bool(literal_as_int(left)? < literal_as_int(right)?)
+        }
         LessThanOrEqual => {
-            Literal::Bool(literal_as_int(left) <= literal_as_int(right))
+            Literal::Bool(literal_as_int(left)? <= literal_as_int(right)?)
         }
 
-        And => Literal::Bool(literal_as_bool(left) && literal_as_bool(right)),
-        Or => Literal::Bool(literal_as_bool(left) || literal_as_bool(right)),
+        And => Literal::Bool(literal_as_bool(left)? && literal_as_bool(right)?),
+        Or => Literal::Bool(literal_as_bool(left)? || literal_as_bool(right)?),
 
         BitwiseAnd => eval_bitwise_op!(left, right, &),
         BitwiseOr => eval_bitwise_op!(left, right, |),
         BitwiseXor => eval_bitwise_op!(left, right, ^),
-        RightShift => eval_right_shift(left, right),
-        LeftShift => eval_left_shift(left, right),
+        RightShift => eval_right_shift(left, right)?,
+        LeftShift => eval_left_shift(left, right)?,
 
         // these use the derived `PartialEq` trait on enum `Literal`
         Equals => Literal::Bool(left == right),
         NotEq => Literal::Bool(left != right),
 
         Pipe => right,
-    }
+    };
+    Ok(result)
 }
 
 /// perform either string concatenation or integer addition,
 /// depending on the literal type
-fn eval_plus(left: Literal, right: Literal) -> Literal {
+fn eval_plus(left: Literal, right: Literal) -> Result<Literal> {
     let left_as_str = literal_to_string(left.clone());
-    match left_as_str {
-        None => Literal::Int(literal_as_int(left) + literal_as_int(right)),
+    let result = match left_as_str {
+        None => Literal::Int(literal_as_int(left)? + literal_as_int(right)?),
         Some(str) => Literal::String(
             str + &literal_to_string(right.clone()).expect(&format!(
                 "right side of + was a non-string literal: {right}"
             )),
         ),
-    }
+    };
+    Ok(result)
 }
 
-fn eval_right_shift(left: Literal, right: Literal) -> Literal {
+fn eval_right_shift(left: Literal, right: Literal) -> Result<Literal> {
     use Literal::*;
 
     let Int(b) = right else {
-        panic!("right side of >> was a non-int literal: {right}")
+        return Err(runtime_error!(
+            "right side of >> was a non-int literal: {right}"
+        ));
     };
     // Rust panics on overflow by default, so we use the unbounded_shr method
     // to truncate bits that don't fit
     let unsigned_b: u32 = b
         .try_into()
         .expect("failed to used right side of >> as unsigned int");
-    match left {
+    let result = match left {
         Byte(a) => Byte(a.unbounded_shr(unsigned_b)),
         Int(a) => Int(a.unbounded_shr(unsigned_b)),
-        _ => panic!("left side of >> was of an invalid type: {left}"),
-    }
+        _ => {
+            return Err(runtime_error!(
+                "left side of >> was of an invalid type: {left}"
+            ))
+        }
+    };
+    Ok(result)
 }
 
-fn eval_left_shift(left: Literal, right: Literal) -> Literal {
+fn eval_left_shift(left: Literal, right: Literal) -> Result<Literal> {
     use Literal::*;
 
     let Int(b) = right else {
-        panic!("right side of << was a non-int literal: {right}")
+        return Err(runtime_error!(
+            "right side of << was a non-int literal: {right}"
+        ));
     };
     // Rust panics on overflow by default, so we use the unbounded_shl method
     // to truncate bits that don't fit
     let unsigned_b: u32 = b
         .try_into()
         .expect("failed to used right side of << as unsigned int");
-    match left {
+    let result = match left {
         Byte(a) => Byte(a.unbounded_shl(unsigned_b)),
         Int(a) => Int(a.unbounded_shl(unsigned_b)),
-        _ => panic!("left side of << was of an invalid type: {left}"),
-    }
+        _ => {
+            return Err(runtime_error!(
+                "left side of << was of an invalid type: {left}"
+            ))
+        }
+    };
+    Ok(result)
 }
 
 /// Casts a literal to an int
-fn literal_as_int(literal: Literal) -> i32 {
+fn literal_as_int(literal: Literal) -> Result<i32> {
     match literal {
-        Literal::Int(i) => i,
-        _ => panic!("expected int literal, got {:?}", literal),
+        Literal::Int(i) => Ok(i),
+        _ => Err(runtime_error!("expected int literal, got {:?}", literal)),
     }
 }
 
-fn literal_as_bool(literal: Literal) -> bool {
+fn literal_as_bool(literal: Literal) -> Result<bool> {
     match literal {
-        Literal::Bool(b) => b,
-        _ => panic!("expected bool literal, got {:?}", literal),
+        Literal::Bool(b) => Ok(b),
+        _ => Err(runtime_error!("expected bool literal, got {:?}", literal)),
     }
 }
 

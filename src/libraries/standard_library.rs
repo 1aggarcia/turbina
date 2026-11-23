@@ -370,7 +370,8 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
                             context,
                             elem_func.clone(),
                             vec![Literal::Int(i)],
-                        );
+                        )
+                        .unwrap();
                         list.push(elem);
                     }
                     Literal::List(list)
@@ -577,6 +578,7 @@ fn lib_map(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         .iter()
         .map(|elem| {
             eval_func_call(context, map_func.clone(), vec![elem.to_owned()])
+                .unwrap()
         })
         .collect();
     Literal::List(transformed)
@@ -592,7 +594,8 @@ fn lib_filter(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let mut transformed = Vec::with_capacity(list.len());
     for elem in list {
         let should_include =
-            eval_func_call(context, predicate.clone(), vec![elem.clone()]);
+            eval_func_call(context, predicate.clone(), vec![elem.clone()])
+                .unwrap();
         if should_include == Literal::Bool(true) {
             transformed.push(elem.clone());
         }
@@ -612,6 +615,7 @@ fn lib_reduce(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
             reducer.clone(),
             vec![accumulator.to_owned(), elem.clone()],
         )
+        .unwrap()
     })
 }
 
@@ -621,7 +625,7 @@ fn lib_any(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         Literal::Closure(predicate),
     }
     let result = list.iter().any(|elem| {
-        eval_func_call(context, predicate.clone(), vec![elem.clone()])
+        eval_func_call(context, predicate.clone(), vec![elem.clone()]).unwrap()
             == Literal::Bool(true)
     });
     Literal::Bool(result)
@@ -633,7 +637,7 @@ fn lib_every(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
         Literal::Closure(predicate),
     }
     let result = list.iter().all(|elem| {
-        eval_func_call(context, predicate.clone(), vec![elem.clone()])
+        eval_func_call(context, predicate.clone(), vec![elem.clone()]).unwrap()
             == Literal::Bool(true)
     });
     Literal::Bool(result)
@@ -736,7 +740,8 @@ fn lib_serve_http(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
             context,
             handle_request.clone(),
             vec![request_struct.to_literal()],
-        );
+        )
+        .unwrap();
         match response {
             Literal::String(s) => s,
             other => panic!("bad return type of HTTP handler: {}", other),
@@ -750,7 +755,8 @@ fn lib_serve_http(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
                 context,
                 handle_error.clone(),
                 vec![Literal::String(err.to_string())],
-            );
+            )
+            .unwrap();
         }
     }
     Literal::Null
