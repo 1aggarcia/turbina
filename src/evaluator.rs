@@ -9,6 +9,12 @@ use crate::{
     },
 };
 
+macro_rules! runtime_error {
+    ($($arg:tt)*) => {
+        InterpreterError::RuntimeError { message: format!($($arg)*) }
+    }
+}
+
 /// Execute the statement represented by the AST on the program passed in.
 ///
 /// Syntax errors will cause a panic and should be checked with the
@@ -69,14 +75,14 @@ fn eval_expr(context: &mut EvalContext, expr: Expr) -> Literal {
 
 /// Reduce a sequence of unary expressions and operators to a single literal
 fn eval_binary_expr(context: &mut EvalContext, expr: BinaryExpr) -> Literal {
-    let mut result = eval_unary_expr(context, expr.first);
+    let mut result = eval_unary_expr(context, expr.first).unwrap();
 
     for (op, unary_expr) in expr.rest {
         if op == BinaryOp::Pipe {
             // create a local variable under "_" to pipe into the right side
             context.scope.bindings.insert("_".into(), result.clone());
         }
-        let new_arg = eval_unary_expr(context, unary_expr);
+        let new_arg = eval_unary_expr(context, unary_expr).unwrap();
         // cleanup temp variable so that it isn't leaked
         if op == BinaryOp::Pipe {
             context.scope.bindings.remove("_");
@@ -180,21 +186,21 @@ fn eval_field_access(
     context: &mut EvalContext,
     field_access: FieldAccess,
 ) -> Result<Literal> {
-    let struct_literal = eval_unary_expr(context, *field_access.r#struct);
+    let struct_literal = eval_unary_expr(context, *field_access.r#struct)?;
     let Literal::Struct(inner_struct) = struct_literal else {
-        return Err(InterpreterError::RuntimeError {
-            message: "Cannot access field of non-struct literal".into(),
-        });
+        return Err(runtime_error!(
+            "Cannot access field of non-struct literal"
+        ));
     };
 
-    let value = inner_struct.fields.get(&field_access.field).ok_or(
-        InterpreterError::RuntimeError {
-            message: format!(
+    let value =
+        inner_struct
+            .fields
+            .get(&field_access.field)
+            .ok_or(runtime_error!(
                 "Struct does not have field '{}'",
                 field_access.field
-            ),
-        },
-    )?;
+            ))?;
 
     Ok(value.clone())
 }
@@ -202,7 +208,7 @@ fn eval_field_access(
 fn eval_struct_primary_expr(
     context: &mut EvalContext,
     struct_expr: StructPrimaryExpr,
-) -> Literal {
+) -> Result<Literal> {
     let evaluated_fields: HashMap<String, Literal> = struct_expr
         .fields
         .into_iter()
@@ -213,61 +219,68 @@ fn eval_struct_primary_expr(
         name: struct_expr.name,
         fields: evaluated_fields,
     };
-    Literal::Struct(literal_struct)
+    Ok(Literal::Struct(literal_struct))
 }
 
 /// Evaluates all expressions in the list passed in
-fn eval_list(context: &mut EvalContext, list: Vec<Expr>) -> Literal {
+fn eval_list(context: &mut EvalContext, list: Vec<Expr>) -> Result<Literal> {
     let literals = list
         .into_iter()
         .map(|expr| eval_expr(context, expr))
         .collect();
-    Literal::List(literals)
+    Ok(Literal::List(literals))
 }
 
 fn eval_unary_expr(
     context: &mut EvalContext,
     unary_expr: UnaryExpr,
-) -> Literal {
+) -> Result<Literal> {
     #[inline(always)]
     fn eval_negated(
         context: &mut EvalContext,
         inner_expr: UnaryExpr,
-    ) -> Literal {
-        let inner_result = eval_unary_expr(context, inner_expr);
-        match inner_result {
+    ) -> Result<Literal> {
+        let inner_result = eval_unary_expr(context, inner_expr)?;
+        let result = match inner_result {
             Literal::Bool(bool) => Literal::Bool(!bool),
             Literal::Int(int) => Literal::Int(-int),
-            _ => panic!("expected bool or int, got {:?}", inner_result),
-        }
+            _ => {
+                return Err(runtime_error!(
+                    "expected bool or int, got {:?}",
+                    inner_result
+                ))
+            }
+        };
+        Ok(result)
     }
 
     #[inline(always)]
     fn eval_wrapped_func_call(
         context: &mut EvalContext,
         call: FuncCall,
-    ) -> Literal {
+    ) -> Result<Literal> {
         let Literal::Closure(closure) =
-            eval_unary_expr(context, *call.func.clone())
+            eval_unary_expr(context, *call.func.clone())?
         else {
-            panic!("bad type: {:?}", call.func);
+            return Err(runtime_error!("bad type: {:?}", call.func));
         };
         let args: Vec<Literal> = call
             .args
             .into_iter()
             .map(|a| eval_expr(context, a))
             .collect();
-        eval_func_call(context, closure, args)
+
+        Ok(eval_func_call(context, closure, args))
     }
 
     match unary_expr {
-        UnaryExpr::Literal(lit) => lit,
-        UnaryExpr::Id(id) => eval_id(context, &id).unwrap(),
+        UnaryExpr::Literal(lit) => Ok(lit),
+        UnaryExpr::Id(id) => eval_id(context, &id),
         UnaryExpr::Not(t) | UnaryExpr::Minus(t) => eval_negated(context, *t),
-        UnaryExpr::Expr(expr) => eval_expr(context, *expr),
+        UnaryExpr::Expr(expr) => Ok(eval_expr(context, *expr)),
         UnaryExpr::FuncCall(call) => eval_wrapped_func_call(context, call),
         UnaryExpr::FieldAccess(field_access) => {
-            eval_field_access(context, field_access).unwrap()
+            eval_field_access(context, field_access)
         }
         UnaryExpr::NotNull(expr) => eval_unary_expr(context, *expr),
         UnaryExpr::Struct(struct_primary_expr) => {
@@ -281,12 +294,11 @@ fn eval_unary_expr(
 fn eval_id(context: &mut EvalContext, id: &str) -> Result<Literal> {
     match context.scope.lookup(id) {
         Some(literal) => Ok(literal.clone()),
-        None => Err(InterpreterError::RuntimeError {
-            message: format!(
-                "variable '{}' does not exist: context {:#?}",
-                id, context
-            ),
-        }),
+        None => Err(runtime_error!(
+            "variable '{}' does not exist: context {:#?}",
+            id,
+            context
+        )),
     }
 }
 
