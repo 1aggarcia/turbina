@@ -34,6 +34,7 @@ macro_rules! unwrap_args {
 
 pub mod errors;
 pub mod evaluator;
+pub mod factories;
 pub mod lexer;
 pub mod libraries;
 pub mod models;

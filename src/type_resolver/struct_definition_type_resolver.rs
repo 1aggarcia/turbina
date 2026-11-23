@@ -37,8 +37,7 @@ mod test {
     mod struct_definition {
         use super::*;
         use crate::{
-            errors::InterpreterError,
-            models::{test_utils::field_map, Program},
+            errors::InterpreterError, factories::field_map, models::Program,
         };
         use std::collections::HashMap;
 

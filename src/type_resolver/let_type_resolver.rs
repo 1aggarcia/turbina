@@ -45,6 +45,7 @@ pub fn resolve_let_type(context: &TypeContext, node: &LetNode) -> SubResult {
 #[cfg(test)]
 mod test {
     use crate::errors::{error, InterpreterError};
+    use crate::factories::field_map;
     use crate::models::{Program, Type};
     use crate::parser::test_utils::make_tree;
     use crate::type_resolver::resolve_type;
@@ -52,7 +53,6 @@ mod test {
     use rstest::rstest;
 
     mod bindings {
-        use crate::models::test_utils::field_map;
 
         use super::*;
 

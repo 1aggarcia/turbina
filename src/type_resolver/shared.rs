@@ -40,6 +40,10 @@ pub struct TypeContext<'a> {
     /// the names of type parameters declared in function definitions
     pub generic_type_parameters: &'a [String],
 
+    /// global struct definitions defined statically (never copied)
+    pub global_struct_definitions:
+        Option<&'a HashMap<&'static str, &'static StructFields>>,
+
     /// The name being bound in a statement, if any. This allows recursive
     /// functions to reference themselves in their own definition.
     pub name_to_bind: Option<String>,
@@ -77,7 +81,12 @@ impl TypeContext<'_> {
     }
 
     pub fn lookup_struct(&self, struct_name: &str) -> Option<&StructFields> {
-        match self.struct_definitions.get(struct_name) {
+        let struct_definition: Option<&HashMap<String, Type>> = self
+            .global_struct_definitions
+            .and_then(|defs| defs.get(struct_name).map(|def| *def))
+            .or_else(|| self.struct_definitions.get(struct_name));
+
+        match struct_definition {
             Some(s) => Some(s),
             None => self.parent.and_then(|parent_context| {
                 parent_context.lookup_struct(struct_name)

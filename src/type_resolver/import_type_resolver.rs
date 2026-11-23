@@ -101,7 +101,7 @@ mod test_resolve_import_type {
     use super::*;
 
     use crate::errors::{error, InterpreterError};
-    use crate::models::test_utils::field_map;
+    use crate::factories::field_map;
     use crate::models::Program;
     use crate::parser::test_utils::*;
     use crate::type_resolver::resolve_type;

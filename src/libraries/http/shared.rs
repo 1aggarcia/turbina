@@ -19,9 +19,3 @@ pub struct RequestWithoutBody {
     pub url: String,
     pub headers: Vec<String>,
 }
-
-pub struct HttpResponse {
-    pub status_code: i32,
-    pub body: String,
-    pub headers: Vec<String>,
-}

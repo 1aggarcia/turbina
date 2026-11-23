@@ -16,6 +16,7 @@ use crate::libraries::http::{
 use crate::libraries::io::{
     append_to_file, call_exec, get_filenames_in_directory,
 };
+use crate::libraries::{TurbinaHttpRequest, TurbinaStruct};
 use crate::{
     evaluator::eval_func_call,
     models::{EvalContext, FuncBody, Function, Literal, Type},
@@ -455,15 +456,8 @@ pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
                 params: define_params![
                     address = Type::String,
                     handleRequest = Type::func(
-                        &[
-                            // TODO: allow struct literals and make this a
-                            // struct type
-                            Type::String,           // method
-                            Type::String,           // url
-                            Type::String.as_list(), // headers
-                            Type::String            // body
-                        ],
-                        Type::String
+                        &[TurbinaHttpRequest::get_type()],
+                        Type::String,
                     ),
                     handleError = Type::func(&[Type::String], Type::Null),
                 ],
@@ -723,24 +717,25 @@ fn lib_serve_http(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     let handle_http_request = |request: &mut tiny_http::Request| {
         let method = request.method().to_string();
         let url = request.url().to_owned();
-        let headers: Vec<Literal> = request
+        let headers: Vec<String> = request
             .headers()
             .into_iter()
             .map(|header| format!("{}: {}", header.field, header.value))
-            .map(|str| Literal::String(str))
             .collect();
 
         let body = read_to_string(request.as_reader()).unwrap();
 
+        let request_struct = TurbinaHttpRequest {
+            method,
+            url,
+            headers,
+            body,
+        };
+
         let response = eval_func_call(
             context,
             handle_request.clone(),
-            vec![
-                Literal::String(method),
-                Literal::String(url),
-                Literal::List(headers),
-                Literal::String(body),
-            ],
+            vec![request_struct.to_literal()],
         );
         match response {
             Literal::String(s) => s,

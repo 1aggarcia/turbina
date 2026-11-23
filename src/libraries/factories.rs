@@ -1,6 +1,6 @@
 use crate::models::{
     BinaryExpr, Closure, EvalContext, Expr, FuncBody, FuncCall, Function,
-    Literal, UnaryExpr, Type,
+    Literal, Type, UnaryExpr,
 };
 
 /*

@@ -23,6 +23,7 @@ use crate::{
             create_result_type,
         },
         http::shared::{HttpRequest, RequestWithBody, RequestWithoutBody},
+        TurbinaHttpResponse, TurbinaStruct,
     },
     models::{EvalContext, FuncBody, Function, Literal, Type},
 };
@@ -32,21 +33,8 @@ pub enum HttpBodySetting {
     RequireBody,
 }
 
-pub static HTTP_REQUEST_SUCCESS_TYPES: Lazy<[Type; 3]> = Lazy::new(|| {
-    [
-        Type::Int,    // status code
-        Type::String, // response body
-        Type::String.as_list(), // response headers
-                      // TODO: change to struct once struct literals are supported
-                      /*
-                      Type::Struct(HashMap::from([
-                          ("statusCode".into(), Type::Int),
-                          ("body".into(), Type::String),
-                          ("headers".into(), Type::String.as_list()),
-                      ]))
-                      */
-    ]
-});
+pub static HTTP_REQUEST_SUCCESS_TYPES: Lazy<[Type; 1]> =
+    Lazy::new(|| [TurbinaHttpResponse::get_type()]);
 
 /// Factory to help create function AST nodes for different HTTP methods,
 /// as they are all mostly the same and only have different symbols for
@@ -183,23 +171,11 @@ fn handle_http_request(
     context: &mut EvalContext,
 ) -> Literal {
     match make_http_request(method) {
-        Ok(response) => {
-            // TODO: change to struct once struct literals are supported
-            let status_literal = Literal::Int(response.status_code);
-            let body_literal = Literal::String(response.body);
-            let headers_literal = Literal::List(
-                response
-                    .headers
-                    .into_iter()
-                    .map(|h| Literal::String(h))
-                    .collect(),
-            );
-            create_result_from_success(
-                vec![status_literal, body_literal, headers_literal],
-                &*HTTP_REQUEST_SUCCESS_TYPES,
-                context,
-            )
-        }
+        Ok(response) => create_result_from_success(
+            vec![response.to_literal()],
+            &*HTTP_REQUEST_SUCCESS_TYPES,
+            context,
+        ),
         Err(error) => create_result_from_error(
             Literal::String(error.to_string()),
             &*HTTP_REQUEST_SUCCESS_TYPES,

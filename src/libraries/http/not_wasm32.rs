@@ -1,15 +1,17 @@
 use ureq::{Agent, Error, RequestBuilder};
 
-use crate::libraries::http::shared::{HttpRequest, HttpResponse};
+use crate::libraries::{http::shared::HttpRequest, TurbinaHttpResponse};
 
-pub fn make_http_request(request: HttpRequest) -> Result<HttpResponse, String> {
+pub fn make_http_request(
+    request: HttpRequest,
+) -> Result<TurbinaHttpResponse, String> {
     // Convert ureq Error type to String since ureq Errors can't compile on WASM
     make_http_request_with_ureq_error(request).map_err(|err| err.to_string())
 }
 
 fn make_http_request_with_ureq_error(
     request: HttpRequest,
-) -> Result<HttpResponse, Error> {
+) -> Result<TurbinaHttpResponse, Error> {
     // Needs separate agent with config to treat 4XX/5XX statuses as success
     let agent: Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
@@ -56,7 +58,7 @@ fn make_http_request_with_ureq_error(
         })
         .collect();
 
-    Ok(HttpResponse {
+    Ok(TurbinaHttpResponse {
         status_code,
         body,
         headers,

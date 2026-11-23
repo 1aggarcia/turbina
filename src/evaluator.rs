@@ -418,6 +418,7 @@ fn literal_to_string(literal: Literal) -> Option<String> {
 #[cfg(test)]
 mod test_evalutate {
     use crate::{
+        factories::field_map,
         models::{test_utils::*, Type},
         parser::test_utils::make_tree,
     };

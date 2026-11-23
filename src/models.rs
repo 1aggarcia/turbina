@@ -2,7 +2,9 @@ use core::fmt;
 use std::collections::HashMap;
 
 use crate::{
-    lexer::escape_string, libraries::STANDARD_LIBRARY, streams::OutputStreams,
+    lexer::escape_string,
+    libraries::{GLOBAL_STRUCTS, STANDARD_LIBRARY},
+    streams::OutputStreams,
 };
 
 /// State of the running program
@@ -12,6 +14,7 @@ pub struct Program {
     pub type_context: HashMap<String, Type>,
     pub type_aliases: HashMap<String, Type>,
     pub struct_definitions: HashMap<String, StructFields>,
+    pub global_struct_definitions: HashMap<&'static str, &'static StructFields>,
     pub output: OutputStreams,
 }
 
@@ -20,8 +23,16 @@ impl Program {
     pub fn init(output: OutputStreams) -> Program {
         let mut bindings = HashMap::<String, Literal>::new();
         let mut type_context = HashMap::<String, Type>::new();
+        let mut global_struct_definitions =
+            HashMap::<&'static str, &'static StructFields>::new();
 
-        // cloning here is needed to insert into the hashmap
+        for struct_definition in &*GLOBAL_STRUCTS {
+            global_struct_definitions
+                .insert(&struct_definition.name, &struct_definition.fields);
+        }
+
+        // TODO: Copy pattern for global_struct_definitions so that the library
+        // does not need to be cloned
         for (name, func) in STANDARD_LIBRARY.clone() {
             let Some(return_type) = &func.return_type else {
                 eprintln!(
@@ -54,6 +65,7 @@ impl Program {
             type_context,
             type_aliases,
             struct_definitions,
+            global_struct_definitions,
             output,
         }
     }
@@ -641,6 +653,8 @@ pub struct StructLiteral {
 
 #[cfg(test)]
 pub mod test_utils {
+    use crate::factories::field_map;
+
     use super::*;
 
     pub fn bool_token(data: bool) -> Token {
@@ -702,13 +716,6 @@ pub mod test_utils {
         Expr::Binary(BinaryExpr { first, rest })
     }
 
-    /// Generically convert a field map keyed by &str to one keyed by String
-    pub fn field_map<T, const N: usize>(
-        mapping: [(&str, T); N],
-    ) -> HashMap<String, T> {
-        HashMap::<String, T>::from(mapping.map(|(k, v)| (k.to_string(), v)))
-    }
-
     pub fn struct_literal<const N: usize>(
         name: &str,
         fields: [(&str, Literal); N],
@@ -731,8 +738,27 @@ pub mod test_utils {
 }
 
 #[cfg(test)]
+mod test_program {
+    use super::*;
+
+    #[test]
+    fn init_should_populate_global_structs() {
+        let program = Program::init_with_std_streams();
+
+        for global_struct in &*GLOBAL_STRUCTS {
+            let program_struct = program
+                .global_struct_definitions
+                .get(&*global_struct.name)
+                .unwrap();
+
+            assert_eq!(**program_struct, global_struct.fields);
+        }
+    }
+}
+
+#[cfg(test)]
 mod test_type {
-    use crate::models::test_utils::{field_map, struct_literal};
+    use crate::{factories::field_map, models::test_utils::struct_literal};
 
     use super::*;
 

@@ -23,6 +23,7 @@ pub fn resolve_type(
         type_aliases: &program.type_aliases,
         struct_definitions: &program.struct_definitions,
         generic_type_parameters: &[],
+        global_struct_definitions: Some(&program.global_struct_definitions),
         name_to_bind: None,
         parent: None,
     };

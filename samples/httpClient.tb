@@ -1,9 +1,9 @@
-let handleSuccess(statusCode: int, body: string) {
+let handleSuccess(response: HttpResponse) {
     println("Status Code:");
-    println(statusCode);
+    println(response.statusCode);
     println("");
     println("Response:");
-    println(body);
+    println(response.body);
     println("");
 }
 
@@ -17,7 +17,7 @@ let testWithoutBody(
     method: string,
     func: (
         (string, string[]) ->
-        ((int, string, string[]) -> T, string -> T)
+        (HttpResponse -> T, string -> T)
         -> T
     ),
 ) {
@@ -31,7 +31,7 @@ let testWithBody(
     method: string,
     func: (
         (string, string[], string) ->
-        ((int, string, string[]) -> T, string -> T)
+        (HttpResponse -> T, string -> T)
         -> T
     ),
     body: string,

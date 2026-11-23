@@ -51,6 +51,7 @@ fn resolve_binary_expr_type(
                 type_aliases: &HashMap::new(),
                 struct_definitions: &HashMap::new(),
                 generic_type_parameters: &[],
+                global_struct_definitions: None,
                 name_to_bind: None,
                 parent: Some(context),
             }
@@ -103,6 +104,7 @@ fn resolve_code_block_type(
                 struct_definitions: &struct_definitions,
                 type_aliases: &type_aliases,
                 generic_type_parameters: &[],
+                global_struct_definitions: None,
                 name_to_bind: None,
                 parent: Some(context),
             };
@@ -201,6 +203,7 @@ fn resolve_function_type(
         type_aliases: &HashMap::new(),
         struct_definitions: &HashMap::new(),
         generic_type_parameters: &function.type_params,
+        global_struct_definitions: None,
         name_to_bind: None,
         parent: Some(&context),
     };
@@ -609,6 +612,7 @@ fn binary_op_return_type(
 #[cfg(test)]
 mod test {
     use crate::errors::{error, InterpreterError};
+    use crate::factories::field_map;
     use crate::models::test_utils::unary_expr_tree;
     use crate::models::{BinaryOp, Literal, Program, Type, UnaryExpr};
     use crate::parser::test_utils::make_tree;
@@ -727,7 +731,7 @@ mod test {
     }
 
     mod struct_primary_expr {
-        use crate::models::test_utils::field_map;
+        use crate::factories::field_map;
 
         use super::*;
 
@@ -867,7 +871,6 @@ mod test {
     }
 
     mod field_access {
-        use crate::models::test_utils::field_map;
 
         use super::*;
 
@@ -1078,8 +1081,6 @@ mod test {
     }
 
     mod code_block {
-        use crate::models::test_utils::field_map;
-
         use super::*;
 
         #[test]
@@ -1288,8 +1289,6 @@ mod test {
     }
 
     mod func_call {
-        use crate::models::test_utils::field_map;
-
         use super::*;
 
         #[test]
@@ -1460,9 +1459,7 @@ mod test {
     }
 
     mod function {
-        use crate::{
-            models::test_utils::field_map, parser::test_utils::make_tree,
-        };
+        use crate::parser::test_utils::make_tree;
 
         use super::*;
 
