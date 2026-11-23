@@ -1063,6 +1063,6 @@ mod test_library {
         let mut program = Program::init_with_std_streams();
         let syntax_tree = make_tree(input);
         resolve_type(&program, &syntax_tree).unwrap();
-        evaluate(&mut program, &syntax_tree).unwrap()
+        evaluate(&mut program, syntax_tree).unwrap()
     }
 }

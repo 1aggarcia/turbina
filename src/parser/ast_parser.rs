@@ -161,7 +161,7 @@ mod test {
         "
         randInt(
             1,
-            2  // TODO: this should work with trailing comma
+            2
         );
     "
     )]

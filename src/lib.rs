@@ -160,7 +160,7 @@ pub fn run_as_file(
 
     // evaluate validated statements
     for statement in statements {
-        if let Err(err) = evaluate_statement(&mut program, &statement) {
+        if let Err(err) = evaluate_statement(&mut program, statement) {
             writeln!(program.output.stderr, "{err}")?;
             break;
         }
@@ -186,7 +186,7 @@ pub fn run_repl(args: CliArgs) {
         let eval_result =
             validate_next_statement(&mut program, &mut token_stream, &args)
                 .and_then(|statement| {
-                    evaluate_statement(&mut program, &statement)
+                    evaluate_statement(&mut program, statement)
                         .map_err(|e| vec![e])
                 });
 
@@ -237,9 +237,9 @@ fn validate_next_statement(
 /// May return a runtime error.
 fn evaluate_statement(
     program: &mut Program,
-    (syntax_tree, tree_type): &Statement,
+    (syntax_tree, tree_type): Statement,
 ) -> Result<String, InterpreterError> {
-    let output = match (evaluate(program, &syntax_tree)?, tree_type) {
+    let output = match (evaluate(program, syntax_tree)?, tree_type) {
         // Function types look nicer to print than any form of the struct
         (Literal::Closure(_), Some(datatype)) => datatype.to_string(),
         (literal, _) => literal.to_string(),
