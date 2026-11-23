@@ -21,8 +21,6 @@ pub struct Program {
 impl Program {
     /// Initialize a `Program` with library functions imported into the environment
     pub fn init(output: OutputStreams) -> Program {
-        let mut bindings = HashMap::<String, Literal>::new();
-        let mut type_context = HashMap::<String, Type>::new();
         let mut global_struct_definitions =
             HashMap::<&'static str, &'static StructFields>::new();
 
@@ -31,9 +29,10 @@ impl Program {
                 .insert(&struct_definition.name, &struct_definition.fields);
         }
 
-        // TODO: Copy pattern for global_struct_definitions so that the library
-        // does not need to be cloned
-        for (name, func) in STANDARD_LIBRARY.clone() {
+        let mut bindings = HashMap::<String, Literal>::new();
+        let mut type_context = HashMap::<String, Type>::new();
+
+        for (name, func) in &*STANDARD_LIBRARY {
             let Some(return_type) = &func.return_type else {
                 eprintln!(
                     "WARNING: Cannot resolve return type for library function {}",
@@ -42,7 +41,7 @@ impl Program {
                 continue;
             };
             bindings.insert(
-                name.to_owned(),
+                name.to_string(),
                 Literal::Closure(Closure {
                     function: func.clone(),
                     parent_scope: HashMap::new(),
@@ -50,7 +49,7 @@ impl Program {
             );
 
             type_context.insert(
-                name.to_owned(),
+                name.to_string(),
                 Type::Func {
                     input: func.params.iter().map(|(_, t)| t.clone()).collect(),
                     output: Box::new(return_type.clone()),
@@ -95,10 +94,9 @@ pub struct Scope<'a> {
 impl Scope<'_> {
     /// Search for a binding in the local scope. If it is not found,
     /// recursively search the parent scopes until reaching the global scope.
-    pub fn lookup(&self, id: &str) -> Option<Literal> {
+    pub fn lookup(&self, id: &str) -> Option<&Literal> {
         match self.bindings.get(id) {
-            // TODO: try to make this return a reference
-            Some(value) => Some(value.clone()),
+            Some(value) => Some(value),
             None => {
                 self.parent.and_then(|parent_scope| parent_scope.lookup(id))
             }

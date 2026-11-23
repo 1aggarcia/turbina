@@ -280,7 +280,7 @@ fn eval_unary_expr(
 /// Lookup the value stored for a variable name
 fn eval_id(context: &mut EvalContext, id: &str) -> Literal {
     match context.scope.lookup(id) {
-        Some(literal) => literal,
+        Some(literal) => literal.clone(),
 
         // TODO: this should never happen, but use result type anyway
         None => {
