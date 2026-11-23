@@ -880,7 +880,6 @@ dependencies = [
  "getrandom 0.3.1",
  "js-sys",
  "libc",
- "once_cell",
  "rand",
  "regex",
  "rstest",

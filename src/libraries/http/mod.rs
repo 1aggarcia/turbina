@@ -1,6 +1,4 @@
-use std::error::Error;
-
-use once_cell::sync::Lazy;
+use std::{error::Error, sync::LazyLock};
 
 mod shared;
 
@@ -33,8 +31,8 @@ pub enum HttpBodySetting {
     RequireBody,
 }
 
-pub static HTTP_REQUEST_SUCCESS_TYPES: Lazy<[Type; 1]> =
-    Lazy::new(|| [TurbinaHttpResponse::get_type()]);
+pub static HTTP_REQUEST_SUCCESS_TYPES: LazyLock<[Type; 1]> =
+    LazyLock::new(|| [TurbinaHttpResponse::get_type()]);
 
 /// Factory to help create function AST nodes for different HTTP methods,
 /// as they are all mostly the same and only have different symbols for

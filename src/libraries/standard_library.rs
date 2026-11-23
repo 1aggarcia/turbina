@@ -1,9 +1,9 @@
 // The standard library available anywhere in Turbina
 
-use once_cell::sync::Lazy;
 use rand::Rng;
 use std::fs;
 use std::io::{read_to_string, Write};
+use std::sync::LazyLock;
 
 use crate::libraries::factories::{
     create_result_from_error, create_result_from_success, create_result_type,
@@ -22,455 +22,482 @@ use crate::{
     models::{EvalContext, FuncBody, Function, Literal, Type},
 };
 
-pub static STANDARD_LIBRARY: Lazy<Vec<(&str, Function)>> = Lazy::new(|| {
-    // TODO: non-global libraries should eventually require an import to be used
-    // right now they have to be declared in this closure so that result can take
-    // ownership of the vectors
-    let mut result = vec![];
+pub static STANDARD_LIBRARY: LazyLock<Vec<(&str, Function)>> =
+    LazyLock::new(|| {
+        // TODO: non-global libraries should eventually require an import to be used
+        // right now they have to be declared in this closure so that result can take
+        // ownership of the vectors
+        let mut result = vec![];
 
-    let global_library = vec![
-        (
-            "exit",
-            Function {
-                type_params: vec![],
-                params: define_params![code = Type::Int],
-                return_type: Some(Type::Null),
-                body: FuncBody::Native(lib_exit),
-            },
-        ),
-        (
-            "exec",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    command = Type::String,
-                    args = Type::String.as_list(),
-                ],
-                return_type: Some(create_result_type(&EXEC_SUCCESS_TYPES)),
-                body: FuncBody::Native(lib_exec),
-            },
-        ),
-        (
-            "help",
-            Function {
-                type_params: vec![],
-                params: define_params![libraryFunctionName = Type::String],
-                return_type: Some(Type::Null),
-                body: FuncBody::Native(lib_help),
-            },
-        ),
-        (
-            "printScope",
-            Function {
-                type_params: vec![],
-                params: vec![],
-                return_type: Some(Type::Null),
-                body: FuncBody::Native(|_, context| {
-                    writeln!(context.output.stdout, "{}", context.scope)
-                        .unwrap();
-                    Literal::Null
-                }),
-            },
-        ),
-        (
-            "toString",
-            Function {
-                type_params: vec![],
-                params: define_params![data = Type::Unknown],
-                return_type: Some(Type::String),
-                body: FuncBody::Native(|args, _| {
-                    Literal::String(lib_to_string(args))
-                }),
-            },
-        ),
-        (
-            "print",
-            Function {
-                type_params: vec![],
-                params: define_params![data = Type::Unknown],
-                return_type: Some(Type::Null),
-                body: FuncBody::Native(|args, context| {
-                    write!(context.output.stdout, "{}", lib_to_string(args))
-                        .unwrap();
-                    Literal::Null
-                }),
-            },
-        ),
-        (
-            "println",
-            Function {
-                type_params: vec![],
-                params: define_params![data = Type::Unknown],
-                return_type: Some(Type::Null),
-                body: FuncBody::Native(|args, context| {
-                    writeln!(context.output.stdout, "{}", lib_to_string(args))
-                        .unwrap();
-                    Literal::Null
-                }),
-            },
-        ),
-        (
-            "randInt",
-            Function {
-                type_params: vec![],
-                params: define_params![min = Type::Int, max = Type::Int],
-                return_type: Some(Type::Int),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::Int(min_arg),
-                        Literal::Int(max_arg),
-                    }
-                    let num = rand::rng().random_range(*min_arg..*max_arg);
-                    Literal::Int(num)
-                }),
-            },
-        ),
-    ];
-    result.extend(global_library);
-
-    let string_library = vec![
-        (
-            "reverse",
-            Function {
-                type_params: vec![],
-                params: define_params![text = Type::String],
-                return_type: Some(Type::String),
-                body: FuncBody::Native(lib_reverse),
-            },
-        ),
-        (
-            "len",
-            Function {
-                type_params: vec![],
-                params: define_params![text = Type::String],
-                return_type: Some(Type::Int),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::String(text),
-                    }
-                    Literal::Int(
-                        text.len().try_into().expect("Integer overflow"),
-                    )
-                }),
-            },
-        ),
-        (
-            "uppercase",
-            Function {
-                type_params: vec![],
-                params: define_params![text = Type::String],
-                return_type: Some(Type::String),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::String(text),
-                    }
-                    Literal::String(text.to_uppercase())
-                }),
-            },
-        ),
-        (
-            "lowercase",
-            Function {
-                type_params: vec![],
-                params: define_params![text = Type::String],
-                return_type: Some(Type::String),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::String(text),
-                    }
-                    Literal::String(text.to_lowercase())
-                }),
-            },
-        ),
-        (
-            "trim",
-            Function {
-                type_params: vec![],
-                params: define_params![text = Type::String],
-                return_type: Some(Type::String),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::String(text),
-                    }
-                    Literal::String(text.trim().to_string())
-                }),
-            },
-        ),
-        (
-            "includes",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    text = Type::String,
-                    substring = Type::String,
-                ],
-                return_type: Some(Type::Bool),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::String(text),
-                        Literal::String(substring),
-                    }
-                    Literal::Bool(text.contains(substring))
-                }),
-            },
-        ),
-        (
-            "startsWith",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    text = Type::String,
-                    substring = Type::String
-                ],
-                return_type: Some(Type::Bool),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::String(text),
-                        Literal::String(substring),
-                    }
-                    Literal::Bool(text.starts_with(substring))
-                }),
-            },
-        ),
-        (
-            "endsWith",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    text = Type::String,
-                    substring = Type::String,
-                ],
-                return_type: Some(Type::Bool),
-                body: FuncBody::Native(|args, _| {
-                    unwrap_args! { args =>
-                        Literal::String(text),
-                        Literal::String(substring),
-                    }
-                    Literal::Bool(text.ends_with(substring))
-                }),
-            },
-        ),
-        (
-            "split",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    text = Type::String,
-                    delimiter = Type::String,
-                ],
-                return_type: Some(Type::String.as_list()),
-                body: FuncBody::Native(|args, _| {
-                    Literal::List(lib_split(args))
-                }),
-            },
-        ),
-        (
-            "join",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    list = Type::String.as_list(),
-                    separator = Type::String,
-                ],
-                return_type: Some(Type::String),
-                body: FuncBody::Native(|args, _| {
-                    Literal::String(lib_join(args))
-                }),
-            },
-        ),
-    ];
-    result.extend(string_library);
-
-    let list_library = vec![
-        (
-            "map",
-            Function {
-                type_params: vec!["T".into(), "R".into()],
-                params: define_params![
-                    list = generic_list("T"),
-                    mapFunc =
-                        Type::func(&[generic_type("T")], generic_type("R"))
-                ],
-                return_type: Some(generic_list("R")),
-                body: FuncBody::Native(lib_map),
-            },
-        ),
-        (
-            "filter",
-            Function {
-                type_params: vec!["T".into()],
-                params: define_params![
-                    list = generic_list("T"),
-                    predicate = Type::func(&[generic_type("T")], Type::Bool)
-                ],
-                return_type: Some(generic_list("T")),
-                body: FuncBody::Native(lib_filter),
-            },
-        ),
-        (
-            "reduce",
-            Function {
-                type_params: vec!["T".into(), "R".into()],
-                params: define_params![
-                    list = generic_list("T"),
-                    reducer = Type::func(
-                        &[generic_type("R"), generic_type("T")],
-                        generic_type("R")
-                    ),
-                    initValue = Type::Generic("R".into()),
-                ],
-                return_type: Some(generic_type("R")),
-                body: FuncBody::Native(lib_reduce),
-            },
-        ),
-        (
-            "any",
-            Function {
-                type_params: vec!["T".into()],
-                params: define_params![
-                    list = generic_list("T"),
-                    predicate = Type::func(&[generic_type("T")], Type::Bool),
-                ],
-                return_type: Some(Type::Bool),
-                body: FuncBody::Native(lib_any),
-            },
-        ),
-        (
-            "every",
-            Function {
-                type_params: vec!["T".into()],
-                params: define_params![
-                    list = generic_list("T"),
-                    predicate = Type::func(&[generic_type("T")], Type::Bool),
-                ],
-                return_type: Some(Type::Bool),
-                body: FuncBody::Native(lib_every),
-            },
-        ),
-        (
-            "makeList",
-            Function {
-                type_params: vec!["T".into()],
-                params: define_params![
-                    length = Type::Int,
-                    elemFunc = Type::func(&[Type::Int], generic_type("T"))
-                ],
-                return_type: Some(generic_list("T")),
-                body: FuncBody::Native(|args, context| {
-                    unwrap_args! { args =>
-                        Literal::Int(length),
-                        Literal::Closure(elem_func),
-                    }
-                    if *length < 0 {
-                        panic!("Cannot create a list with a negative length");
-                    }
-                    let mut list = Vec::<Literal>::new();
-                    for i in 0..*length {
-                        let elem = eval_func_call(
-                            context,
-                            elem_func.clone(),
-                            vec![Literal::Int(i)],
+        let global_library = vec![
+            (
+                "exit",
+                Function {
+                    type_params: vec![],
+                    params: define_params![code = Type::Int],
+                    return_type: Some(Type::Null),
+                    body: FuncBody::Native(lib_exit),
+                },
+            ),
+            (
+                "exec",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        command = Type::String,
+                        args = Type::String.as_list(),
+                    ],
+                    return_type: Some(create_result_type(&EXEC_SUCCESS_TYPES)),
+                    body: FuncBody::Native(lib_exec),
+                },
+            ),
+            (
+                "help",
+                Function {
+                    type_params: vec![],
+                    params: define_params![libraryFunctionName = Type::String],
+                    return_type: Some(Type::Null),
+                    body: FuncBody::Native(lib_help),
+                },
+            ),
+            (
+                "printScope",
+                Function {
+                    type_params: vec![],
+                    params: vec![],
+                    return_type: Some(Type::Null),
+                    body: FuncBody::Native(|_, context| {
+                        writeln!(context.output.stdout, "{}", context.scope)
+                            .unwrap();
+                        Literal::Null
+                    }),
+                },
+            ),
+            (
+                "toString",
+                Function {
+                    type_params: vec![],
+                    params: define_params![data = Type::Unknown],
+                    return_type: Some(Type::String),
+                    body: FuncBody::Native(|args, _| {
+                        Literal::String(lib_to_string(args))
+                    }),
+                },
+            ),
+            (
+                "print",
+                Function {
+                    type_params: vec![],
+                    params: define_params![data = Type::Unknown],
+                    return_type: Some(Type::Null),
+                    body: FuncBody::Native(|args, context| {
+                        write!(
+                            context.output.stdout,
+                            "{}",
+                            lib_to_string(args)
                         )
                         .unwrap();
-                        list.push(elem);
-                    }
-                    Literal::List(list)
-                }),
-            },
-        ),
-    ];
-    result.extend(list_library);
+                        Literal::Null
+                    }),
+                },
+            ),
+            (
+                "println",
+                Function {
+                    type_params: vec![],
+                    params: define_params![data = Type::Unknown],
+                    return_type: Some(Type::Null),
+                    body: FuncBody::Native(|args, context| {
+                        writeln!(
+                            context.output.stdout,
+                            "{}",
+                            lib_to_string(args)
+                        )
+                        .unwrap();
+                        Literal::Null
+                    }),
+                },
+            ),
+            (
+                "randInt",
+                Function {
+                    type_params: vec![],
+                    params: define_params![min = Type::Int, max = Type::Int],
+                    return_type: Some(Type::Int),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::Int(min_arg),
+                            Literal::Int(max_arg),
+                        }
+                        let num = rand::rng().random_range(*min_arg..*max_arg);
+                        Literal::Int(num)
+                    }),
+                },
+            ),
+        ];
+        result.extend(global_library);
 
-    let io_library = vec![
-        (
-            "appendFile",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    filepath = Type::String,
-                    contents = Type::String,
-                ],
-                // return null on success, error message on error
-                return_type: Some(Type::String.as_nullable()),
-                body: FuncBody::Native(lib_append_file),
-            },
-        ),
-        (
-            "readDir",
-            Function {
-                type_params: vec![],
-                params: define_params![directoryPath = Type::String],
-                return_type: Some(create_result_type(&*READ_DIR_SUCCESS_TYPES)),
-                body: FuncBody::Native(lib_read_dir),
-            },
-        ),
-        (
-            "readFile",
-            Function {
-                type_params: vec![],
-                params: define_params![filepath = Type::String],
-                return_type: Some(create_result_type(&READ_FILE_SUCCESS_TYPES)),
-                body: FuncBody::Native(lib_read_file),
-            },
-        ),
-        (
-            "writeFile",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    filepath = Type::String,
-                    contents = Type::String,
-                ],
-                // return null on success, error message on error
-                return_type: Some(Type::String.as_nullable()),
-                body: FuncBody::Native(lib_write_file),
-            },
-        ),
-    ];
-    result.extend(io_library);
+        let string_library = vec![
+            (
+                "reverse",
+                Function {
+                    type_params: vec![],
+                    params: define_params![text = Type::String],
+                    return_type: Some(Type::String),
+                    body: FuncBody::Native(lib_reverse),
+                },
+            ),
+            (
+                "len",
+                Function {
+                    type_params: vec![],
+                    params: define_params![text = Type::String],
+                    return_type: Some(Type::Int),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::String(text),
+                        }
+                        Literal::Int(
+                            text.len().try_into().expect("Integer overflow"),
+                        )
+                    }),
+                },
+            ),
+            (
+                "uppercase",
+                Function {
+                    type_params: vec![],
+                    params: define_params![text = Type::String],
+                    return_type: Some(Type::String),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::String(text),
+                        }
+                        Literal::String(text.to_uppercase())
+                    }),
+                },
+            ),
+            (
+                "lowercase",
+                Function {
+                    type_params: vec![],
+                    params: define_params![text = Type::String],
+                    return_type: Some(Type::String),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::String(text),
+                        }
+                        Literal::String(text.to_lowercase())
+                    }),
+                },
+            ),
+            (
+                "trim",
+                Function {
+                    type_params: vec![],
+                    params: define_params![text = Type::String],
+                    return_type: Some(Type::String),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::String(text),
+                        }
+                        Literal::String(text.trim().to_string())
+                    }),
+                },
+            ),
+            (
+                "includes",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        text = Type::String,
+                        substring = Type::String,
+                    ],
+                    return_type: Some(Type::Bool),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::String(text),
+                            Literal::String(substring),
+                        }
+                        Literal::Bool(text.contains(substring))
+                    }),
+                },
+            ),
+            (
+                "startsWith",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        text = Type::String,
+                        substring = Type::String
+                    ],
+                    return_type: Some(Type::Bool),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::String(text),
+                            Literal::String(substring),
+                        }
+                        Literal::Bool(text.starts_with(substring))
+                    }),
+                },
+            ),
+            (
+                "endsWith",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        text = Type::String,
+                        substring = Type::String,
+                    ],
+                    return_type: Some(Type::Bool),
+                    body: FuncBody::Native(|args, _| {
+                        unwrap_args! { args =>
+                            Literal::String(text),
+                            Literal::String(substring),
+                        }
+                        Literal::Bool(text.ends_with(substring))
+                    }),
+                },
+            ),
+            (
+                "split",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        text = Type::String,
+                        delimiter = Type::String,
+                    ],
+                    return_type: Some(Type::String.as_list()),
+                    body: FuncBody::Native(|args, _| {
+                        Literal::List(lib_split(args))
+                    }),
+                },
+            ),
+            (
+                "join",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        list = Type::String.as_list(),
+                        separator = Type::String,
+                    ],
+                    return_type: Some(Type::String),
+                    body: FuncBody::Native(|args, _| {
+                        Literal::String(lib_join(args))
+                    }),
+                },
+            ),
+        ];
+        result.extend(string_library);
 
-    let http_library = vec![
-        (
-            "httpDelete",
-            create_http_function(lib_http_delete, HttpBodySetting::NoBody),
-        ),
-        (
-            "httpGet",
-            create_http_function(lib_http_get, HttpBodySetting::NoBody),
-        ),
-        (
-            "httpPatch",
-            create_http_function(lib_http_patch, HttpBodySetting::RequireBody),
-        ),
-        (
-            "httpPost",
-            create_http_function(lib_http_post, HttpBodySetting::RequireBody),
-        ),
-        (
-            "httpPut",
-            create_http_function(lib_http_put, HttpBodySetting::RequireBody),
-        ),
-        (
-            "serveHttp",
-            Function {
-                type_params: vec![],
-                params: define_params![
-                    address = Type::String,
-                    handleRequest = Type::func(
-                        &[TurbinaHttpRequest::get_type()],
-                        Type::String,
-                    ),
-                    handleError = Type::func(&[Type::String], Type::Null),
-                ],
-                return_type: Some(Type::Null),
-                body: FuncBody::Native(lib_serve_http),
-            },
-        ),
-    ];
-    result.extend(http_library);
+        let list_library = vec![
+            (
+                "map",
+                Function {
+                    type_params: vec!["T".into(), "R".into()],
+                    params: define_params![
+                        list = generic_list("T"),
+                        mapFunc =
+                            Type::func(&[generic_type("T")], generic_type("R"))
+                    ],
+                    return_type: Some(generic_list("R")),
+                    body: FuncBody::Native(lib_map),
+                },
+            ),
+            (
+                "filter",
+                Function {
+                    type_params: vec!["T".into()],
+                    params: define_params![
+                        list = generic_list("T"),
+                        predicate =
+                            Type::func(&[generic_type("T")], Type::Bool)
+                    ],
+                    return_type: Some(generic_list("T")),
+                    body: FuncBody::Native(lib_filter),
+                },
+            ),
+            (
+                "reduce",
+                Function {
+                    type_params: vec!["T".into(), "R".into()],
+                    params: define_params![
+                        list = generic_list("T"),
+                        reducer = Type::func(
+                            &[generic_type("R"), generic_type("T")],
+                            generic_type("R")
+                        ),
+                        initValue = Type::Generic("R".into()),
+                    ],
+                    return_type: Some(generic_type("R")),
+                    body: FuncBody::Native(lib_reduce),
+                },
+            ),
+            (
+                "any",
+                Function {
+                    type_params: vec!["T".into()],
+                    params: define_params![
+                        list = generic_list("T"),
+                        predicate =
+                            Type::func(&[generic_type("T")], Type::Bool),
+                    ],
+                    return_type: Some(Type::Bool),
+                    body: FuncBody::Native(lib_any),
+                },
+            ),
+            (
+                "every",
+                Function {
+                    type_params: vec!["T".into()],
+                    params: define_params![
+                        list = generic_list("T"),
+                        predicate =
+                            Type::func(&[generic_type("T")], Type::Bool),
+                    ],
+                    return_type: Some(Type::Bool),
+                    body: FuncBody::Native(lib_every),
+                },
+            ),
+            (
+                "makeList",
+                Function {
+                    type_params: vec!["T".into()],
+                    params: define_params![
+                        length = Type::Int,
+                        elemFunc = Type::func(&[Type::Int], generic_type("T"))
+                    ],
+                    return_type: Some(generic_list("T")),
+                    body: FuncBody::Native(|args, context| {
+                        unwrap_args! { args =>
+                            Literal::Int(length),
+                            Literal::Closure(elem_func),
+                        }
+                        if *length < 0 {
+                            panic!(
+                                "Cannot create a list with a negative length"
+                            );
+                        }
+                        let mut list = Vec::<Literal>::new();
+                        for i in 0..*length {
+                            let elem = eval_func_call(
+                                context,
+                                elem_func.clone(),
+                                vec![Literal::Int(i)],
+                            )
+                            .unwrap();
+                            list.push(elem);
+                        }
+                        Literal::List(list)
+                    }),
+                },
+            ),
+        ];
+        result.extend(list_library);
 
-    result
-});
+        let io_library = vec![
+            (
+                "appendFile",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        filepath = Type::String,
+                        contents = Type::String,
+                    ],
+                    // return null on success, error message on error
+                    return_type: Some(Type::String.as_nullable()),
+                    body: FuncBody::Native(lib_append_file),
+                },
+            ),
+            (
+                "readDir",
+                Function {
+                    type_params: vec![],
+                    params: define_params![directoryPath = Type::String],
+                    return_type: Some(create_result_type(
+                        &*READ_DIR_SUCCESS_TYPES,
+                    )),
+                    body: FuncBody::Native(lib_read_dir),
+                },
+            ),
+            (
+                "readFile",
+                Function {
+                    type_params: vec![],
+                    params: define_params![filepath = Type::String],
+                    return_type: Some(create_result_type(
+                        &READ_FILE_SUCCESS_TYPES,
+                    )),
+                    body: FuncBody::Native(lib_read_file),
+                },
+            ),
+            (
+                "writeFile",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        filepath = Type::String,
+                        contents = Type::String,
+                    ],
+                    // return null on success, error message on error
+                    return_type: Some(Type::String.as_nullable()),
+                    body: FuncBody::Native(lib_write_file),
+                },
+            ),
+        ];
+        result.extend(io_library);
+
+        let http_library = vec![
+            (
+                "httpDelete",
+                create_http_function(lib_http_delete, HttpBodySetting::NoBody),
+            ),
+            (
+                "httpGet",
+                create_http_function(lib_http_get, HttpBodySetting::NoBody),
+            ),
+            (
+                "httpPatch",
+                create_http_function(
+                    lib_http_patch,
+                    HttpBodySetting::RequireBody,
+                ),
+            ),
+            (
+                "httpPost",
+                create_http_function(
+                    lib_http_post,
+                    HttpBodySetting::RequireBody,
+                ),
+            ),
+            (
+                "httpPut",
+                create_http_function(
+                    lib_http_put,
+                    HttpBodySetting::RequireBody,
+                ),
+            ),
+            (
+                "serveHttp",
+                Function {
+                    type_params: vec![],
+                    params: define_params![
+                        address = Type::String,
+                        handleRequest = Type::func(
+                            &[TurbinaHttpRequest::get_type()],
+                            Type::String,
+                        ),
+                        handleError = Type::func(&[Type::String], Type::Null),
+                    ],
+                    return_type: Some(Type::Null),
+                    body: FuncBody::Native(lib_serve_http),
+                },
+            ),
+        ];
+        result.extend(http_library);
+
+        result
+    });
 
 fn lib_reverse(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
     unwrap_args! { args => Literal::String(text) }
@@ -673,8 +700,8 @@ fn lib_read_file(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     }
 }
 
-static READ_DIR_SUCCESS_TYPES: Lazy<[Type; 1]> =
-    Lazy::new(|| [Type::String.as_list()]);
+static READ_DIR_SUCCESS_TYPES: LazyLock<[Type; 1]> =
+    LazyLock::new(|| [Type::String.as_list()]);
 
 fn lib_read_dir(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     unwrap_args! { args => Literal::String(path) }
