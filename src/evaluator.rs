@@ -182,13 +182,13 @@ fn eval_field_access(
 ) -> Result<Literal> {
     let struct_literal = eval_unary_expr(context, *field_access.r#struct);
     let Literal::Struct(inner_struct) = struct_literal else {
-        return Err(InterpreterError::SyntaxError {
+        return Err(InterpreterError::RuntimeError {
             message: "Cannot access field of non-struct literal".into(),
         });
     };
 
     let value = inner_struct.fields.get(&field_access.field).ok_or(
-        InterpreterError::SyntaxError {
+        InterpreterError::RuntimeError {
             message: format!(
                 "Struct does not have field '{}'",
                 field_access.field
@@ -262,7 +262,7 @@ fn eval_unary_expr(
 
     match unary_expr {
         UnaryExpr::Literal(lit) => lit,
-        UnaryExpr::Id(id) => eval_id(context, &id),
+        UnaryExpr::Id(id) => eval_id(context, &id).unwrap(),
         UnaryExpr::Not(t) | UnaryExpr::Minus(t) => eval_negated(context, *t),
         UnaryExpr::Expr(expr) => eval_expr(context, *expr),
         UnaryExpr::FuncCall(call) => eval_wrapped_func_call(context, call),
@@ -278,14 +278,15 @@ fn eval_unary_expr(
 }
 
 /// Lookup the value stored for a variable name
-fn eval_id(context: &mut EvalContext, id: &str) -> Literal {
+fn eval_id(context: &mut EvalContext, id: &str) -> Result<Literal> {
     match context.scope.lookup(id) {
-        Some(literal) => literal.clone(),
-
-        // TODO: this should never happen, but use result type anyway
-        None => {
-            panic!("variable '{}' does not exist: context {:#?}", id, context)
-        }
+        Some(literal) => Ok(literal.clone()),
+        None => Err(InterpreterError::RuntimeError {
+            message: format!(
+                "variable '{}' does not exist: context {:#?}",
+                id, context
+            ),
+        }),
     }
 }
 
