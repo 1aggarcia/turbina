@@ -408,9 +408,13 @@ impl Type {
         match supertype {
             Type::Unknown => true,
             Type::Generic(_) => true,
-            Type::Nullable(inner_type) => {
-                *self == Type::Null || self.is_assignable_to(inner_type)
-            }
+            Type::Nullable(inner_supertype) => match self {
+                Type::Null => true,
+                Type::Nullable(inner_subtype) => {
+                    inner_subtype.is_assignable_to(inner_supertype)
+                }
+                _ => self.is_assignable_to(inner_supertype),
+            },
             Type::Func {
                 input: super_ins,
                 output: super_out,

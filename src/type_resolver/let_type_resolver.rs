@@ -79,6 +79,11 @@ mod test {
             "let x: unknown? = 5;", "x", Type::Unknown.as_nullable())]
         #[case::null_as_nullable_unknown(
             "let x: unknown? = null;", "x", Type::Unknown.as_nullable())]
+        #[case::conditional_expression_as_nullable_string(
+            r#"let x: string? = if (true) "some string" else null;"#,
+            "x",
+            Type::String.as_nullable()
+        )]
         #[case::func_with_explicit_type(
             "let f: (int -> unknown) = (x: unknown): int -> 0;",
             "f",
