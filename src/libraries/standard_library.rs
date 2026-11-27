@@ -1,9 +1,9 @@
 // The standard library available anywhere in Turbina
 
 use rand::Rng;
-use std::fs;
 use std::io::{read_to_string, Write};
 use std::sync::LazyLock;
+use std::{env, fs};
 
 use crate::libraries::factories::{
     create_result_from_error, create_result_from_success, create_result_type,
@@ -132,6 +132,15 @@ pub static STANDARD_LIBRARY: LazyLock<Vec<(&str, Function)>> =
                         let num = rand::rng().random_range(*min_arg..*max_arg);
                         Literal::Int(num)
                     }),
+                },
+            ),
+            (
+                "getEnv",
+                Function {
+                    type_params: vec![],
+                    params: define_params![variable = Type::String],
+                    return_type: Some(Type::String.as_nullable()),
+                    body: FuncBody::Native(lib_get_env),
                 },
             ),
         ];
@@ -556,6 +565,15 @@ fn lib_help(args: Vec<Literal>, context: &mut EvalContext) -> Literal {
     .expect("stdout stream is broken");
 
     Literal::Null
+}
+
+fn lib_get_env(args: Vec<Literal>, _: &mut EvalContext) -> Literal {
+    unwrap_args! { args => Literal::String(variable) }
+
+    match env::var(variable) {
+        Ok(value) => Literal::String(value),
+        Err(_) => Literal::Null,
+    }
 }
 
 fn lib_to_string(args: Vec<Literal>) -> String {
@@ -1057,6 +1075,27 @@ mod test_library {
         let expected = "map<T, R>(list: T[], mapFunc: T -> R): R[]";
 
         assert_eq!(get_function_signature("map"), Some(expected.to_string()));
+    }
+
+    #[test]
+    fn test_get_env_with_var_set() {
+        // Use random key to prevent collisions with tests running in parallel
+        let test_var_key =
+            format!("GET_ENV_TEST_{}", rand::rng().random_range(0..i32::MAX));
+        let input = format!(r#"getEnv("{}");"#, &test_var_key);
+
+        env::set_var(&test_var_key, "Test Value");
+        let result = run_cmd(&input);
+        env::remove_var(&test_var_key);
+
+        assert_eq!(result, Literal::String("Test Value".into()));
+    }
+
+    #[test]
+    fn test_get_env_without_var_set() {
+        let input = r#"getEnv("UNSET_VAR");"#;
+        let result = run_cmd(&input);
+        assert_eq!(result, Literal::Null);
     }
 
     fn run_cmd(input: &str) -> Literal {
